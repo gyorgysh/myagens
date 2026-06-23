@@ -8,7 +8,11 @@ loadEnv();
 // Default working directory: a gitignored `data/` folder at the repo root, so
 // files the agent creates (and uploads) stay out of the project tree.
 // Resolves to <repo>/data from both src/config.ts and dist/config.js.
-const defaultWorkdir = join(dirname(dirname(fileURLToPath(import.meta.url))), "data");
+const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const defaultWorkdir = join(repoRoot, "data");
+// Session/usage state lives alongside in the gitignored data/ folder so it
+// survives restarts without leaking into any agent working directory.
+const defaultStateFile = join(defaultWorkdir, "state.json");
 
 const csvIds = z
   .string()
@@ -26,6 +30,8 @@ const schema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
   ALLOWED_USER_IDS: csvIds,
   WORKDIR: z.string().min(1).default(defaultWorkdir),
+  // Where per-chat session + usage state is persisted (JSON). Survives restarts.
+  STATE_FILE: z.string().min(1).default(defaultStateFile),
   CLAUDE_MODEL: z.string().min(1).default("claude-opus-4-8"),
   ANTHROPIC_API_KEY: z.string().optional(),
   APPROVAL_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),

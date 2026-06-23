@@ -1,4 +1,11 @@
 import { config } from "../config.js";
+import {
+  emptyUsage,
+  loadState,
+  saveState,
+  type PersistedSession,
+  type Usage,
+} from "./store.js";
 
 export type PermissionMode = "safe" | "auto";
 
@@ -17,10 +24,27 @@ export interface Session {
   sessionAllowedTools: Set<string>;
   /** safe = interactive approval (default); auto = bypass permissions. */
   mode: PermissionMode;
+  /** Accumulated cost/duration/turn counters (lifetime + per day). */
+  usage: Usage;
 }
 
 export class SessionManager {
   private sessions = new Map<number, Session>();
+  private saveTimer?: NodeJS.Timeout;
+
+  constructor() {
+    for (const p of loadState()) {
+      this.sessions.set(p.chatId, {
+        chatId: p.chatId,
+        sessionId: p.sessionId,
+        cwd: p.cwd,
+        busy: false,
+        sessionAllowedTools: new Set(p.allowedTools),
+        mode: p.mode,
+        usage: p.usage,
+      });
+    }
+  }
 
   get(chatId: number): Session {
     let s = this.sessions.get(chatId);
@@ -31,17 +55,67 @@ export class SessionManager {
         busy: false,
         sessionAllowedTools: new Set(),
         mode: "safe",
+        usage: emptyUsage(),
       };
       this.sessions.set(chatId, s);
     }
     return s;
   }
 
+  /** All live sessions (for shutdown / broadcast). */
+  all(): Session[] {
+    return [...this.sessions.values()];
+  }
+
   /** Reset conversation context but keep cwd, mode and allow-list. */
   reset(chatId: number): void {
     const s = this.get(chatId);
     s.sessionId = undefined;
+    this.save();
   }
+
+  /** Fold one turn's cost/duration into the session's lifetime + today buckets. */
+  recordUsage(chatId: number, costUsd: number, durationMs: number): void {
+    const s = this.get(chatId);
+    const day = new Date().toISOString().slice(0, 10);
+    const bucket = (s.usage.daily[day] ??= { turns: 0, costUsd: 0, durationMs: 0 });
+    for (const t of [s.usage.total, bucket]) {
+      t.turns += 1;
+      t.costUsd += costUsd;
+      t.durationMs += durationMs;
+    }
+    this.save();
+  }
+
+  /** Persist all sessions, debounced so bursts of mutations write once. */
+  save(): void {
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = undefined;
+      saveState(this.all().map(toPersisted));
+    }, 500);
+    this.saveTimer.unref?.();
+  }
+
+  /** Flush any pending debounced write immediately (used on shutdown). */
+  flush(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = undefined;
+    }
+    saveState(this.all().map(toPersisted));
+  }
+}
+
+function toPersisted(s: Session): PersistedSession {
+  return {
+    chatId: s.chatId,
+    sessionId: s.sessionId,
+    cwd: s.cwd,
+    mode: s.mode,
+    allowedTools: [...s.sessionAllowedTools],
+    usage: s.usage,
+  };
 }
 
 export const sessions = new SessionManager();

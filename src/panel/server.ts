@@ -21,6 +21,7 @@ import {
 } from "../core/tasks.js";
 import { workers, describeWorkerSchedule, type Worker } from "../core/workers.js";
 import { chat } from "../core/chat.js";
+import { memory } from "../core/memory.js";
 import {
   listProviders,
   getProvider,
@@ -182,6 +183,23 @@ function registerApi(app: FastifyInstance): void {
   });
   app.delete("/api/skills/:id", async (req, reply) => {
     if (!deleteSkill((req.params as { id: string }).id))
+      return reply.code(404).send({ error: "not found" });
+    return { ok: true };
+  });
+
+  // --- durable memory ---
+  app.get("/api/memories", async (req) => {
+    const q = (req.query as { q?: string }).q;
+    return { memories: q ? memory.search(q, 50) : memory.list() };
+  });
+  app.post("/api/memories", async (req) => memory.create(req.body as never));
+  app.put("/api/memories/:id", async (req, reply) => {
+    const updated = memory.update((req.params as { id: string }).id, req.body as never);
+    if (!updated) return reply.code(404).send({ error: "not found" });
+    return updated;
+  });
+  app.delete("/api/memories/:id", async (req, reply) => {
+    if (!memory.remove((req.params as { id: string }).id))
       return reply.code(404).send({ error: "not found" });
     return { ok: true };
   });

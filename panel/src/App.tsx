@@ -10,6 +10,7 @@ import { SchedulesView } from "./components/Schedules.tsx";
 import { UsageView } from "./components/Usage.tsx";
 import { PromptView_ } from "./components/Prompt.tsx";
 import { SkillsView } from "./components/Skills.tsx";
+import { MemoryView } from "./components/Memory.tsx";
 import { TasksView } from "./components/Tasks.tsx";
 import { WorkersView } from "./components/Workers.tsx";
 import { LogsView } from "./components/Logs.tsx";
@@ -120,6 +121,7 @@ export function App() {
           {tab === "workers" && <WorkersView onAuthError={onAuthError} />}
           {tab === "tasks" && <TasksView onAuthError={onAuthError} />}
           {tab === "skills" && <SkillsView onAuthError={onAuthError} />}
+          {tab === "memory" && <MemoryView onAuthError={onAuthError} />}
           {tab === "prompt" && <PromptView_ onAuthError={onAuthError} />}
           {tab === "logs" && <LogsView onAuthError={onAuthError} />}
           {tab === "sessions" && <SessionsView onAuthError={onAuthError} />}

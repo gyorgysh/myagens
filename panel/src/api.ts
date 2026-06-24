@@ -169,6 +169,17 @@ export interface WorkerRun {
   output: string;
 }
 
+export interface MemoryEntry {
+  id: string;
+  text: string;
+  tags: string[];
+  salience: number;
+  useCount: number;
+  createdAt: number;
+  updatedAt: number;
+  lastUsedAt?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -260,6 +271,14 @@ export const api = {
   runWorker: (id: string) => req<WorkerRun>("POST", `/api/workers/${id}/run`),
   stopWorker: (id: string) => req<{ ok: boolean }>("POST", `/api/workers/${id}/stop`),
   workerRuns: (id: string) => get<{ runs: WorkerRun[] }>(`/api/workers/${id}/runs`),
+
+  memories: (q?: string) =>
+    get<{ memories: MemoryEntry[] }>(`/api/memories${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  createMemory: (m: { text: string; tags?: string[]; salience?: number }) =>
+    req<MemoryEntry>("POST", "/api/memories", m),
+  updateMemory: (id: string, m: { text?: string; tags?: string[]; salience?: number }) =>
+    req<MemoryEntry>("PUT", `/api/memories/${id}`, m),
+  deleteMemory: (id: string) => req<{ ok: boolean }>("DELETE", `/api/memories/${id}`),
 
   chat: () => get<ChatView>("/api/chat"),
   sendChat: (text: string) => req<ChatView>("POST", "/api/chat/send", { text }),

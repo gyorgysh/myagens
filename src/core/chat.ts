@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { config } from "../config.js";
 import { runTurn, AUTO_ALLOWED_TOOLS, type PermissionResult } from "../claude/runner.js";
+import { memoryMcp } from "../mcp/memory.js";
 import { resolveMainRun } from "./mainSettings.js";
 import { loadJson, saveJson } from "./jsonStore.js";
 import { audit } from "./audit.js";
@@ -156,7 +157,7 @@ export class ChatManager {
         env,
         permissionMode: this.autoActive ? "bypassPermissions" : "default",
         abortController: abort,
-        mcpServers: {},
+        mcpServers: { memory: memoryMcp },
         canUseTool: (name, input) => this.canUseTool(name, input, abort),
         onText: (delta) => {
           assistant.text += delta;

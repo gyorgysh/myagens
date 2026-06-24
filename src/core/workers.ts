@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { runTurn } from "../claude/runner.js";
+import { memoryMcp } from "../mcp/memory.js";
 import { nextRun, parseWhen, describeSpec } from "../schedule/manager.js";
 import type { ScheduleSpec } from "../schedule/store.js";
 import { loadJson, saveJson } from "./jsonStore.js";
@@ -214,7 +215,7 @@ export class WorkerManager {
         systemPromptAppend: append,
         permissionMode: "bypassPermissions",
         abortController: abort,
-        mcpServers: {},
+        mcpServers: { memory: memoryMcp },
         canUseTool: async (_name, input) => ({ behavior: "allow", updatedInput: input }),
         onText: (delta) => {
           run.output = (run.output + delta).slice(-OUTPUT_CAP);

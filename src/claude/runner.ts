@@ -1,6 +1,7 @@
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../config.js";
 import { systemPrompt } from "../prompt.js";
+import { memory, formatMemories } from "../core/memory.js";
 import { log } from "../logger.js";
 import {
   isAssistant,
@@ -22,6 +23,10 @@ export const AUTO_ALLOWED_TOOLS = new Set([
   "WebSearch",
   // Our own Telegram file-sender is a deliberate user-facing action; allow it.
   "mcp__telegram__send_file",
+  // Durable memory: reading/writing facts is safe and should be frictionless.
+  "mcp__memory__memory_write",
+  "mcp__memory__memory_search",
+  "mcp__memory__memory_list",
 ]);
 
 export type PermissionResult =
@@ -80,6 +85,11 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
       ? imagePrompt(opts.prompt, opts.images, opts.resume)
       : opts.prompt;
 
+  // Recall durable memories relevant to this turn and fold them into the system
+  // prompt. Keyword match for now (memory Phase 1); empty store = no-op.
+  const recalled = memory.recallForPrompt(opts.prompt);
+  const memoryBlock = recalled.length ? formatMemories(recalled) : undefined;
+
   const response = query({
     prompt,
     options: {
@@ -89,7 +99,7 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
       // Only override the child env when asked (e.g. a local-model provider);
       // otherwise the SDK defaults to process.env.
       env: opts.env ? { ...process.env, ...opts.env } : undefined,
-      systemPrompt: systemPrompt(opts.systemPromptAppend),
+      systemPrompt: systemPrompt(opts.systemPromptAppend, memoryBlock),
       permissionMode: opts.permissionMode,
       includePartialMessages: true,
       abortController: opts.abortController,

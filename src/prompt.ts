@@ -55,6 +55,7 @@ Working with files:
  */
 export function systemPrompt(
   extraAppend?: string,
+  memories?: string,
 ): { type: "preset"; preset: "claude_code"; append: string } {
   let append = PERSONALITY;
   if (existsSync(WORK_FILE)) {
@@ -69,6 +70,9 @@ export function systemPrompt(
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+  if (memories?.trim()) {
+    append += `\n\n# Relevant memories\nThings you learned before that may apply now. Use them if helpful; ignore if not. When you learn something durable, save it with the memory_write tool.\n\n${memories.trim()}`;
   }
   if (extraAppend?.trim()) {
     append += `\n\n# Worker instructions\n${extraAppend.trim()}`;

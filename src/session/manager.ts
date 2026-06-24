@@ -82,6 +82,23 @@ export class SessionManager {
     this.save();
   }
 
+  /** Abort every in-flight turn and clear all conversation context (a clean
+   *  slate so the next message starts fresh, e.g. after switching models).
+   *  Returns how many turns were aborted. */
+  resetAll(): { sessions: number; aborted: number } {
+    let aborted = 0;
+    const all = this.all();
+    for (const s of all) {
+      if (s.busy && s.abort) {
+        s.abort.abort();
+        aborted++;
+      }
+      s.sessionId = undefined;
+    }
+    this.save();
+    return { sessions: all.length, aborted };
+  }
+
   /** Fold one turn's cost/duration into the session's lifetime + today buckets. */
   recordUsage(chatId: number, costUsd: number, durationMs: number): void {
     const s = this.get(chatId);

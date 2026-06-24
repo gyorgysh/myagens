@@ -28,7 +28,10 @@ import {
   deleteProvider,
 } from "../core/providers.js";
 import { fetchProviderModels } from "../core/providerModels.js";
+import { mainSettingsView, setMainSettings } from "../core/mainSettings.js";
+import { serviceInstalled, restartService } from "../core/agentControl.js";
 import { recentAudit } from "../core/audit.js";
+import { sessions } from "../session/manager.js";
 import { PanelHub } from "./hub.js";
 
 const STATIC_DIR = join(repoRoot, "panel", "dist");
@@ -130,6 +133,26 @@ function workerView(w: Worker) {
 
 function registerApi(app: FastifyInstance): void {
   app.get("/api/me", async () => ({ ok: true }));
+
+  // --- main agent: runtime model/provider + lifecycle controls ---
+  app.get("/api/agent", async () => ({
+    ...mainSettingsView(),
+    serviceInstalled: serviceInstalled(),
+  }));
+  app.put("/api/agent", async (req) => {
+    const { model, providerId } = (req.body ?? {}) as { model?: string; providerId?: string };
+    setMainSettings({ model, providerId });
+    return mainSettingsView();
+  });
+  // Abort in-flight turns and clear all conversation context (fresh slate).
+  app.post("/api/agent/reset", async () => sessions.resetAll());
+  // Full process respawn via the service manager (no-op if not a service).
+  app.post("/api/agent/restart", async (_req, reply) => {
+    if (!serviceInstalled())
+      return reply.code(409).send({ error: "no service manager detected — restart manually" });
+    restartService();
+    return { ok: true, restarting: true };
+  });
 
   // --- read-only dashboards ---
   app.get("/api/health", async () => getHealth());

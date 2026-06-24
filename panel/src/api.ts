@@ -169,6 +169,16 @@ export interface WorkerRun {
   output: string;
 }
 
+export interface MainAgent {
+  model: string;
+  providerId: string;
+  effectiveModel: string;
+  providerName?: string;
+  providerBaseUrl?: string;
+  providers: Array<{ id: string; name: string }>;
+  serviceInstalled: boolean;
+}
+
 export interface Provider {
   id: string;
   name: string;
@@ -213,6 +223,11 @@ export const api = {
   reorderTasks: (moves: Array<{ id: string; column: Column; order: number }>) =>
     req<{ tasks: Task[] }>("POST", "/api/tasks/reorder", { moves }),
   deleteTask: (id: string) => req<{ ok: boolean }>("DELETE", `/api/tasks/${id}`),
+
+  agent: () => get<MainAgent>("/api/agent"),
+  saveAgent: (s: { model?: string; providerId?: string }) => req<MainAgent>("PUT", "/api/agent", s),
+  resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
+  restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),
 
   workers: () =>
     get<{

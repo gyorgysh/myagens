@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { api, AuthError, type Provider, type Worker, type WorkerRun } from "../api.ts";
 import { useWorkerEvents, type LiveRun } from "../lib/useWorkerEvents.ts";
 import { Badge, Button, Card, Empty, Input, Label, TextArea } from "./ui.tsx";
+import { MainAgentCard } from "./MainAgent.tsx";
 import { ms, relTime, usd } from "../lib/format.ts";
 
 const emptyForm = {
@@ -60,9 +61,11 @@ export function WorkersView({ onAuthError }: { onAuthError: () => void }) {
 
   return (
     <div className="space-y-4">
+      <MainAgentCard onAuthError={onAuthError} />
       <Providers onAuthError={onAuthError} onChange={load} />
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-fg-dim">Sub-agent workers</h2>
         {!creating && (
           <Button variant="primary" onClick={() => setCreating(true)}>
             + New worker

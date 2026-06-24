@@ -14,6 +14,7 @@ import { isGitCallback, resolveGitCallback } from "./telegram/gitFlow.js";
 import { isProjectCallback, resolveProjectCallback } from "./telegram/projects.js";
 import { transcribeAudio, voiceEnabled, voiceSetupHint } from "./telegram/voice.js";
 import { schedules, type ScheduleRunner } from "./schedule/manager.js";
+import { resolveMainRun } from "./core/mainSettings.js";
 import { escapeHtml } from "./telegram/formatting.js";
 import type { ImageInput } from "./claude/runner.js";
 import { sessions } from "./session/manager.js";
@@ -280,12 +281,17 @@ async function handleUserPrompt(
     return { behavior: "deny", message: "User denied this action." };
   };
 
+  // Runtime model/provider override for the main agent (panel-configurable).
+  const mainRun = resolveMainRun();
+
   try {
     const res = await runTurn({
       prompt,
       images,
       cwd,
       resume: session.sessionId,
+      model: mainRun.model,
+      env: mainRun.env,
       permissionMode: autonomous || session.mode === "auto" ? "bypassPermissions" : "default",
       abortController: session.abort,
       mcpServers: { telegram: createTelegramMcp(tg, chatId, cwd) },

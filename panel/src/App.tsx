@@ -25,7 +25,7 @@ type Tab =
 
 const TABS: Array<{ id: Tab; label: string; icon: string }> = [
   { id: "health", label: "System", icon: "▦" },
-  { id: "workers", label: "Workers", icon: "◈" },
+  { id: "workers", label: "Agents", icon: "◈" },
   { id: "tasks", label: "Tasks", icon: "▤" },
   { id: "skills", label: "Skills", icon: "✦" },
   { id: "prompt", label: "Prompt", icon: "❝" },

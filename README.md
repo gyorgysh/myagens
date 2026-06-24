@@ -27,9 +27,11 @@ The usual loop for touching a server is: open a terminal, SSH in, run something,
 - **Permission-first** — nothing runs without your say-so. Read-only tools (Read/Glob/Grep…) run automatically; anything that touches the system (`Bash`/`Write`/`Edit`…) pauses for **✅ Approve · ❌ Deny · ♾️ Always allow** inline buttons. "Always allow" whitelists that tool for the rest of the session; approvals auto-deny on timeout so nothing hangs.
 - **A capable, on-task personality** — smart, resourceful, and concise for a phone screen, with the occasional joke but work first, fun later. Tunable in `src/prompt.ts`.
 - **Operator playbook (`work.md`)** — define how recurring jobs should be done ("restart Apache", crontab edits, deploys, schedules) once, and the bot follows your conventions every time. See [work.md](#workmd--your-operator-playbook).
-- **Session continuity** — context carries across messages; `/new` resets it.
+- **Session continuity** — context carries across messages; `/new` resets it. Sessions (resume token, cwd, mode, allow-list, cost totals) are **persisted to disk**, so they survive a restart.
+- **Git review from chat** — `/diff` shows the working-tree diff (as a `.diff` file when large) with inline **Commit / Discard** buttons; `/commit <message>` stages and commits.
+- **Cost & usage tracking** — `/usage` reports turns, spend, and time for the chat (today + lifetime).
 - **Working directory control** — `/cd`, `/pwd`, `/status`.
-- **File send/receive** — upload files/photos (saved into the working dir); Claude can send files back via a built-in `send_file` tool.
+- **File send/receive** — upload files/photos (Claude *sees* images inline); Claude can send files back via a built-in `send_file` tool (images arrive as photos).
 - **Quiet by default** — messages from anyone not on the allow-list are silently ignored (no reply, no trace).
 
 ## Platforms
@@ -38,7 +40,19 @@ Runs anywhere Node.js 20+ runs — **Linux**, **macOS**, and **Windows** — usi
 
 Authentication for Claude itself reuses your existing `claude` CLI login, or set `ANTHROPIC_API_KEY` in `.env`. Uses long polling, so no public webhook or open port is needed.
 
-## Setup
+## Quick install (one-liner)
+
+On a fresh **Linux** or **macOS** box, the wizard installs everything for you — Homebrew (macOS), Node 20+, git, and the Claude Code CLI — checks RAM (and offers to add swap on small Linux boxes), clones the repo, builds it, walks you through `.env`, and offers to set it up as a background service:
+
+```bash
+curl -fsSL https://gyorgy.sh/cct-install.sh | bash
+```
+
+You'll still need a [bot token](#setup) and your numeric user id to hand it (it prompts for both). Prefer to read before you run? The script is [`scripts/cct-install.sh`](scripts/cct-install.sh).
+
+> The wizard is interactive — it reads your answers from the terminal even when piped through `curl`. For an unattended run, set `CCT_TOKEN`, `CCT_USER_IDS`, and `CCT_MODE=service|manual` (and `CCT_YES=1`) in the environment.
+
+## Setup (manual)
 
 1. **Create a bot**: message [@BotFather](https://t.me/BotFather), run `/newbot`, copy the token.
 2. **Find your user id**: message [@userinfobot](https://t.me/userinfobot).
@@ -69,11 +83,23 @@ For an always-on deployment, install the bot as an OS service. The same commands
 
 Either way you can **ask the agent to restart itself** ("restart yourself" → `./scripts/agentctl.sh restart`); the management commands are documented in `work.md`. The launcher `scripts/run.sh` can also be run directly without any service manager.
 
+### Update & uninstall
+
+```bash
+./scripts/update.sh                 # git pull + npm install + build, restarts the service if installed
+./scripts/uninstall-service.sh      # remove the service (leaves the checkout, .env and data/ intact)
+```
+
+`update.sh` refuses to run with uncommitted changes and only restarts when a service is actually installed, so it's safe whether you run as a service or by hand.
+
 ```
 scripts/
+  cct-install.sh         # one-liner bootstrap wizard (curl | bash)
   run.sh                 # launcher (build if needed, then run)
-  install-service.sh     # installer  → dispatches by OS
-  agentctl.sh            # manager     → dispatches by OS
+  update.sh              # pull + rebuild + restart
+  install-service.sh     # installer    → dispatches by OS
+  uninstall-service.sh   # uninstaller  → dispatches by OS
+  agentctl.sh            # manager       → dispatches by OS
   linux/                 # systemd implementation
   macos/                 # launchd implementation
 ```
@@ -85,6 +111,7 @@ scripts/
 | `TELEGRAM_BOT_TOKEN` | yes | Token from @BotFather |
 | `ALLOWED_USER_IDS` | yes | Comma-separated numeric Telegram user ids (the allow-list) |
 | `WORKDIR` | no | Directory Claude starts in (default: the gitignored `data/` folder, so agent-created files stay out of the repo) |
+| `STATE_FILE` | no | Where session + usage state is persisted across restarts (default `data/state.json`) |
 | `CLAUDE_MODEL` | no | Model id (default `claude-opus-4-8`) |
 | `ANTHROPIC_API_KEY` | no | API key; omit to use `claude` CLI login |
 | `APPROVAL_TIMEOUT_MS` | no | Approval wait before auto-deny (default 300000) |
@@ -129,6 +156,9 @@ A starter template ships in `work.md`; replace the examples with what's true for
 | `/cd <path>` | Change working directory |
 | `/pwd` | Show current directory |
 | `/status` | Show session info (cwd, model, mode, session id) |
+| `/diff` | Review the working-tree diff, then commit or discard inline |
+| `/commit <message>` | Stage all changes and commit |
+| `/usage` | Show cost & activity for this chat (today + lifetime) |
 | `/stop` | Abort the running request |
 | `/mode safe\|auto` | Interactive approval (default) or autonomous |
 | `/help` | Show help |
@@ -143,10 +173,13 @@ src/
   logger.ts           tiny timestamped structured logger (LOG_LEVEL)
   prompt.ts           personality + work.md -> system prompt (per turn)
   bot.ts              Telegraf wiring + per-turn orchestration
-  commands.ts         /new /cd /pwd /status /stop /mode /help
-  session/manager.ts  per-chat state (sessionId, cwd, busy, mode, allow-list)
+  commands.ts         /new /cd /pwd /status /diff /commit /usage /stop /mode /help
+  git.ts              shell-free git helpers (status, diff, commit, restore)
+  session/
+    manager.ts        per-chat state (sessionId, cwd, busy, mode, allow-list, usage)
+    store.ts          JSON persistence of session + usage state across restarts
   claude/
-    runner.ts         wraps the Agent SDK query(); fans events to callbacks
+    runner.ts         wraps the Agent SDK query(); fans events to callbacks; inline image vision
     events.ts         narrow type guards over SDK messages
   telegram/
     streamer.ts          edit-in-place streaming backend ("edit")
@@ -156,7 +189,8 @@ src/
     send.ts            shared final-message sender (markdown -> HTML, splitting)
     formatting.ts      markdown -> Telegram HTML (headings, bold, code, quotes)
     permissions.ts     approval keyboards + pending-request registry
-    files.ts           incoming file downloads
+    gitFlow.ts         /diff rendering + commit/discard buttons + callbacks
+    files.ts           incoming file downloads + image decoding for vision
   mcp/sendFile.ts     in-process MCP tool so Claude can send files back
 ```
 

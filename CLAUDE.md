@@ -19,6 +19,10 @@ There is no test suite, linter config, or single-test runner. `typecheck` (stric
 
 Requires Node >= 20. Config comes from `.env` (copy from `.env.example`); the process exits at startup with a printed list of issues if required vars are missing (see `parseConfig` in `src/config.ts`).
 
+### Deployment scripts (`scripts/`)
+
+`cct-install.sh` is the self-contained `curl | bash` wizard (installs prerequisites, clones, builds, configures `.env`, optionally installs the service); it does **not** assume a checkout and reads prompts from `/dev/tty` so it stays interactive when piped. The rest operate on an existing checkout: `run.sh` (launcher, also the service `ExecStart`), `update.sh` (pull + build + restart-if-service), `install-service.sh` / `uninstall-service.sh` / `agentctl.sh` (all OS-dispatchers to `linux/` = systemd, `macos/` = launchd). Keep the dispatchers thin and put platform specifics in the `linux/`/`macos/` impls. The hosted `https://gyorgy.sh/cct-install.sh` is a rewrite of the raw GitHub file — **bump both together** when changing the installer.
+
 ## Architecture
 
 ESM throughout (`"type": "module"`), so **relative imports must use the `.js` extension** even though sources are `.ts`.

@@ -4,7 +4,15 @@ import { config } from "../config.js";
 import { escapeHtml } from "./formatting.js";
 import { log } from "../logger.js";
 
-export type ApprovalChoice = "allow" | "deny" | "always";
+export type ApprovalChoice = "allow" | "deny" | "always" | "alwayscmd";
+
+/** The leading program of a Bash command, e.g. "git status -s" -> "git". */
+export function bashLeadCmd(input: unknown): string | undefined {
+  const cmd = (input as { command?: unknown })?.command;
+  if (typeof cmd !== "string") return undefined;
+  const tok = cmd.trim().split(/\s+/)[0];
+  return tok && /^[\w./-]+$/.test(tok) ? tok : undefined;
+}
 
 interface Pending {
   resolve: (choice: ApprovalChoice) => void;
@@ -32,13 +40,21 @@ export class PermissionManager {
       `Claude wants to use <b>${escapeHtml(toolName)}</b>:\n\n` +
       `<pre><code>${escapeHtml(describeInput(toolName, input))}</code></pre>`;
 
-    const keyboard = Markup.inlineKeyboard([
+    const rows = [
       [
         Markup.button.callback("✅ Approve", `${CB_PREFIX}:${id}:allow`),
         Markup.button.callback("❌ Deny", `${CB_PREFIX}:${id}:deny`),
       ],
       [Markup.button.callback(`♾️ Always allow ${toolName}`, `${CB_PREFIX}:${id}:always`)],
-    ]);
+    ];
+    // For Bash, also offer a narrower "always allow this program" preset.
+    const lead = toolName === "Bash" ? bashLeadCmd(input) : undefined;
+    if (lead) {
+      rows.push([
+        Markup.button.callback(`♾️ Always allow \`${lead}\` commands`, `${CB_PREFIX}:${id}:alwayscmd`),
+      ]);
+    }
+    const keyboard = Markup.inlineKeyboard(rows);
 
     const msg = await this.tg.sendMessage(chatId, text, {
       parse_mode: "HTML",
@@ -87,7 +103,9 @@ export class PermissionManager {
         ? "✅ Approved"
         : choice === "always"
           ? `♾️ Always allowing ${entry.toolName}`
-          : "❌ Denied";
+          : choice === "alwayscmd"
+            ? "♾️ Always allowing that command"
+            : "❌ Denied";
 
     await this.tg
       .editMessageReplyMarkup(entry.chatId, entry.messageId, undefined, undefined)

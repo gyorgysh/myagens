@@ -23,7 +23,12 @@ export interface PersistedSession {
   sessionId?: string;
   cwd: string;
   mode: PermissionMode;
+  /** Tools always allowed without prompting (persistent middle tier). */
   allowedTools: string[];
+  /** Bash leading-commands always allowed without prompting (e.g. "git", "ls"). */
+  allowedBashCmds: string[];
+  /** Saved working directories for quick switching via /projects. */
+  projects: string[];
   usage: Usage;
 }
 
@@ -82,6 +87,8 @@ function normalize(s: PersistedSession): PersistedSession {
     cwd: s.cwd,
     mode: s.mode === "auto" ? "auto" : "safe",
     allowedTools: Array.isArray(s.allowedTools) ? s.allowedTools : [],
+    allowedBashCmds: Array.isArray(s.allowedBashCmds) ? s.allowedBashCmds : [],
+    projects: Array.isArray(s.projects) ? s.projects : [],
     usage: s.usage?.total ? s.usage : emptyUsage(),
   };
 }

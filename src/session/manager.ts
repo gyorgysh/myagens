@@ -20,8 +20,12 @@ export interface Session {
   busy: boolean;
   /** Aborts the in-flight query (wired to /stop). */
   abort?: AbortController;
-  /** Tools the user chose to "always allow" for this session. */
+  /** Tools "always allowed" without prompting (persists across restarts). */
   sessionAllowedTools: Set<string>;
+  /** Bash leading-commands always allowed without prompting (e.g. "git"). */
+  allowedBashCmds: Set<string>;
+  /** Saved working directories for quick switching via /projects. */
+  projects: string[];
   /** safe = interactive approval (default); auto = bypass permissions. */
   mode: PermissionMode;
   /** Accumulated cost/duration/turn counters (lifetime + per day). */
@@ -40,6 +44,8 @@ export class SessionManager {
         cwd: p.cwd,
         busy: false,
         sessionAllowedTools: new Set(p.allowedTools),
+        allowedBashCmds: new Set(p.allowedBashCmds),
+        projects: p.projects,
         mode: p.mode,
         usage: p.usage,
       });
@@ -54,6 +60,8 @@ export class SessionManager {
         cwd: config.WORKDIR,
         busy: false,
         sessionAllowedTools: new Set(),
+        allowedBashCmds: new Set(),
+        projects: [],
         mode: "safe",
         usage: emptyUsage(),
       };
@@ -114,6 +122,8 @@ function toPersisted(s: Session): PersistedSession {
     cwd: s.cwd,
     mode: s.mode,
     allowedTools: [...s.sessionAllowedTools],
+    allowedBashCmds: [...s.allowedBashCmds],
+    projects: s.projects,
     usage: s.usage,
   };
 }

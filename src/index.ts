@@ -2,6 +2,7 @@ import { config, allowedUserIds } from "./config.js";
 import { buildBot } from "./bot.js";
 import { sessions } from "./session/manager.js";
 import { schedules } from "./schedule/manager.js";
+import { startPanel } from "./panel/server.js";
 import { log } from "./logger.js";
 
 async function main(): Promise<void> {
@@ -10,6 +11,9 @@ async function main(): Promise<void> {
   }
 
   const bot = buildBot();
+
+  // Optional embedded management panel (off unless PANEL_ENABLED=true).
+  const stopPanel = await startPanel();
 
   const me = await bot.telegram.getMe();
   log.info("Configuration loaded", {
@@ -55,6 +59,7 @@ async function main(): Promise<void> {
     // Stop the scheduler and flush any debounced session/usage state before we go.
     schedules.stop();
     sessions.flush();
+    void stopPanel?.();
 
     bot.stop(signal);
 

@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: the `.dark` class on <html> drives the `dark:` variant. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic theme tokens. Exposed to Tailwind as utilities (bg-surface, text-fg,
+   border-line, …) so components stay theme-agnostic — only these vars flip. */
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-input: var(--input);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-dim: var(--fg-dim);
+  --color-fg-faint: var(--fg-faint);
+}
+
+/* Light theme (default). */
+:root {
+  --page: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --line: #e4e4e7;
+  --input: #ffffff;
+  --fg: #18181b;
+  --fg-muted: #52525b;
+  --fg-dim: #71717a;
+  --fg-faint: #a1a1aa;
+  color-scheme: light;
+}
+
+/* Dark theme. */
+.dark {
+  --page: #0a0a0b;
+  --surface: #161618;
+  --surface-2: #1f1f23;
+  --line: #27272a;
+  --input: #09090b;
+  --fg: #f4f4f5;
+  --fg-muted: #a1a1aa;
+  --fg-dim: #71717a;
+  --fg-faint: #52525b;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

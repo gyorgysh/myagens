@@ -36,6 +36,11 @@ export class ScheduleManager {
       .sort((a, b) => a.nextRunAt - b.nextRunAt);
   }
 
+  /** Every schedule across all chats (for the management panel). */
+  all(): Schedule[] {
+    return [...this.schedules].sort((a, b) => a.nextRunAt - b.nextRunAt);
+  }
+
   add(chatId: number, cwd: string, prompt: string, spec: ScheduleSpec): Schedule {
     const s: Schedule = {
       id: randomBytes(3).toString("hex"),

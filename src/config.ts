@@ -8,7 +8,8 @@ loadEnv();
 // Default working directory: a gitignored `data/` folder at the repo root, so
 // files the agent creates (and uploads) stay out of the project tree.
 // Resolves to <repo>/data from both src/config.ts and dist/config.js.
-const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+// dirname twice: src/config.ts or dist/config.js -> repo root in both layouts.
+export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const defaultWorkdir = join(repoRoot, "data");
 // Session/usage state lives alongside in the gitignored data/ folder so it
 // survives restarts without leaking into any agent working directory.
@@ -51,10 +52,35 @@ const schema = z.object({
   VOSK_MODEL_PATH: z.string().optional(),
   // ffmpeg binary used to decode OGG/Opus voice notes to 16kHz mono PCM.
   FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
+  // --- Management panel (optional embedded web UI) ---
+  // The panel can read/write/run anything on the host, same as the bot, so it
+  // is off by default and refuses to start without a token (see refinement).
+  PANEL_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  // Bind address. Defaults to loopback; expose remotely via a reverse proxy or
+  // a private network (e.g. tailscale), never by binding 0.0.0.0 unprotected.
+  PANEL_HOST: z.string().min(1).default("127.0.0.1"),
+  PANEL_PORT: z.coerce.number().int().positive().default(8787),
+  // Shared secret required on every panel request + WS handshake. Required
+  // whenever PANEL_ENABLED=true (enforced below).
+  PANEL_TOKEN: z.string().optional(),
+});
+
+// Fail closed: a panel with host access must never run without a token.
+const refined = schema.superRefine((cfg, ctx) => {
+  if (cfg.PANEL_ENABLED && !cfg.PANEL_TOKEN) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["PANEL_TOKEN"],
+      message: "PANEL_TOKEN is required when PANEL_ENABLED=true",
+    });
+  }
 });
 
 function parseConfig() {
-  const parsed = schema.safeParse(process.env);
+  const parsed = refined.safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)

@@ -30,7 +30,7 @@ The usual loop for touching a server is: open a terminal, SSH in, run something,
 - **Session continuity** — context carries across messages; `/new` resets it. Sessions (resume token, cwd, mode, allow-list, cost totals) are **persisted to disk**, so they survive a restart.
 - **Git review from chat** — `/diff` shows the working-tree diff (as a `.diff` file when large) with inline **Commit / Discard** buttons; `/commit <message>` stages and commits.
 - **Cost & usage tracking** — `/usage` reports turns, spend, and time for the chat (today + lifetime).
-- **Voice notes** — send a voice message and it's transcribed (Whisper) and run as a prompt; needs `OPENAI_API_KEY`.
+- **Voice notes** — send a voice message and it's transcribed and run as a prompt. Two backends via `TRANSCRIBE_PROVIDER`: an OpenAI-compatible API (OpenAI, or Groq's free tier), or fully local **Vosk** (offline, English, needs `ffmpeg`).
 - **Scheduled prompts** — `/schedule add 2h | check disk space` runs a prompt on a timer (interval or daily), autonomously, and pushes the result back to the chat.
 - **Multi-project switching** — `/projects` saves working dirs and switches between them with inline buttons.
 - **Persistent approval presets** — “Always allow” remembers a tool (or a specific Bash program like `git`) across restarts; manage with `/allow`, `/allowed`, `/disallow`. A middle ground between fully interactive `safe` and hands-off `auto`.
@@ -120,9 +120,12 @@ scripts/
 | `ANTHROPIC_API_KEY` | no | API key; omit to use `claude` CLI login |
 | `APPROVAL_TIMEOUT_MS` | no | Approval wait before auto-deny (default 300000) |
 | `STREAM_MODE` | no | `rich` (default), `draft`, or `edit` — see below |
-| `OPENAI_API_KEY` | no | Enables voice-note transcription (Whisper). Voice is disabled without it |
-| `TRANSCRIBE_MODEL` | no | Transcription model (default `whisper-1`) |
+| `TRANSCRIBE_PROVIDER` | no | Voice backend: `openai` (default) or `vosk` (local) |
+| `OPENAI_API_KEY` | no | API key for the `openai` voice backend (OpenAI, Groq, …) |
+| `TRANSCRIBE_MODEL` | no | Transcription model for `openai` (default `whisper-1`) |
 | `TRANSCRIBE_BASE_URL` | no | OpenAI-compatible base URL (default `https://api.openai.com/v1`) |
+| `VOSK_MODEL_PATH` | no | Path to an unpacked Vosk model dir (enables the `vosk` backend) |
+| `FFMPEG_PATH` | no | ffmpeg binary used to decode voice notes for Vosk (default `ffmpeg`) |
 | `LOG_LEVEL` | no | `error` \| `warn` \| `info` (default) \| `debug` |
 | `WORK_FILE` | no | Path to the operator playbook (default `work.md`) |
 
@@ -133,6 +136,20 @@ scripts/
 | `rich` | Bot API 10.1 Rich Messages (`sendRichMessageDraft` → `sendRichMessage`) | Default. Structured formatting; sent as safe escaped HTML so code (`<…>`, `#`, `$`) never breaks the parser. Private chats only. |
 | `draft` | Bot API 9.3 `sendMessageDraft` → `sendMessage` | Plain animated preview, finalized as a formatted message. Private chats only. |
 | `edit` | Throttled `editMessageText` of a placeholder | Most battle-tested fallback; works in any chat. |
+
+### Voice transcription
+
+Send a voice note and it's transcribed, then run like a typed prompt. Choose a backend with `TRANSCRIBE_PROVIDER`:
+
+- **`openai`** (default) — any OpenAI-compatible `/audio/transcriptions` host. Use OpenAI directly, or **Groq's free tier** by setting `TRANSCRIBE_BASE_URL=https://api.groq.com/openai/v1`, `TRANSCRIBE_MODEL=whisper-large-v3-turbo`, and `OPENAI_API_KEY` to a Groq key.
+- **`vosk`** — fully local and offline, no API. One-time setup:
+  ```bash
+  npm install vosk                 # optional native dependency
+  # install ffmpeg via your package manager (brew/apt/…)
+  # download + unpack a model from https://alphacephei.com/vosk/models
+  #   e.g. vosk-model-small-en-us-0.15 (~40MB)
+  ```
+  Then set `VOSK_MODEL_PATH=/path/to/vosk-model-small-en-us-0.15` and `TRANSCRIBE_PROVIDER=vosk`. ffmpeg decodes Telegram's OGG/Opus to the 16kHz PCM Vosk expects. The small English model is fast on a CPU; larger models trade speed for accuracy.
 
 ## Permissions
 
@@ -206,7 +223,8 @@ src/
     permissions.ts     approval keyboards (incl. per-Bash-command preset) + registry
     gitFlow.ts         /diff rendering + commit/discard buttons + callbacks
     projects.ts        /projects switch menu + callbacks
-    voice.ts           voice-note transcription (Whisper)
+    voice.ts           voice-note transcription dispatcher (openai | vosk)
+    vosk.ts            local offline transcription (ffmpeg decode + Vosk)
     files.ts           incoming file downloads + image decoding for vision
   mcp/sendFile.ts     in-process MCP tool so Claude can send files back
 ```

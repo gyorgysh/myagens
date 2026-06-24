@@ -26,6 +26,8 @@ export interface Worker {
   cwd: string;
   /** The task prompt sent as the user turn each run. */
   prompt: string;
+  /** Model id override; falls back to CLAUDE_MODEL when empty. */
+  model?: string;
   /** Extra persona instructions appended to the system prompt. */
   systemPrompt?: string;
   /** Optional skill whose body augments the system prompt. */
@@ -100,6 +102,7 @@ export class WorkerManager {
       name: input.name.trim() || "Untitled",
       cwd: input.cwd.trim(),
       prompt: input.prompt,
+      model: input.model?.trim() || undefined,
       systemPrompt: input.systemPrompt?.trim() || undefined,
       skillId: input.skillId || undefined,
       schedule: parseSchedule(input.when),
@@ -119,6 +122,7 @@ export class WorkerManager {
     if (input.name !== undefined) w.name = input.name.trim() || w.name;
     if (input.cwd !== undefined) w.cwd = input.cwd.trim();
     if (input.prompt !== undefined) w.prompt = input.prompt;
+    if (input.model !== undefined) w.model = input.model.trim() || undefined;
     if (input.systemPrompt !== undefined) w.systemPrompt = input.systemPrompt.trim() || undefined;
     if (input.skillId !== undefined) w.skillId = input.skillId || undefined;
     if (input.enabled !== undefined) w.enabled = input.enabled;
@@ -189,6 +193,7 @@ export class WorkerManager {
       const res = await runTurn({
         prompt: w.prompt,
         cwd: w.cwd,
+        model: w.model,
         systemPromptAppend: append,
         permissionMode: "bypassPermissions",
         abortController: abort,
@@ -256,6 +261,7 @@ export interface WorkerInput {
   name: string;
   cwd: string;
   prompt: string;
+  model?: string;
   systemPrompt?: string;
   skillId?: string;
   /** Schedule token: "30m", "2h", "HH:MM", or "" / undefined for manual-only. */

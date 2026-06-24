@@ -4,8 +4,21 @@ import { useWorkerEvents, type LiveRun } from "../lib/useWorkerEvents.ts";
 import { Badge, Button, Card, Empty, Input, Label, TextArea } from "./ui.tsx";
 import { ms, relTime, usd } from "../lib/format.ts";
 
-const emptyForm = { name: "", cwd: "", prompt: "", systemPrompt: "", skillId: "", when: "" };
+const emptyForm = { name: "", cwd: "", prompt: "", model: "", systemPrompt: "", skillId: "", when: "" };
 type Form = typeof emptyForm;
+
+/** Short, readable label for a model id badge (e.g. "haiku-4-5"). */
+function shortModel(id: string): string {
+  return id.replace(/^claude-/, "").replace(/-\d{8}$/, "");
+}
+
+// Model choices offered in the worker form. "" = inherit the bot's CLAUDE_MODEL.
+const MODELS: Array<{ value: string; label: string }> = [
+  { value: "", label: "Default (CLAUDE_MODEL)" },
+  { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (cheapest)" },
+  { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (balanced)" },
+  { value: "claude-opus-4-8", label: "Opus 4.8 (most capable)" },
+];
 
 export function WorkersView({ onAuthError }: { onAuthError: () => void }) {
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -125,6 +138,7 @@ function WorkerRow({
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-fg">{worker.name}</span>
         <Badge tone={worker.schedule === "manual" ? "zinc" : "blue"}>{worker.schedule}</Badge>
+        {worker.model && <Badge>{shortModel(worker.model)}</Badge>}
         {!worker.enabled && <Badge tone="amber">disabled</Badge>}
         {running && <Badge tone="green">running</Badge>}
         <span className="ml-auto flex gap-1.5">
@@ -158,6 +172,7 @@ function WorkerRow({
               name: worker.name,
               cwd: worker.cwd,
               prompt: worker.prompt,
+              model: worker.model,
               systemPrompt: worker.systemPrompt,
               skillId: worker.skillId,
               when: worker.when,
@@ -296,7 +311,21 @@ function WorkerForm({
           onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })}
         />
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <Label>Model</Label>
+          <select
+            value={form.model}
+            onChange={(e) => setForm({ ...form, model: e.target.value })}
+            className="w-full rounded-lg border border-line bg-input px-3 py-2 text-sm text-fg outline-none focus:border-blue-500"
+          >
+            {MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <Label>Skill (optional)</Label>
           <select

@@ -180,10 +180,11 @@ npm start
 Open `http://127.0.0.1:8787` and unlock with your `PANEL_TOKEN`. What's inside:
 
 - **System** — live CPU (overall + per-core), memory, swap, disk usage and disk I/O, pushed over a WebSocket.
-- **Workers** — persisted **sub-agents**: give one a name, working directory, task prompt, optional persona/skill, and an optional schedule (`30m`/`2h`/`HH:MM`). Run on demand or on the timer; runs are **concurrent** and autonomous (no approval prompts), with **live streaming output** and per-worker run history (status, cost, duration).
+- **Workers** — persisted **sub-agents**: give one a name, working directory, task prompt, model (Haiku/Sonnet/Opus, or inherit the default), optional persona/skill, and an optional schedule (`30m`/`2h`/`HH:MM`). Run on demand or on the timer; runs are **concurrent** and autonomous (no approval prompts), with **live streaming output** and per-worker run history (status, cost, duration). Picking Haiku makes cheap background agents practical.
 - **Tasks** — a Trello-style board (Backlog / In progress / Done) with drag-and-drop.
 - **Skills** — a reusable **prompt library**, plus a scoped editor for the on-disk `.claude/{agents,skills,commands}/*.md` and `CLAUDE.md` files the agent loads from your working dirs.
 - **Prompt** — view the built-in personality and edit the operator playbook (`work.md`) live.
+- **Logs** — a live tail of the bot's activity (turns, tool calls, errors, worker lifecycle), streamed over the WebSocket with level filters. (The agent runs headless via the SDK — there's no terminal to attach to — so this is the "remote view".)
 - **Sessions / Schedules / Usage** — read-only views of the bot's live state.
 
 Every request and WebSocket handshake requires the token (sent as a `Bearer` header / `?token=`), and write actions are recorded to an audit log (`data/audit.jsonl`). Keep the bind on loopback and reach it remotely only behind a reverse proxy or a private network (e.g. Tailscale) — never expose it raw.

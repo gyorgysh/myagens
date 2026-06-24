@@ -144,6 +144,7 @@ export interface Worker {
   name: string;
   cwd: string;
   prompt: string;
+  model: string;
   systemPrompt: string;
   skillId: string;
   schedule: string;
@@ -167,8 +168,17 @@ export interface WorkerRun {
   output: string;
 }
 
+export interface LogEntry {
+  seq: number;
+  ts: number;
+  level: "error" | "warn" | "info" | "debug";
+  msg: string;
+  meta?: Record<string, unknown>;
+}
+
 export const api = {
   sessions: () => get<{ sessions: SessionView[] }>("/api/sessions"),
+  logs: () => get<{ logs: LogEntry[] }>("/api/logs"),
   schedules: () => get<{ schedules: ScheduleView[] }>("/api/schedules"),
   usage: () => get<UsageSummary>("/api/usage"),
 

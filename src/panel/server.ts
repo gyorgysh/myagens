@@ -5,7 +5,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import { config, repoRoot } from "../config.js";
-import { log } from "../logger.js";
+import { log, onLog, recentLogs } from "../logger.js";
 import { getHealth } from "../core/health.js";
 import { listSessions, listSchedules, usageSummary } from "../core/snapshot.js";
 import { getPrompt, savePlaybook } from "../core/playbook.js";
@@ -42,6 +42,8 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
   const hub = new PanelHub();
   // Wire worker run events to all panel clients (worker tick already running).
   workers.start((m) => hub.broadcast(m));
+  // Stream live log lines to every panel client.
+  const unsubLog = onLog((entry) => hub.broadcast({ type: "log", entry }));
 
   // Auth: every /api and /ws request needs the shared token. Static SPA assets
   // are served freely (they hold no secrets; the token gates the data + actions).
@@ -68,6 +70,7 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
   }
 
   return async () => {
+    unsubLog();
     workers.stop();
     hub.stop();
     await app.close();
@@ -99,6 +102,7 @@ function workerView(w: Worker) {
     name: w.name,
     cwd: w.cwd,
     prompt: w.prompt,
+    model: w.model ?? "",
     systemPrompt: w.systemPrompt ?? "",
     skillId: w.skillId ?? "",
     schedule: describeWorkerSchedule(w),
@@ -124,6 +128,7 @@ function registerApi(app: FastifyInstance): void {
   app.get("/api/schedules", async () => ({ schedules: listSchedules() }));
   app.get("/api/usage", async () => usageSummary());
   app.get("/api/audit", async () => ({ events: recentAudit() }));
+  app.get("/api/logs", async () => ({ logs: recentLogs() }));
 
   // --- system prompt / playbook ---
   app.get("/api/prompt", async () => getPrompt());

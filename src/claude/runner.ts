@@ -42,6 +42,8 @@ export interface RunOptions {
   images?: ImageInput[];
   cwd: string;
   resume?: string;
+  /** Model id override for this turn; falls back to CLAUDE_MODEL. */
+  model?: string;
   /** Extra worker/persona instructions appended to the system prompt. */
   systemPromptAppend?: string;
   /** "default" = interactive approval; "bypassPermissions" = autonomous. */
@@ -80,7 +82,7 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
     options: {
       cwd: opts.cwd,
       resume: opts.resume,
-      model: config.CLAUDE_MODEL,
+      model: opts.model ?? config.CLAUDE_MODEL,
       systemPrompt: systemPrompt(opts.systemPromptAppend),
       permissionMode: opts.permissionMode,
       includePartialMessages: true,

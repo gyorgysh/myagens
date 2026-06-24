@@ -10,8 +10,18 @@ import { PromptView_ } from "./components/Prompt.tsx";
 import { SkillsView } from "./components/Skills.tsx";
 import { TasksView } from "./components/Tasks.tsx";
 import { WorkersView } from "./components/Workers.tsx";
+import { LogsView } from "./components/Logs.tsx";
 
-type Tab = "health" | "workers" | "tasks" | "skills" | "prompt" | "sessions" | "schedules" | "usage";
+type Tab =
+  | "health"
+  | "workers"
+  | "tasks"
+  | "skills"
+  | "prompt"
+  | "logs"
+  | "sessions"
+  | "schedules"
+  | "usage";
 
 const TABS: Array<{ id: Tab; label: string; icon: string }> = [
   { id: "health", label: "System", icon: "▦" },
@@ -19,6 +29,7 @@ const TABS: Array<{ id: Tab; label: string; icon: string }> = [
   { id: "tasks", label: "Tasks", icon: "▤" },
   { id: "skills", label: "Skills", icon: "✦" },
   { id: "prompt", label: "Prompt", icon: "❝" },
+  { id: "logs", label: "Logs", icon: "≣" },
   { id: "sessions", label: "Sessions", icon: "◇" },
   { id: "schedules", label: "Schedules", icon: "◷" },
   { id: "usage", label: "Usage", icon: "↗" },
@@ -84,6 +95,7 @@ export function App() {
         {tab === "tasks" && <TasksView onAuthError={onAuthError} />}
         {tab === "skills" && <SkillsView onAuthError={onAuthError} />}
         {tab === "prompt" && <PromptView_ onAuthError={onAuthError} />}
+        {tab === "logs" && <LogsView onAuthError={onAuthError} />}
         {tab === "sessions" && <SessionsView onAuthError={onAuthError} />}
         {tab === "schedules" && <SchedulesView onAuthError={onAuthError} />}
         {tab === "usage" && <UsageView onAuthError={onAuthError} />}

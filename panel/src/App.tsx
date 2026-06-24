@@ -6,11 +6,19 @@ import { HealthView } from "./components/Health.tsx";
 import { SessionsView } from "./components/Sessions.tsx";
 import { SchedulesView } from "./components/Schedules.tsx";
 import { UsageView } from "./components/Usage.tsx";
+import { PromptView_ } from "./components/Prompt.tsx";
+import { SkillsView } from "./components/Skills.tsx";
+import { TasksView } from "./components/Tasks.tsx";
+import { WorkersView } from "./components/Workers.tsx";
 
-type Tab = "health" | "sessions" | "schedules" | "usage";
+type Tab = "health" | "workers" | "tasks" | "skills" | "prompt" | "sessions" | "schedules" | "usage";
 
 const TABS: Array<{ id: Tab; label: string; icon: string }> = [
   { id: "health", label: "System", icon: "▦" },
+  { id: "workers", label: "Workers", icon: "◈" },
+  { id: "tasks", label: "Tasks", icon: "▤" },
+  { id: "skills", label: "Skills", icon: "✦" },
+  { id: "prompt", label: "Prompt", icon: "❝" },
   { id: "sessions", label: "Sessions", icon: "◇" },
   { id: "schedules", label: "Schedules", icon: "◷" },
   { id: "usage", label: "Usage", icon: "↗" },
@@ -53,12 +61,12 @@ export function App() {
         </div>
       </header>
 
-      <nav className="mb-5 flex gap-1 rounded-xl border border-line bg-surface p-1">
+      <nav className="mb-5 flex flex-wrap gap-1 rounded-xl border border-line bg-surface p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors ${
+            className={`flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors ${
               tab === t.id
                 ? "bg-surface-2 text-fg"
                 : "text-fg-dim hover:text-fg-muted"
@@ -72,6 +80,10 @@ export function App() {
 
       <main className="flex-1">
         {tab === "health" && <HealthView />}
+        {tab === "workers" && <WorkersView onAuthError={onAuthError} />}
+        {tab === "tasks" && <TasksView onAuthError={onAuthError} />}
+        {tab === "skills" && <SkillsView onAuthError={onAuthError} />}
+        {tab === "prompt" && <PromptView_ onAuthError={onAuthError} />}
         {tab === "sessions" && <SessionsView onAuthError={onAuthError} />}
         {tab === "schedules" && <SchedulesView onAuthError={onAuthError} />}
         {tab === "usage" && <UsageView onAuthError={onAuthError} />}

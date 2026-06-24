@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 import { log } from "./logger.js";
 
 /** Path to the operator playbook; override with WORK_FILE. */
-const WORK_FILE = resolve(process.env.WORK_FILE || "work.md");
+export const WORK_FILE = resolve(process.env.WORK_FILE || "work.md");
 
-const PERSONALITY = `You are a smart, highly capable assistant reached over Telegram. The user
+export const PERSONALITY = `You are a smart, highly capable assistant reached over Telegram. The user
 messages you from their phone and you drive real tools on their machine to get
 things done.
 
@@ -53,7 +53,9 @@ Working with files:
  * operator playbook from work.md. Read fresh each turn so editing work.md takes
  * effect without restarting.
  */
-export function systemPrompt(): { type: "preset"; preset: "claude_code"; append: string } {
+export function systemPrompt(
+  extraAppend?: string,
+): { type: "preset"; preset: "claude_code"; append: string } {
   let append = PERSONALITY;
   if (existsSync(WORK_FILE)) {
     try {
@@ -67,6 +69,9 @@ export function systemPrompt(): { type: "preset"; preset: "claude_code"; append:
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+  if (extraAppend?.trim()) {
+    append += `\n\n# Worker instructions\n${extraAppend.trim()}`;
   }
   return { type: "preset", preset: "claude_code", append };
 }

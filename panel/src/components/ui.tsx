@@ -90,3 +90,38 @@ export function Empty({ children }: { children: ReactNode }) {
     <div className="py-10 text-center text-sm text-fg-faint">{children}</div>
   );
 }
+
+type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "primary" | "ghost" | "danger";
+};
+
+export function Button({ variant = "ghost", className = "", ...props }: ButtonProps) {
+  const styles: Record<string, string> = {
+    primary: "bg-blue-600 text-white hover:bg-blue-500",
+    ghost: "border border-line text-fg-muted hover:bg-surface-2",
+    danger: "border border-red-500/30 text-red-400 hover:bg-red-500/10",
+  };
+  return (
+    <button
+      {...props}
+      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${styles[variant]} ${className}`}
+    />
+  );
+}
+
+const fieldClass =
+  "w-full rounded-lg border border-line bg-input px-3 py-2 text-sm text-fg outline-none focus:border-blue-500";
+
+export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={`${fieldClass} ${props.className ?? ""}`} />;
+}
+
+export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea {...props} className={`${fieldClass} resize-y font-mono ${props.className ?? ""}`} />
+  );
+}
+
+export function Label({ children }: { children: ReactNode }) {
+  return <label className="mb-1 block text-xs font-medium text-fg-dim">{children}</label>;
+}

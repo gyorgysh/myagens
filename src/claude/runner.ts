@@ -42,6 +42,8 @@ export interface RunOptions {
   images?: ImageInput[];
   cwd: string;
   resume?: string;
+  /** Extra worker/persona instructions appended to the system prompt. */
+  systemPromptAppend?: string;
   /** "default" = interactive approval; "bypassPermissions" = autonomous. */
   permissionMode: "default" | "bypassPermissions";
   abortController: AbortController;
@@ -79,7 +81,7 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
       cwd: opts.cwd,
       resume: opts.resume,
       model: config.CLAUDE_MODEL,
-      systemPrompt: systemPrompt(),
+      systemPrompt: systemPrompt(opts.systemPromptAppend),
       permissionMode: opts.permissionMode,
       includePartialMessages: true,
       abortController: opts.abortController,

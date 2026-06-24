@@ -129,15 +129,28 @@ export interface ClaudeRoot {
 }
 
 export type Column = "backlog" | "doing" | "done";
+export type Priority = "low" | "normal" | "high";
+export interface TaskDelegation {
+  status: "running" | "ok" | "error" | "stopped";
+  runId: string;
+  startedAt: number;
+  endedAt?: number;
+  error?: string;
+  output?: string;
+}
 export interface Task {
   id: string;
   title: string;
   notes: string;
   column: Column;
+  priority: Priority;
+  parentId?: string;
+  delegate?: TaskDelegation;
   order: number;
   createdAt: number;
   updatedAt: number;
 }
+export type Wip = Partial<Record<Column, number>>;
 
 export interface Worker {
   id: string;
@@ -286,13 +299,17 @@ export const api = {
   saveClaudeFile: (path: string, content: string) =>
     req<{ ok: boolean }>("PUT", "/api/claude-files/content", { path, content }),
 
-  tasks: () => get<{ tasks: Task[]; columns: Column[] }>("/api/tasks"),
-  createTask: (t: { title: string; notes?: string; column?: Column }) =>
+  tasks: () => get<{ tasks: Task[]; columns: Column[]; wip: Wip }>("/api/tasks"),
+  createTask: (t: { title: string; notes?: string; column?: Column; priority?: Priority }) =>
     req<Task>("POST", "/api/tasks", t),
   updateTask: (id: string, t: Partial<Task>) => req<Task>("PATCH", `/api/tasks/${id}`, t),
   reorderTasks: (moves: Array<{ id: string; column: Column; order: number }>) =>
     req<{ tasks: Task[] }>("POST", "/api/tasks/reorder", { moves }),
   deleteTask: (id: string) => req<{ ok: boolean }>("DELETE", `/api/tasks/${id}`),
+  setWip: (column: Column, limit: number | null) =>
+    req<{ wip: Wip }>("PUT", "/api/tasks/wip", { column, limit }),
+  delegateTask: (id: string) => req<{ ok: boolean }>("POST", `/api/tasks/${id}/delegate`),
+  stopTask: (id: string) => req<{ ok: boolean }>("POST", `/api/tasks/${id}/stop`),
 
   agent: () => get<MainAgent>("/api/agent"),
   saveAgent: (s: { model?: string; providerId?: string }) => req<MainAgent>("PUT", "/api/agent", s),

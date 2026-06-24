@@ -17,8 +17,11 @@ import {
   updateTask,
   reorderTasks,
   deleteTask,
+  getWip,
+  setWip,
   COLUMNS,
 } from "../core/tasks.js";
+import { taskDelegator } from "../core/taskRunner.js";
 import { workers, describeWorkerSchedule, type Worker } from "../core/workers.js";
 import { chat } from "../core/chat.js";
 import { memory } from "../core/memory.js";
@@ -60,6 +63,8 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
   workers.start((m) => hub.broadcast(m));
   // Wire the in-panel chat session's stream to all clients.
   chat.start((m) => hub.broadcast(m));
+  // Wire delegated-task run streams to all clients.
+  taskDelegator.start((m) => hub.broadcast(m));
   // Stream live log lines to every panel client.
   const unsubLog = onLog((entry) => hub.broadcast({ type: "log", entry }));
 
@@ -90,6 +95,7 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
   return async () => {
     unsubLog();
     workers.stop();
+    taskDelegator.stopAll();
     hub.stop();
     await app.close();
   };
@@ -254,7 +260,19 @@ function registerApi(app: FastifyInstance): void {
   });
 
   // --- task board ---
-  app.get("/api/tasks", async () => ({ tasks: listTasks(), columns: COLUMNS }));
+  app.get("/api/tasks", async () => ({ tasks: listTasks(), columns: COLUMNS, wip: getWip() }));
+  app.put("/api/tasks/wip", async (req) => {
+    const { column, limit } = (req.body ?? {}) as { column?: string; limit?: number | null };
+    return { wip: setWip(column ?? "", limit ?? null) };
+  });
+  app.post("/api/tasks/:id/delegate", async (req, reply) => {
+    const r = taskDelegator.delegate((req.params as { id: string }).id);
+    if (!r.ok) return reply.code(409).send({ error: r.error });
+    return { ok: true };
+  });
+  app.post("/api/tasks/:id/stop", async (req) => ({
+    ok: taskDelegator.stop((req.params as { id: string }).id),
+  }));
   app.post("/api/tasks", async (req) => createTask(req.body as never));
   app.patch("/api/tasks/:id", async (req, reply) => {
     const updated = updateTask((req.params as { id: string }).id, req.body as never);

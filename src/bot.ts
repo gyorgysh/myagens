@@ -6,6 +6,7 @@ import { registerCommands } from "./commands.js";
 import { AUTO_ALLOWED_TOOLS, runTurn, type PermissionResult } from "./claude/runner.js";
 import { createTelegramMcp } from "./mcp/sendFile.js";
 import { memoryMcp } from "./mcp/memory.js";
+import { tasksMcp } from "./mcp/tasks.js";
 import { TelegramStreamer, type Streamer } from "./telegram/streamer.js";
 import { DraftStreamer } from "./telegram/draftStreamer.js";
 import { RichDraftStreamer } from "./telegram/richDraftStreamer.js";
@@ -325,7 +326,7 @@ async function handleUserPrompt(
       env: mainRun.env,
       permissionMode: autonomous || session.mode === "auto" ? "bypassPermissions" : "default",
       abortController: session.abort,
-      mcpServers: { telegram: createTelegramMcp(tg, chatId, cwd), memory: memoryMcp },
+      mcpServers: { telegram: createTelegramMcp(tg, chatId, cwd), memory: memoryMcp, tasks: tasksMcp },
       canUseTool,
       onText: (delta) => streamer.appendText(normalizeAgentText(delta)),
       onToolUse: (name, input) => {

@@ -27,6 +27,10 @@ export const AUTO_ALLOWED_TOOLS = new Set([
   "mcp__memory__memory_write",
   "mcp__memory__memory_search",
   "mcp__memory__memory_list",
+  // Kanban board edits are safe, user-facing actions.
+  "mcp__tasks__task_create",
+  "mcp__tasks__task_list",
+  "mcp__tasks__task_update",
 ]);
 
 export type PermissionResult =

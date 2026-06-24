@@ -61,6 +61,13 @@ export function tabLabel(tab: Tab): string {
   return "";
 }
 
+/** All known tab ids, for URL <-> tab mapping. */
+export const TAB_IDS: Tab[] = NAV.flatMap((g) => g.items.map((i) => i.id));
+
+export function isTab(value: string): value is Tab {
+  return (TAB_IDS as string[]).includes(value);
+}
+
 const THEME_ICON: Record<Theme, string> = { light: "☀", dark: "☾", matrix: "▚" };
 
 /**

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, clearToken, getToken } from "./api.ts";
 import { useTheme } from "./lib/useTheme.ts";
 import { Login } from "./components/Login.tsx";
-import { Sidebar, tabLabel, type Tab } from "./components/Sidebar.tsx";
+import { Sidebar, tabLabel, isTab, type Tab } from "./components/Sidebar.tsx";
 import { ChatView } from "./components/Chat.tsx";
 import { HealthView } from "./components/Health.tsx";
 import { StatusView } from "./components/Status.tsx";
@@ -19,12 +19,25 @@ import { WorkersView } from "./components/Workers.tsx";
 import { LogsView } from "./components/Logs.tsx";
 import { HeartbeatView_ } from "./components/Heartbeat.tsx";
 
+/** Tab from the URL path (e.g. /status), falling back to health. */
+function tabFromPath(): Tab {
+  const seg = location.pathname.replace(/^\/+/, "").split("/")[0];
+  return isTab(seg) ? seg : "health";
+}
+
 export function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
-  const [tab, setTab] = useState<Tab>("health");
+  const [tab, setTab] = useState<Tab>(tabFromPath);
   const [drawer, setDrawer] = useState(false);
   const [chatEnabled, setChatEnabled] = useState(true);
   const { theme, toggle, set } = useTheme();
+
+  // Switch tab and reflect it in the URL (so a refresh reloads the same view).
+  const select = (t: Tab) => {
+    setTab(t);
+    setDrawer(false);
+    if (location.pathname !== `/${t}`) history.pushState(null, "", `/${t}`);
+  };
 
   // Learn which optional features are on (chat can be disabled via env).
   useEffect(() => {
@@ -32,9 +45,16 @@ export function App() {
     api.me().then((m) => setChatEnabled(m.chatEnabled)).catch(() => {});
   }, [authed]);
 
+  // Keep the tab in sync with the URL on back/forward navigation.
+  useEffect(() => {
+    const onPop = () => setTab(tabFromPath());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   // Don't strand the user on a hidden tab.
   useEffect(() => {
-    if (!chatEnabled && tab === "chat") setTab("health");
+    if (!chatEnabled && tab === "chat") select("health");
   }, [chatEnabled, tab]);
 
   // Hidden easter egg: flipping the light/dark theme 9 times unlocks (and the
@@ -61,11 +81,6 @@ export function App() {
   };
 
   if (!authed) return <Login onAuthed={() => setAuthed(true)} />;
-
-  const select = (t: Tab) => {
-    setTab(t);
-    setDrawer(false);
-  };
 
   return (
     <div className="flex min-h-full">

@@ -24,6 +24,7 @@ The usual loop for touching a server is: open a terminal, SSH in, run something,
 ## Features
 
 - **Live streaming, the native way** — uses Telegram's streaming APIs: **Rich Messages** (Bot API 10.1) and **message drafts** (Bot API 9.3) so replies stream in as an animated preview and land as cleanly formatted, structured messages. A legacy edit-in-place mode is available as a fallback. See [Streaming modes](#streaming-modes).
+- **Management panel (optional)** — a small embedded web dashboard for the operator: live **system health** (CPU/per-core, memory, swap, disk usage & I/O), a **sub-agent workers** board (named autonomous agents that run on demand or a schedule, with live streaming output and run history), a **Trello-style task board**, a **skills** library + on-disk `.claude` file editor, an editor for the operator playbook, plus sessions, schedules and usage. Off by default; token-gated; light/dark. See [Management panel](#management-panel).
 - **Permission-first** — nothing runs without your say-so. Read-only tools (Read/Glob/Grep…) run automatically; anything that touches the system (`Bash`/`Write`/`Edit`…) pauses for **✅ Approve · ❌ Deny · ♾️ Always allow** inline buttons. "Always allow" whitelists that tool for the rest of the session; approvals auto-deny on timeout so nothing hangs.
 - **A capable, on-task personality** — smart, resourceful, and concise for a phone screen, with the occasional joke but work first, fun later. Tunable in `src/prompt.ts`.
 - **Operator playbook (`work.md`)** — define how recurring jobs should be done ("restart Apache", crontab edits, deploys, schedules) once, and the bot follows your conventions every time. See [work.md](#workmd--your-operator-playbook).
@@ -128,6 +129,10 @@ scripts/
 | `FFMPEG_PATH` | no | ffmpeg binary used to decode voice notes for Vosk (default `ffmpeg`) |
 | `LOG_LEVEL` | no | `error` \| `warn` \| `info` (default) \| `debug` |
 | `WORK_FILE` | no | Path to the operator playbook (default `work.md`) |
+| `PANEL_ENABLED` | no | `true` to start the management panel (default `false`) |
+| `PANEL_TOKEN` | when panel on | Shared secret required on every panel request/WS — startup fails if the panel is enabled without it |
+| `PANEL_HOST` | no | Bind address (default `127.0.0.1` — loopback) |
+| `PANEL_PORT` | no | Port (default `8787`) |
 
 ### Streaming modes
 
@@ -150,6 +155,38 @@ Send a voice note and it's transcribed, then run like a typed prompt. Choose a b
   #   e.g. vosk-model-small-en-us-0.15 (~40MB)
   ```
   Then set `VOSK_MODEL_PATH=/path/to/vosk-model-small-en-us-0.15` and `TRANSCRIBE_PROVIDER=vosk`. ffmpeg decodes Telegram's OGG/Opus to the 16kHz PCM Vosk expects. The small English model is fast on a CPU; larger models trade speed for accuracy.
+
+## Management panel
+
+An optional web dashboard, served **in the same process** as the bot (no extra service), for managing it from a browser. It's **off by default** because it can read host data and launch autonomous agents — the same reach as the bot itself.
+
+Enable it in `.env`:
+
+```bash
+PANEL_ENABLED=true
+PANEL_TOKEN=choose-a-long-random-secret   # required; startup fails without it
+# PANEL_HOST=127.0.0.1   # loopback by default
+# PANEL_PORT=8787
+```
+
+Then build the panel UI and start as usual:
+
+```bash
+npm run build      # builds the panel, then the bot (or: npm run build:panel)
+npm start
+# dev: npm run dev (bot) + npm run panel:dev (UI with hot reload, proxies the API)
+```
+
+Open `http://127.0.0.1:8787` and unlock with your `PANEL_TOKEN`. What's inside:
+
+- **System** — live CPU (overall + per-core), memory, swap, disk usage and disk I/O, pushed over a WebSocket.
+- **Workers** — persisted **sub-agents**: give one a name, working directory, task prompt, optional persona/skill, and an optional schedule (`30m`/`2h`/`HH:MM`). Run on demand or on the timer; runs are **concurrent** and autonomous (no approval prompts), with **live streaming output** and per-worker run history (status, cost, duration).
+- **Tasks** — a Trello-style board (Backlog / In progress / Done) with drag-and-drop.
+- **Skills** — a reusable **prompt library**, plus a scoped editor for the on-disk `.claude/{agents,skills,commands}/*.md` and `CLAUDE.md` files the agent loads from your working dirs.
+- **Prompt** — view the built-in personality and edit the operator playbook (`work.md`) live.
+- **Sessions / Schedules / Usage** — read-only views of the bot's live state.
+
+Every request and WebSocket handshake requires the token (sent as a `Bearer` header / `?token=`), and write actions are recorded to an audit log (`data/audit.jsonl`). Keep the bind on loopback and reach it remotely only behind a reverse proxy or a private network (e.g. Tailscale) — never expose it raw.
 
 ## Permissions
 
@@ -213,6 +250,18 @@ src/
   claude/
     runner.ts         wraps the Agent SDK query(); fans events to callbacks; inline image vision
     events.ts         narrow type guards over SDK messages
+  core/               telegraf-free layer shared by the bot and the panel
+    health.ts         system-health snapshot (CPU/mem/swap/disk/IO)
+    snapshot.ts       read-only session/schedule/usage views
+    playbook.ts       read/write the operator playbook (work.md)
+    skills.ts         reusable prompt library (skills.json)
+    claudeFiles.ts    scoped browser/editor for on-disk .claude/* + CLAUDE.md
+    tasks.ts          Trello task board store (tasks.json)
+    workers.ts        persisted sub-agents: registry + concurrent run manager
+    jsonStore.ts      atomic JSON store helper · audit.ts  append-only audit log
+  panel/              embedded management panel (optional, PANEL_ENABLED)
+    server.ts         in-process Fastify: token auth, REST API, static SPA
+    hub.ts            WebSocket fan-out (worker run events + health push)
   telegram/
     streamer.ts          edit-in-place streaming backend ("edit")
     baseDraftStreamer.ts  shared draft machinery (throttle + keepalive)
@@ -227,9 +276,12 @@ src/
     vosk.ts            local offline transcription (ffmpeg decode + Vosk)
     files.ts           incoming file downloads + image decoding for vision
   mcp/sendFile.ts     in-process MCP tool so Claude can send files back
+
+panel/                management-panel frontend (React + Vite + Tailwind),
+                      built to panel/dist and served by src/panel/server.ts
 ```
 
-Built on [`telegraf`](https://github.com/telegraf/telegraf) and [`@anthropic-ai/claude-agent-sdk`](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk).
+Built on [`telegraf`](https://github.com/telegraf/telegraf) and [`@anthropic-ai/claude-agent-sdk`](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk); the optional panel uses [`fastify`](https://fastify.dev) + [`systeminformation`](https://systeminformation.io) on the server and React + Vite + Tailwind on the client.
 
 ## Support & troubleshooting
 

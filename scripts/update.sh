@@ -26,12 +26,33 @@ REF="${1:-$(git rev-parse --abbrev-ref HEAD)}"
 #   - *untracked* extra files in the tree (stray scripts, scratch output, the
 #     gitignored data/ dir) are left untouched and never block the update the
 #     way `git pull` does ("untracked files would be overwritten").
+# Exception: work.md (the operator playbook) is backed up and restored across the
+# reset below, so local/panel edits to it survive an update.
+# Preserve the operator playbook (work.md). It's tracked in the repo as a starter
+# template, but is meant to be customized per-box — and the management panel
+# writes the live playbook to it. The hard reset below would otherwise discard
+# those local edits, so stash a copy and restore it afterward (local wins over
+# the shipped template).
+WORK_BACKUP=""
+if [ -f work.md ]; then
+  WORK_BACKUP="$(mktemp)"
+  cp work.md "$WORK_BACKUP"
+fi
+
 say "Fetching origin/$REF…"
 git fetch --prune origin "$REF"
 BEFORE="$(git rev-parse HEAD)"
 say "Resetting to origin/$REF (local changes to tracked files are discarded)…"
 git reset --hard FETCH_HEAD
 AFTER="$(git rev-parse HEAD)"
+
+if [ -n "$WORK_BACKUP" ]; then
+  if ! cmp -s "$WORK_BACKUP" work.md; then
+    cp "$WORK_BACKUP" work.md
+    ok "Preserved your local work.md (operator playbook) over the shipped template."
+  fi
+  rm -f "$WORK_BACKUP"
+fi
 
 if [ "$BEFORE" = "$AFTER" ]; then
   ok "Already up to date ($(git rev-parse --short HEAD))."

@@ -53,8 +53,32 @@ Notes:
 - **Restarting kills the current process** — the in-flight reply stops and the
   Telegram connection re-establishes automatically. That is expected: run the
   restart command last, and do not try to report back afterward in the same turn.
-- To apply code changes: `cd` to the project, `git pull` (if applicable),
-  `npm install && npm run build`, then restart the service.
+
+### Updating to the latest version
+When asked to "update", "update to the latest version", "pull the latest", or
+similar, run the project's update script from the project directory:
+
+```
+./scripts/update.sh
+```
+
+It does everything in one shot: fetches `origin`, **hard-resets** the checkout to
+the remote ref (local edits to *tracked* files are discarded — untracked files
+and the gitignored `data/` dir are left alone), runs `npm install`, rebuilds the
+panel UI + bot (`npm run build`), and restarts the service **only if** one is
+installed.
+
+- Pin a specific branch/tag/commit by passing it: `./scripts/update.sh <git-ref>`
+  (defaults to the current branch).
+- Output reports whether it was already up to date or the commit range applied.
+- Because the script restarts the service itself at the end, the **same caveat as
+  a manual restart applies**: the current process is killed, so run it as the last
+  action and don't try to report back afterward in the same turn. If no service is
+  installed, the script just builds and you must restart the manual run yourself.
+- Your customizations are preserved: panel-managed config (workers, providers,
+  schedules, main-agent model, sessions) lives in the gitignored `data/` dir and
+  is untouched, and this `work.md` is backed up and restored across the reset.
+  Other local edits to *tracked* files are discarded — say so first if you have any.
 
 ## Conventions
 - Where new files go: for one-off creations (a script you were asked to write, a

@@ -62,11 +62,16 @@ similar, run the project's update script from the project directory:
 ./scripts/update.sh
 ```
 
+**Always use this script — never hand-roll `git pull` + restart.** The script is
+the only path that also reinstalls dependencies and rebuilds; pulling by hand
+skips `npm install` / `npm run build`, so new code or dependency changes won't
+actually take effect until someone runs them manually.
+
 It does everything in one shot: fetches `origin`, **hard-resets** the checkout to
 the remote ref (local edits to *tracked* files are discarded — untracked files
 and the gitignored `data/` dir are left alone), runs `npm install`, rebuilds the
-panel UI + bot (`npm run build`), and restarts the service **only if** one is
-installed.
+panel UI + bot (`npm run build`, which also runs `npm install` inside `panel/`),
+and restarts the service **only if** one is installed.
 
 - Pin a specific branch/tag/commit by passing it: `./scripts/update.sh <git-ref>`
   (defaults to the current branch).

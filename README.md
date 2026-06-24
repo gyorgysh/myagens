@@ -174,7 +174,9 @@ Then build the panel UI and start as usual:
 ```bash
 npm run build      # builds the panel, then the bot (or: npm run build:panel)
 npm start
-# dev: npm run dev (bot) + npm run panel:dev (UI with hot reload, proxies the API)
+# dev: npm run dev  — runs the bot AND rebuilds the panel on change (served
+#                     together at the same URL, never stale)
+#      panel HMR:   npm run panel:dev (Vite dev server with hot reload, proxies the API)
 ```
 
 Open `http://127.0.0.1:8787` and unlock with your `PANEL_TOKEN`. What's inside:

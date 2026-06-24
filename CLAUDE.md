@@ -9,7 +9,7 @@ A Telegram bot that exposes a real Claude Code agent over chat. A user messages 
 ## Commands
 
 ```bash
-npm run dev        # tsx watch — run locally with reload
+npm run dev        # concurrently: tsx watch (bot) + vite build --watch (panel) — both stay fresh
 npm run build      # tsc -> dist/
 npm start          # node dist/index.js (requires build first)
 npm run typecheck  # tsc --noEmit

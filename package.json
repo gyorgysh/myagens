@@ -7,9 +7,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "concurrently -k -n bot,panel -c blue,green \"tsx watch src/index.ts\" \"npm run panel:watch\"",
+    "dev:bot": "tsx watch src/index.ts",
     "build": "npm run build:panel && tsc -p tsconfig.json",
     "build:panel": "cd panel && npm install && npm run build",
+    "panel:watch": "cd panel && npm install && npm run build -- --watch",
     "panel:dev": "cd panel && npm run dev",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -27,6 +29,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
+    "concurrently": "^10.0.3",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   },

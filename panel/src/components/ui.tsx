@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 export function Card({
   title,
@@ -124,4 +124,40 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 
 export function Label({ children }: { children: ReactNode }) {
   return <label className="mb-1 block text-xs font-medium text-fg-dim">{children}</label>;
+}
+
+/** An info callout. Pass `dismissId` to make it dismissible (remembered in
+ *  localStorage) — for "good to keep in mind" style tips. */
+export function Callout({
+  title,
+  children,
+  dismissId,
+}: {
+  title: ReactNode;
+  children: ReactNode;
+  dismissId?: string;
+}) {
+  const key = dismissId ? `cct.tip.${dismissId}` : undefined;
+  const [hidden, setHidden] = useState(() => (key ? localStorage.getItem(key) === "1" : false));
+  if (hidden) return null;
+  return (
+    <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-3 text-sm">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="font-medium text-blue-400">💡 {title}</span>
+        {key && (
+          <button
+            onClick={() => {
+              localStorage.setItem(key, "1");
+              setHidden(true);
+            }}
+            className="text-xs text-fg-faint hover:text-fg-muted"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      <div className="text-fg-dim">{children}</div>
+    </div>
+  );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { api, AuthError, type Provider, type Worker, type WorkerRun } from "../api.ts";
 import { useWorkerEvents, type LiveRun } from "../lib/useWorkerEvents.ts";
-import { Badge, Button, Card, Empty, Input, Label, TextArea } from "./ui.tsx";
+import { Badge, Button, Callout, Card, Empty, Input, Label, TextArea } from "./ui.tsx";
 import { MainAgentCard } from "./MainAgent.tsx";
 import { ms, relTime, usd } from "../lib/format.ts";
 
@@ -61,6 +61,26 @@ export function WorkersView({ onAuthError }: { onAuthError: () => void }) {
 
   return (
     <div className="space-y-4">
+      <Callout title="Good to keep in mind" dismissId="agents">
+        <ul className="list-disc space-y-1 pl-4">
+          <li>
+            Model &amp; provider changes apply on the <strong>next message</strong> — each turn
+            starts a fresh <code>claude</code> process, so there's nothing to restart.
+          </li>
+          <li>
+            Switching models mid-conversation? Hit <strong>New context</strong> so the new model
+            doesn't resume an old thread.
+          </li>
+          <li>
+            <strong>Restart service</strong> fully respawns the bot and briefly disconnects the
+            panel — only available when running under systemd/launchd.
+          </li>
+          <li>
+            If a local model endpoint is unreachable, a run waits on connection retries until you
+            press <strong>Stop</strong>.
+          </li>
+        </ul>
+      </Callout>
       <MainAgentCard onAuthError={onAuthError} />
       <Providers onAuthError={onAuthError} onChange={load} />
 

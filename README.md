@@ -1,8 +1,8 @@
-# claude-code-telegram
+# CCT Panel · claude-code-telegram
 
-**A self-hosted AI operator for your machines.** Reach it from your phone over Telegram, or from a browser through the CCT Panel — a web dashboard with live system health, sub-agents, a task board, durable memory, and an encrypted secret vault, all served by the same process.
+**A self-hosted AI operator for your machines.** Reach it from your phone over Telegram, or from a browser through the CCT Panel: a web dashboard with live system health, sub-agents, a task board, durable memory, and an encrypted secret vault, all served by the same process.
 
-![CCT Panel dashboard](images/dashboard_1-poster.jpg)
+![CCT Panel — Agents view](images/ft_agents.webp)
 
 Open source. It puts a real **Claude Code** agent on your machine and lets you drive it in plain language: check on services, restart things, read logs, edit a crontab, ship code — with replies streaming back live and every risky action gated behind your approval.
 
@@ -23,7 +23,7 @@ The same agent, two front doors:
 
 | | |
 | --- | --- |
-| ![Agents panel — configure the main agent and sub-agent workers](images/ft_agents.webp) | ![Tasks panel — Kanban board with delegate-to-agent](images/ft_tasks.webp) |
+| ![Agents panel — configure the main agent and sub-agent workers](images/ft_agents_small.webp) | ![Tasks panel — Kanban board with delegate-to-agent](images/ft_tasks.webp) |
 | **Agents**: switch the main agent's model live; create named **workers** with their own model, persona, skill, and optional schedule — runs are concurrent and stream output live. | **Tasks**: a Kanban board (Backlog / In progress / Done) with drag-and-drop, priority, WIP limits, and a **Delegate** button that hands a card to an autonomous agent run. |
 | ![Heartbeat panel — proactive monitoring](images/ft_heartbeat.webp) | ![Schedules panel — timed autonomous prompts](images/ft_schedulers.webp) |
 | **Heartbeat**: proactive monitoring. Set CPU/mem/swap/disk thresholds and a stalled-card window; the bot pings Telegram on breach, or runs an autonomous turn to investigate and act first. | **Schedules**: create timed autonomous prompts (`30m`, `2h`, `HH:MM`) from the panel or via `/schedule` in chat — results push back to Telegram. |
@@ -36,13 +36,8 @@ Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** 
 | --- | --- |
 | ![Upload a file, Claude sees it and approves a Bash call](images/tg-claude-1.webp) | ![Reply streaming live as it's written](images/tg-claude-2.webp) |
 | Upload files and photos — Claude *sees* images inline. Here it approves a `Bash` call directly from the chat. | Replies stream back live as they're written using Telegram's Rich Messages API, then land as a clean, formatted message. |
-| ![A tool call paused for approval](images/tg-claude-3.webp) | ![Inline approve / deny / always-allow buttons](images/tg-claude-4.webp) |
-| Every non-read-only tool call pauses the run and posts the exact command for review. | Tap **✅ Approve**, **❌ Deny**, or **♾️ Always allow** — the last option whitelists the tool for the rest of the session. |
-
-| |
-| --- |
-| ![A denied Write; Claude hands back the file content inline instead](images/tg-claude-5.webp) |
-| Deny a `Write` and Claude adapts: it hands back the file content inline so you can copy-paste it yourself. |
+| ![Inline approve / deny / always-allow buttons](images/tg-claude-4.webp) | ![A tool call paused for approval](images/tg-claude-3.webp) |
+| Tap **✅ Approve**, **❌ Deny**, or **♾️ Always allow** — the last option whitelists the tool for the rest of the session. | Every non-read-only tool call pauses the run and posts the exact command for review. |
 
 ## Quick install
 

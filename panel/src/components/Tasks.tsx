@@ -244,6 +244,8 @@ function Card({
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes);
   const [priority, setPriority] = useState<Priority>(task.priority);
+  const isDone = task.column.toLowerCase().includes("done");
+  const [delegateOpen, setDelegateOpen] = useState(!isDone);
 
   const running = live?.status === "running" || task.delegate?.status === "running";
   const dstatus = live?.status ?? task.delegate?.status;
@@ -335,8 +337,9 @@ function Card({
 
       {(running || dstatus) && (
         <div className="mt-2 rounded border border-line bg-surface p-2">
-          <div className="mb-1 flex items-center justify-between">
-            <span
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setDelegateOpen((o) => !o)}
               className={`text-xs font-medium ${
                 dstatus === "ok"
                   ? "text-emerald-400"
@@ -348,24 +351,29 @@ function Card({
               }`}
             >
               {running ? t("tasks_running") : t("tasks_delegated").replace("{status}", String(dstatus))}
-            </span>
+              {!running && <span className="ml-1 opacity-50">{delegateOpen ? "▲" : "▼"}</span>}
+            </button>
             {running && (
               <button onClick={stop} className="text-xs text-red-400 hover:underline">
                 {t("stop")}
               </button>
             )}
           </div>
-          {live?.tool && <div className="mono text-xs text-fg-dim">{live.tool}</div>}
-          {(live?.output || task.delegate?.output) && (
-            <div className="mono mt-1 line-clamp-4 whitespace-pre-wrap text-xs text-fg-faint">
-              {live?.output || task.delegate?.output}
-            </div>
+          {delegateOpen && (
+            <>
+              {live?.tool && <div className="mono mt-1 text-xs text-fg-dim">{live.tool}</div>}
+              {(live?.output || task.delegate?.output) && (
+                <div className="mono mt-1 line-clamp-4 whitespace-pre-wrap text-xs text-fg-faint">
+                  {live?.output || task.delegate?.output}
+                </div>
+              )}
+              {task.delegate?.error && <div className="mt-1 text-xs text-red-400">{task.delegate.error}</div>}
+            </>
           )}
-          {task.delegate?.error && <div className="mt-1 text-xs text-red-400">{task.delegate.error}</div>}
         </div>
       )}
 
-      {!running && (dstatus === "stopped" || dstatus === "error") && (
+      {!running && !isDone && (dstatus === "stopped" || dstatus === "error") && (
         <div className="mt-2 flex gap-1.5">
           <button
             onClick={() => moveTo("backlog")}

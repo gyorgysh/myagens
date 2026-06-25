@@ -104,6 +104,22 @@ export function HeartbeatView_({ onAuthError }: { onAuthError: () => void }) {
             </div>
           ))}
         </div>
+
+        <label className="mt-4 flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={c.spendAlertEnabled}
+            onChange={(e) => save({ spendAlertEnabled: e.target.checked })}
+            className="h-4 w-4 rounded accent-accent"
+          />
+          <span className="text-sm text-fg">
+            API billing spend alert{" "}
+            <span className="text-xs text-fg-faint">
+              (API-key plans only — not meaningful for Pro/Max subscriptions)
+            </span>
+          </span>
+        </label>
+
         <p className="mt-3 text-xs text-fg-faint">
           Last checked: {view.lastTickAt ? relTime(view.lastTickAt) : "never"}
         </p>

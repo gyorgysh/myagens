@@ -241,6 +241,13 @@ function registerApi(app: FastifyInstance): void {
     schedules.add(target, cwd?.trim() || config.WORKDIR, prompt.trim(), spec);
     return { schedules: listSchedules() };
   });
+  app.put("/api/schedules/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const patch = (req.body ?? {}) as { prompt?: string; when?: string; cwd?: string; chatId?: number };
+    const updated = schedules.updateById(id, patch);
+    if (!updated) return reply.code(404).send({ error: "not found" });
+    return { schedules: listSchedules() };
+  });
   app.delete("/api/schedules/:id", async (req, reply) => {
     if (!schedules.removeById((req.params as { id: string }).id))
       return reply.code(404).send({ error: "not found" });

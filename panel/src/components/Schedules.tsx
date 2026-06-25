@@ -9,6 +9,8 @@ export function SchedulesView({ onAuthError }: { onAuthError: () => void }) {
   const [schedules, setSchedules] = useState<ScheduleView[]>([]);
   const [form, setForm] = useState<typeof blank>(blank);
   const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<typeof blank>(blank);
   const [error, setError] = useState<string | null>(null);
 
   const load = () =>
@@ -35,6 +37,23 @@ export function SchedulesView({ onAuthError }: { onAuthError: () => void }) {
     }
   };
 
+  const startEdit = (s: ScheduleView) => {
+    setEditingId(s.id);
+    setEditForm({ prompt: s.prompt, when: s.spec, cwd: s.cwd });
+  };
+
+  const saveEdit = async (id: string) => {
+    setError(null);
+    try {
+      const r = await api.updateSchedule(id, editForm);
+      setSchedules(r.schedules);
+      setEditingId(null);
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      setError(String(e));
+    }
+  };
+
   const del = async (id: string) => {
     if (!confirm("Delete this schedule?")) return;
     await api.deleteSchedule(id);
@@ -45,7 +64,7 @@ export function SchedulesView({ onAuthError }: { onAuthError: () => void }) {
     <Card
       title="Schedules"
       right={
-        adding ? null : (
+        !adding && (
           <Button variant="primary" onClick={() => setAdding(true)}>
             + New schedule
           </Button>
@@ -99,25 +118,60 @@ export function SchedulesView({ onAuthError }: { onAuthError: () => void }) {
         <Empty>No schedules yet.</Empty>
       ) : (
         <div className="space-y-2">
-          {schedules.map((s) => (
-            <div key={s.id} className="rounded-lg border border-line p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="blue">{s.spec}</Badge>
-                <span className="mono text-xs text-fg-dim">chat {s.chatId}</span>
-                <span className="ml-auto tabular text-xs text-fg-muted">
-                  next {relTime(s.nextRunAt)}
-                  {s.lastRunAt ? ` · last ${relTime(s.lastRunAt)}` : ""}
-                </span>
-                <Button variant="danger" onClick={() => del(s.id)}>
-                  Delete
-                </Button>
+          {schedules.map((s) =>
+            editingId === s.id ? (
+              <div key={s.id} className="space-y-3 rounded-lg border border-accent/50 bg-input p-3">
+                <div>
+                  <Label>Prompt</Label>
+                  <Input
+                    value={editForm.prompt}
+                    onChange={(e) => setEditForm({ ...editForm, prompt: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label>When</Label>
+                    <Input
+                      value={editForm.when}
+                      onChange={(e) => setEditForm({ ...editForm, when: e.target.value })}
+                      placeholder="30m · 2h · 1d · or 09:30"
+                    />
+                  </div>
+                  <div>
+                    <Label>Working directory</Label>
+                    <Input
+                      value={editForm.cwd}
+                      onChange={(e) => setEditForm({ ...editForm, cwd: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="primary" onClick={() => saveEdit(s.id)} disabled={!editForm.prompt.trim() || !editForm.when.trim()}>
+                    Save
+                  </Button>
+                  <Button onClick={() => setEditingId(null)}>Cancel</Button>
+                </div>
               </div>
-              <div className="mt-2 text-sm text-fg">{s.prompt}</div>
-              <div className="mono mt-1 truncate text-xs text-fg-faint" title={s.cwd}>
-                {s.cwd}
+            ) : (
+              <div key={s.id} className="rounded-lg border border-line p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="blue">{s.spec}</Badge>
+                  <span className="ml-auto tabular text-xs text-fg-muted">
+                    next {relTime(s.nextRunAt)}
+                    {s.lastRunAt ? ` · last ${relTime(s.lastRunAt)}` : ""}
+                  </span>
+                  <Button onClick={() => startEdit(s)}>Edit</Button>
+                  <Button variant="danger" onClick={() => del(s.id)}>
+                    Delete
+                  </Button>
+                </div>
+                <div className="mt-2 text-sm text-fg">{s.prompt}</div>
+                <div className="mono mt-1 truncate text-xs text-fg-faint" title={s.cwd}>
+                  {s.cwd}
+                </div>
               </div>
-            </div>
-          ))}
+            ),
+          )}
         </div>
       )}
     </Card>

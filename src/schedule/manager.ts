@@ -57,6 +57,25 @@ export class ScheduleManager {
     return s;
   }
 
+  /** Update mutable fields of a schedule by id. Returns the updated schedule or null. */
+  updateById(id: string, patch: { prompt?: string; when?: string; cwd?: string; chatId?: number }): Schedule | null {
+    const s = this.schedules.find((s) => s.id === id);
+    if (!s) return null;
+    if (patch.prompt !== undefined) s.prompt = patch.prompt.trim();
+    if (patch.cwd !== undefined) s.cwd = patch.cwd.trim();
+    if (patch.chatId !== undefined) s.chatId = patch.chatId;
+    if (patch.when !== undefined) {
+      const spec = parseWhen(patch.when);
+      if (spec) {
+        s.spec = spec;
+        s.nextRunAt = nextRun(spec, Date.now());
+      }
+    }
+    saveSchedules(this.schedules);
+    log.info("Schedule updated", { id });
+    return { ...s };
+  }
+
   /** Remove a schedule by id regardless of owner (panel management). */
   removeById(id: string): boolean {
     const before = this.schedules.length;

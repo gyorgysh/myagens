@@ -343,6 +343,7 @@ export interface HeartbeatConfig {
   swapPct: number;
   diskPct: number;
   staleCardHours: number;
+  spendAlertEnabled: boolean;
 }
 export interface HeartbeatView {
   config: HeartbeatConfig;
@@ -453,6 +454,8 @@ export const api = {
   schedules: () => get<{ schedules: ScheduleView[] }>("/api/schedules"),
   createSchedule: (s: { prompt: string; when: string; cwd?: string }) =>
     req<{ schedules: ScheduleView[] }>("POST", "/api/schedules", s),
+  updateSchedule: (id: string, patch: { prompt?: string; when?: string; cwd?: string }) =>
+    req<{ schedules: ScheduleView[] }>("PUT", `/api/schedules/${id}`, patch),
   deleteSchedule: (id: string) => req<{ ok: boolean }>("DELETE", `/api/schedules/${id}`),
   usage: () => get<UsageSummary>("/api/usage"),
 

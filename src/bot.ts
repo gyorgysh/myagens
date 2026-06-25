@@ -28,6 +28,7 @@ import type { ImageInput } from "./claude/runner.js";
 import type { Autonomy } from "./session/manager.js";
 import { sessions } from "./session/manager.js";
 import { log, preview } from "./logger.js";
+import { loadProbeResult } from "./core/usageProbe.js";
 
 export function buildBot(): Telegraf {
   const bot = new Telegraf(config.TELEGRAM_BOT_TOKEN);
@@ -435,14 +436,37 @@ function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function fmtCountdown(ms: number): string {
+  if (ms <= 0) return "now";
+  const totalMin = Math.ceil(ms / 60_000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h >= 24) { const d = Math.floor(h / 24); return `${d} day${d === 1 ? "" : "s"}`; }
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 function friendlyError(err: unknown): string {
   const raw = errText(err);
   const low = raw.toLowerCase();
   if (/\b429\b|rate.?limit/.test(low)) {
     return "⏳ Rate limited by the API. Give it a moment and try again.";
   }
-  if (/credit balance|insufficient|out of credit|quota|usage limit|limit reached|too low/.test(low)) {
-    return "💳 Usage limit / credits exhausted. Top up or wait for the limit to reset, then retry.";
+  if (/credit balance|insufficient|out of credit|quota|usage limit|limit reached|too low|daily.*limit|weekly.*limit|limit.*exceeded|reached.*limit/.test(low)) {
+    const probe = loadProbeResult();
+    const now = Date.now();
+    const exhausted = probe?.limits.filter((l) => l.percent >= 100) ?? [];
+    const nearest = exhausted.sort((a, b) => a.resetsInMs - b.resetsInMs)[0];
+    if (nearest) {
+      const msLeft = Math.max(0, new Date(nearest.resetsAt).getTime() - now);
+      return `📊 ${nearest.label} usage limit reached. Resets in ${fmtCountdown(msLeft)}.`;
+    }
+    const soonest = probe?.limits.filter((l) => l.percent > 0).sort((a, b) => a.resetsInMs - b.resetsInMs)[0];
+    if (soonest) {
+      const msLeft = Math.max(0, new Date(soonest.resetsAt).getTime() - now);
+      return `📊 Usage limit exhausted. ${soonest.label} resets in ${fmtCountdown(msLeft)}.`;
+    }
+    return "📊 Usage limit exhausted. Wait for the limit to reset, then retry.";
   }
   if (/\b529\b|overloaded/.test(low)) {
     return "🌀 The API is overloaded right now. Try again shortly.";

@@ -29,6 +29,12 @@ export interface HeartbeatConfig {
   diskPct: number;
   /** A card sitting in "doing" longer than this many hours is "stalled". */
   staleCardHours: number;
+  /**
+   * Whether to include a billing-spend signal in heartbeat checks.
+   * Opt-in; off by default because SDK cost estimates are not meaningful
+   * for Pro/Max subscription plans (they measure token cost, not subscription spend).
+   */
+  spendAlertEnabled: boolean;
 }
 
 interface Signal {
@@ -57,6 +63,7 @@ const DEFAULTS: HeartbeatConfig = {
   swapPct: 50,
   diskPct: 90,
   staleCardHours: 48,
+  spendAlertEnabled: false,
 };
 
 export interface HeartbeatDeps {
@@ -112,6 +119,7 @@ export class HeartbeatManager {
     for (const k of ["cpuPct", "memPct", "swapPct", "diskPct", "staleCardHours"] as const) {
       if (typeof patch[k] === "number") c[k] = Math.max(0, patch[k]!);
     }
+    if (typeof patch.spendAlertEnabled === "boolean") c.spendAlertEnabled = patch.spendAlertEnabled;
     this.persist();
     audit("heartbeat.config", { mode: c.mode, intervalMs: c.intervalMs });
     return c;
@@ -177,25 +185,28 @@ export class HeartbeatManager {
         out.push({ key: `stale:${t.id}`, text: `Task "${t.title}" stalled in Doing for ${days}d` });
       }
     }
-    // Cost/budget alert.
-    try {
-      const plan = getPlanSettings();
-      if (plan.alertThresholdPct > 0 && plan.monthlyCap > 0) {
-        const summary = usageSummary();
-        const periodStart = billingPeriodStart(plan.billingDay);
-        const periodCost = summary.daily
-          .filter((d) => d.day >= periodStart)
-          .reduce((acc, d) => acc + d.costUsd, 0);
-        const pct = (periodCost / plan.monthlyCap) * 100;
-        if (pct >= plan.alertThresholdPct) {
-          out.push({
-            key: "cost:cap",
-            text: `Spend this billing period: $${periodCost.toFixed(2)} of $${plan.monthlyCap} (${pct.toFixed(0)}%)`,
-          });
+    // Cost/budget alert — only when explicitly enabled and only for API (pay-per-token) plans.
+    // Pro/Max subscription plans report SDK token-cost estimates that don't represent real spend.
+    if (c.spendAlertEnabled) {
+      try {
+        const plan = getPlanSettings();
+        if (plan.plan === "api" && plan.alertThresholdPct > 0 && plan.monthlyCap > 0) {
+          const summary = usageSummary();
+          const periodStart = billingPeriodStart(plan.billingDay);
+          const periodCost = summary.daily
+            .filter((d) => d.day >= periodStart)
+            .reduce((acc, d) => acc + d.costUsd, 0);
+          const pct = (periodCost / plan.monthlyCap) * 100;
+          if (pct >= plan.alertThresholdPct) {
+            out.push({
+              key: "cost:cap",
+              text: `Spend this billing period: $${periodCost.toFixed(2)} of $${plan.monthlyCap} (${pct.toFixed(0)}%)`,
+            });
+          }
         }
+      } catch {
+        // Non-fatal if plan check fails.
       }
-    } catch {
-      // Non-fatal if plan check fails.
     }
     return out;
   }

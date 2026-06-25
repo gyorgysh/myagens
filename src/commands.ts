@@ -26,51 +26,37 @@ import { log } from "./logger.js";
 // /model command helpers
 // ---------------------------------------------------------------------------
 
-/** Well-known Anthropic Claude models shown in the picker. */
-const ANTHROPIC_MODELS = [
-  "claude-opus-4-5-20251101",
-  "claude-sonnet-4-5-20251101",
-  "claude-haiku-4-5-20251101",
-  "claude-opus-4-8",
-  "claude-sonnet-4-6",
+// ---------------------------------------------------------------------------
+// Named shortcut buttons — short labels keep callback_data well under 64 B.
+// ---------------------------------------------------------------------------
+const MODEL_SHORTCUTS: { label: string; model: string }[] = [
+  { label: "Opus 4.5",   model: "claude-opus-4-5-20251101" },
+  { label: "Sonnet 4.5", model: "claude-sonnet-4-5-20251101" },
+  { label: "Haiku 4.5",  model: "claude-haiku-4-5-20251101" },
+  { label: "Opus 4",     model: "claude-opus-4-8" },
+  { label: "Sonnet 4",   model: "claude-sonnet-4-6" },
 ];
 
 const MODEL_CB_PREFIX = "mdl:";
-
-/** Build callback_data for a model button. Max 64 bytes — we keep it tight. */
-export function modelCbData(model: string, providerId: string): string {
-  return `${MODEL_CB_PREFIX}${providerId}|${model}`;
-}
 
 export function isModelCallback(data: string): boolean {
   return data.startsWith(MODEL_CB_PREFIX);
 }
 
-/** Parse callback_data back to { model, providerId }. */
-export function parseModelCallback(data: string): { model: string; providerId: string } {
-  const body = data.slice(MODEL_CB_PREFIX.length);
-  const pipe = body.indexOf("|");
-  return pipe === -1
-    ? { model: body, providerId: "" }
-    : { model: body.slice(pipe + 1), providerId: body.slice(0, pipe) };
-}
-
-/** Handle a model-selection callback: apply, answer, edit message. */
+/** Handle a shortcut-button press: apply model, refresh the message. */
 export async function resolveModelCallback(
   tg: Telegram,
   chatId: number,
   messageId: number | undefined,
   data: string,
 ): Promise<string> {
-  const { model, providerId } = parseModelCallback(data);
-  setMainSettings({ model, providerId: providerId || "" });
-  log.info("Model changed via Telegram", { chatId, model, providerId });
-  // Refresh the picker in place so the user can see the checkmark moved.
+  const model = data.slice(MODEL_CB_PREFIX.length);
+  setMainSettings({ model, providerId: "" });
+  log.info("Model changed via Telegram", { chatId, model });
   if (messageId) {
     await sendModelMenu(tg, chatId, messageId).catch(() => {});
   }
-  const label = model || config.CLAUDE_MODEL;
-  return `Model set to ${label}`;
+  return `Model set to ${model}`;
 }
 
 /** Send (or edit) the model-picker message. */
@@ -80,41 +66,47 @@ export async function sendModelMenu(
   editMessageId?: number,
 ): Promise<void> {
   const view = mainSettingsView();
-  const current = { model: view.model, providerId: view.providerId };
+  const effectiveLabel = view.effectiveModel + (view.providerName ? ` (${view.providerName})` : "");
 
-  // Build button rows. Each row = one model. Anthropic section first.
+  // Two shortcut buttons per row.
   type Btn = { text: string; callback_data: string };
   const rows: Btn[][] = [];
-
-  const tick = (model: string, pId: string) =>
-    model === current.model && pId === current.providerId ? "✓ " : "";
-
-  // Section header buttons must have unique callback_data — Telegram rejects
-  // duplicate values across the whole keyboard with BUTTON_DATA_INVALID.
-  rows.push([{ text: "— Anthropic —", callback_data: "mdl:noop:anthropic" }]);
-  for (const m of ANTHROPIC_MODELS) {
-    rows.push([{ text: `${tick(m, "")}${m}`, callback_data: modelCbData(m, "") }]);
+  for (let i = 0; i < MODEL_SHORTCUTS.length; i += 2) {
+    const pair = MODEL_SHORTCUTS.slice(i, i + 2).map((s) => ({
+      text: view.model === s.model && !view.providerId ? `✓ ${s.label}` : s.label,
+      callback_data: `${MODEL_CB_PREFIX}${s.model}`,
+    }));
+    rows.push(pair);
   }
 
-  // Provider sections — fetch models for each saved provider sequentially so
-  // rows stay grouped (parallel pushes interleave sections unpredictably).
+  // List available provider/local models as plain text so the user can type
+  // /model <name> to switch to one without needing buttons.
   const providers = listProviders();
+  const providerLines: string[] = [];
   for (const p of providers) {
-    let models: string[];
+    let models: string[] = [];
     try {
       models = await fetchProviderModels(p.baseUrl, resolveSecret(p.authToken));
     } catch {
-      models = [];
+      /* provider unreachable — skip */
     }
     if (models.length === 0) continue;
-    rows.push([{ text: `— ${p.name} —`, callback_data: `mdl:noop:${p.id}` }]);
+    providerLines.push(`\n<b>${escapeHtml(p.name)}</b>`);
     for (const m of models) {
-      rows.push([{ text: `${tick(m, p.id)}${m}`, callback_data: modelCbData(m, p.id) }]);
+      const active = view.model === m && view.providerId === p.id ? " ✓" : "";
+      providerLines.push(`  <code>${escapeHtml(m)}</code>${active}`);
     }
   }
 
-  const effectiveLabel = view.effectiveModel + (view.providerName ? ` (${view.providerName})` : "");
-  const text = `🧠 <b>Model</b>\nCurrent: <code>${escapeHtml(effectiveLabel)}</code>\n\nSelect a model to switch (takes effect on the next message):`;
+  const localSection = providerLines.length
+    ? `\n\n<b>Local / provider models</b>\nType <code>/model &lt;name&gt;</code> to switch:${providerLines.join("\n")}`
+    : "";
+
+  const text =
+    `🧠 <b>Model</b>\n` +
+    `Current: <code>${escapeHtml(effectiveLabel)}</code>\n\n` +
+    `Tap a shortcut or type <code>/model &lt;name&gt;</code> for any model id:` +
+    localSection;
 
   if (editMessageId) {
     await tg
@@ -595,8 +587,16 @@ export function registerCommands(bot: Telegraf): void {
   });
 
   bot.command("model", async (ctx) => {
-    log.info("Command /model", { chatId: ctx.chat.id });
-    await sendModelMenu(ctx.telegram, ctx.chat.id);
+    const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
+    if (arg) {
+      // /model <name> — set directly without opening the menu.
+      setMainSettings({ model: arg, providerId: "" });
+      log.info("Command /model set", { chatId: ctx.chat.id, model: arg });
+      await ctx.replyWithHTML(`🧠 Model set to <code>${escapeHtml(arg)}</code>. Takes effect on the next message.`);
+    } else {
+      log.info("Command /model", { chatId: ctx.chat.id });
+      await sendModelMenu(ctx.telegram, ctx.chat.id);
+    }
   });
 
   bot.command("lang", async (ctx) => {

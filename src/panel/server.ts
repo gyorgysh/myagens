@@ -56,6 +56,7 @@ import {
 import { fetchProviderModels } from "../core/providerModels.js";
 import { mainSettingsView, setMainSettings } from "../core/mainSettings.js";
 import { serviceInstalled, restartService } from "../core/agentControl.js";
+import { getUpdateStatus, checkForUpdate, runUpdate } from "../core/updateControl.js";
 import { recentAudit } from "../core/audit.js";
 import { sessions } from "../session/manager.js";
 import { PanelHub } from "./hub.js";
@@ -95,6 +96,12 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
   // Stream live log lines to every panel client.
   const unsubLog = onLog((entry) => hub.broadcast({ type: "log", entry }));
 
+  // Refresh the "update available" status in the background so the nav badge is
+  // reasonably fresh: once shortly after boot, then every 6 hours.
+  setTimeout(() => void checkForUpdate(), 10_000).unref();
+  const updateTimer = setInterval(() => void checkForUpdate(), 6 * 3_600_000);
+  updateTimer.unref();
+
   // Auth: every /api and /ws request needs the shared token. Static SPA assets
   // are served freely (they hold no secrets; the token gates the data + actions).
   app.addHook("onRequest", async (req, reply) => {
@@ -102,7 +109,7 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
     if (!tokenOk(req)) await reply.code(401).send({ error: "unauthorized" });
   });
 
-  registerApi(app);
+  registerApi(app, hub);
   registerWs(app, hub);
   await registerStatic(app);
 
@@ -121,6 +128,7 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
 
   return async () => {
     unsubLog();
+    clearInterval(updateTimer);
     workers.stop();
     taskDelegator.stopAll();
     hub.stop();
@@ -178,11 +186,12 @@ function workerView(w: Worker) {
   };
 }
 
-function registerApi(app: FastifyInstance): void {
+function registerApi(app: FastifyInstance, hub: PanelHub): void {
   app.get("/api/me", async () => ({
     ok: true,
     chatEnabled: chat.isEnabled(),
     version: VERSION,
+    updateAvailable: getUpdateStatus().available,
     atlasName: config.ATLAS_NAME,
     brandName: config.BRAND_NAME,
     defaultLanguage: config.DEFAULT_LANGUAGE,
@@ -290,6 +299,16 @@ function registerApi(app: FastifyInstance): void {
   app.post("/api/heartbeat/run", async () => heartbeat.runOnce("panel"));
   // Send a usage/cost report to Telegram right now (panel "Test" button).
   app.post("/api/plan/report-test", async () => heartbeat.sendCostReport());
+
+  // --- self-update ---
+  app.get("/api/update", async () => ({ ...getUpdateStatus(), serviceInstalled: serviceInstalled() }));
+  app.post("/api/update/check", async () => ({ ...(await checkForUpdate()), serviceInstalled: serviceInstalled() }));
+  app.post("/api/update/run", async () => {
+    if (getUpdateStatus().updating) return { started: false };
+    // Stream output to panel clients; don't await (the run may restart us).
+    void runUpdate((line) => hub.broadcast({ type: "update", line })).catch(() => {});
+    return { started: true };
+  });
 
   // --- durable memory ---
   app.get("/api/memories", async (req) => {

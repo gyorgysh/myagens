@@ -1,0 +1,130 @@
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
+import { join } from "node:path";
+import { repoRoot } from "../config.js";
+import { log } from "../logger.js";
+import { audit } from "./audit.js";
+import { loadJson, saveJson } from "./jsonStore.js";
+
+const pexec = promisify(execFile);
+const UPDATE_SH = join(repoRoot, "scripts", "update.sh");
+const FILE = "update.json";
+
+export interface UpdateStatus {
+  /** Branch this checkout tracks. */
+  branch: string;
+  /** Short sha currently checked out. */
+  current: string;
+  /** Short sha of the latest fetched commit on the remote branch. */
+  latest?: string;
+  /** Number of commits the local checkout is behind the remote. */
+  behindBy: number;
+  /** Convenience flag: behindBy > 0. */
+  available: boolean;
+  /** Subjects of the commits we're behind, newest first (capped). */
+  commits: string[];
+  /** When the remote was last checked (epoch ms). */
+  checkedAt?: number;
+  /** Last check error, if any. */
+  error?: string;
+}
+
+export type UpdateView = UpdateStatus & { checking: boolean; updating: boolean };
+
+const EMPTY: UpdateStatus = { branch: "", current: "", behindBy: 0, available: false, commits: [] };
+
+let cached: UpdateStatus | undefined;
+let checking = false;
+let updating = false;
+
+function git(args: string[]): Promise<string> {
+  return pexec("git", args, { cwd: repoRoot }).then((r) => r.stdout.trim());
+}
+
+function load(): UpdateStatus {
+  if (!cached) cached = loadJson<UpdateStatus>(FILE, EMPTY);
+  return cached;
+}
+
+/** Cached status — no network. Safe to call on every panel poll / `/api/me`. */
+export function getUpdateStatus(): UpdateView {
+  return { ...load(), checking, updating };
+}
+
+/** Fetch the remote and recompute how far behind we are. Hits the network. */
+export async function checkForUpdate(): Promise<UpdateView> {
+  if (checking) return getUpdateStatus();
+  checking = true;
+  try {
+    const branch = await git(["rev-parse", "--abbrev-ref", "HEAD"]);
+    await git(["fetch", "--prune", "origin", branch]);
+    const current = await git(["rev-parse", "--short", "HEAD"]);
+    const latest = await git(["rev-parse", "--short", "FETCH_HEAD"]);
+    const behindBy = Number(await git(["rev-list", "--count", "HEAD..FETCH_HEAD"])) || 0;
+    const logOut =
+      behindBy > 0 ? await git(["log", "--oneline", "--no-decorate", "-n", "15", "HEAD..FETCH_HEAD"]) : "";
+    cached = {
+      branch,
+      current,
+      latest,
+      behindBy,
+      available: behindBy > 0,
+      commits: logOut ? logOut.split("\n").filter(Boolean) : [],
+      checkedAt: Date.now(),
+    };
+    saveJson(FILE, cached);
+    log.info("Update check", { branch, behindBy });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    cached = { ...load(), error: message, checkedAt: Date.now() };
+    saveJson(FILE, cached);
+    log.warn("Update check failed", { error: message });
+  } finally {
+    checking = false;
+  }
+  return getUpdateStatus();
+}
+
+export function isUpdating(): boolean {
+  return updating;
+}
+
+/**
+ * Run scripts/update.sh, streaming each output line to `onLine`. The script
+ * fetches, hard-resets to the remote, reinstalls, rebuilds the panel + bot, and
+ * restarts the service if one is installed — so on a serviced host this process
+ * is killed near the end (the restart is handed to systemd/launchd, which
+ * completes it). Spawned detached so the build survives our death.
+ */
+export async function runUpdate(onLine: (line: string) => void): Promise<{ ok: boolean }> {
+  if (updating) {
+    onLine("An update is already in progress.");
+    return { ok: false };
+  }
+  updating = true;
+  audit("update.run", {});
+  log.warn("Update requested — running scripts/update.sh");
+  return new Promise((resolve) => {
+    const child = spawn("bash", [UPDATE_SH], { cwd: repoRoot, detached: true });
+    const handle = (buf: Buffer) => {
+      for (const line of buf.toString().split("\n")) {
+        if (line.length) {
+          onLine(line);
+          log.info(`[update] ${line}`);
+        }
+      }
+    };
+    child.stdout.on("data", handle);
+    child.stderr.on("data", handle);
+    child.on("error", (e) => {
+      onLine(`Error: ${e.message}`);
+      updating = false;
+      resolve({ ok: false });
+    });
+    child.on("close", (code) => {
+      updating = false;
+      onLine(code === 0 ? "✓ Update complete." : `Update exited with code ${code}.`);
+      resolve({ ok: code === 0 });
+    });
+  });
+}

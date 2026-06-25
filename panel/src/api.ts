@@ -446,9 +446,23 @@ export interface LogEntry {
   meta?: Record<string, unknown>;
 }
 
+export interface UpdateStatus {
+  branch: string;
+  current: string;
+  latest?: string;
+  behindBy: number;
+  available: boolean;
+  commits: string[];
+  checkedAt?: number;
+  error?: string;
+  checking: boolean;
+  updating: boolean;
+  serviceInstalled: boolean;
+}
+
 export const api = {
   me: () =>
-    get<{ ok: boolean; chatEnabled: boolean; version: string; atlasName: string; brandName: string }>("/api/me"),
+    get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; atlasName: string; brandName: string }>("/api/me"),
   sessions: () => get<{ sessions: SessionView[] }>("/api/sessions"),
   logs: () => get<{ logs: LogEntry[] }>("/api/logs"),
   schedules: () => get<{ schedules: ScheduleView[] }>("/api/schedules"),
@@ -491,6 +505,10 @@ export const api = {
   plan: () => get<PlanView>("/api/plan"),
   savePlan: (s: Partial<PlanSettings>) => req<PlanSettings>("PUT", "/api/plan", s),
   testReport: () => req<{ sent: boolean }>("POST", "/api/plan/report-test"),
+
+  updateStatus: () => get<UpdateStatus>("/api/update"),
+  checkUpdate: () => req<UpdateStatus>("POST", "/api/update/check"),
+  runUpdate: () => req<{ started: boolean }>("POST", "/api/update/run"),
 
   claudeUsage: () => get<ClaudeUsageSnapshot>("/api/claude-usage"),
 

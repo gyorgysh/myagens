@@ -14,6 +14,8 @@ import { escapeHtml } from "./telegram/formatting.js";
 import type { UsageStat } from "./session/store.js";
 import { loadProbeResult, runProbe } from "./core/usageProbe.js";
 import { getPlanSettings, billingPeriodStart, daysUntilReset } from "./core/planSettings.js";
+import { checkForUpdate, runUpdate, isUpdating } from "./core/updateControl.js";
+import { serviceInstalled } from "./core/agentControl.js";
 import { log } from "./logger.js";
 
 function buildStart(firstName?: string): string {
@@ -65,6 +67,7 @@ function buildHelp(): string {
 <b>Info</b>
 /status: session info (cwd, model, autonomy, session id)
 /usage: plan, subscription limits, and API spend
+/update [now]: check for a new version, or apply it with <code>/update now</code>
 /lang [code]: show or set response language (e.g. <code>/lang hu</code>)
 /help: this message
 
@@ -354,6 +357,47 @@ export function registerCommands(bot: Telegraf): void {
         `🔗 session: <code>${s.sessionId ?? "(new)"}</code>\n` +
         `⚙️ ${s.busy ? "running…" : "idle"}`,
     );
+  });
+
+  bot.command("update", async (ctx) => {
+    const arg = ctx.message.text.split(/\s+/)[1]?.toLowerCase();
+    if (isUpdating()) {
+      await ctx.reply("⏳ An update is already running.");
+      return;
+    }
+    await ctx.reply("🔍 Checking for updates…");
+    const st = await checkForUpdate();
+    if (st.error) {
+      await ctx.reply(`⚠️ Update check failed: ${st.error}`);
+      return;
+    }
+    if (!st.available) {
+      await ctx.replyWithHTML(`✓ Already up to date (<code>${st.current}</code> on <b>${st.branch}</b>).`);
+      return;
+    }
+    const list = st.commits.slice(0, 10).map((c) => `• ${escapeHtml(c)}`).join("\n");
+    // Only auto-run when the user confirmed with "now"; otherwise just report.
+    if (arg !== "now") {
+      await ctx.replyWithHTML(
+        `⬆️ <b>${st.behindBy}</b> update(s) available on <b>${st.branch}</b>:\n${list}\n\n` +
+          `Send <code>/update now</code> to apply (fetch, rebuild${serviceInstalled() ? ", and restart" : ""}).`,
+      );
+      return;
+    }
+    await ctx.replyWithHTML(
+      `🚀 Updating (${st.behindBy} commit${st.behindBy === 1 ? "" : "s"})…\n` +
+        (serviceInstalled()
+          ? "The bot will restart when the build finishes."
+          : "Restart your manual run afterward to pick up the new code."),
+    );
+    log.warn("Update triggered from Telegram", { chatId: ctx.chat.id });
+    // Fire-and-forget: on a serviced host this process is replaced mid-run.
+    void runUpdate((line) => log.info(`[update] ${line}`)).then(async (r) => {
+      // This only reaches the user on non-serviced hosts (we survive the run).
+      if (!serviceInstalled()) {
+        await ctx.reply(r.ok ? "✓ Update complete. Restart to apply." : "⚠️ Update failed — check /logs.").catch(() => {});
+      }
+    }).catch(() => {});
   });
 
   bot.command("stop", async (ctx) => {

@@ -36,6 +36,7 @@ export function App() {
   const [drawer, setDrawer] = useState(false);
   const [chatEnabled, setChatEnabled] = useState(true);
   const [brandName, setBrandName] = useState("MyHQ");
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const { theme, toggle, set } = useTheme();
   const { t } = useI18n();
 
@@ -52,6 +53,7 @@ export function App() {
     api.me().then((m) => {
       setChatEnabled(m.chatEnabled);
       if (m.brandName) setBrandName(m.brandName);
+      setUpdateAvailable(m.updateAvailable);
     }).catch(() => {});
   }, [authed]);
 
@@ -104,6 +106,7 @@ export function App() {
           onToggleTheme={onToggleTheme}
           onSignOut={onAuthError}
           chatEnabled={chatEnabled}
+          updateAvailable={updateAvailable}
           brandName={brandName}
         />
       </aside>
@@ -123,6 +126,7 @@ export function App() {
               onToggleTheme={onToggleTheme}
               onSignOut={onAuthError}
               chatEnabled={chatEnabled}
+              updateAvailable={updateAvailable}
               expanded
               brandName={brandName}
             />
@@ -154,7 +158,7 @@ export function App() {
           {tab === "crew" && <CrewView onAuthError={onAuthError} />}
           {tab === "health" && <HealthView />}
           {tab === "status" && <StatusView onAuthError={onAuthError} />}
-          {tab === "updates" && <UpdatesView onAuthError={onAuthError} />}
+          {tab === "updates" && <UpdatesView onAuthError={onAuthError} onStatus={setUpdateAvailable} />}
           {tab === "workers" && <WorkersView onAuthError={onAuthError} />}
           {tab === "tasks" && <TasksView onAuthError={onAuthError} />}
           {tab === "skills" && <SkillsView onAuthError={onAuthError} />}

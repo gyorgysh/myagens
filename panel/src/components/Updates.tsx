@@ -1,43 +1,178 @@
-import { useEffect, useState } from "react";
-import { api, AuthError } from "../api.ts";
+import { useEffect, useRef, useState } from "react";
+import { api, AuthError, openHealthSocket, type UpdateStatus } from "../api.ts";
 import { Badge, Button, Card } from "./ui.tsx";
 import { useI18n } from "../lib/useI18n.ts";
+import { relTime } from "../lib/format.ts";
 
-export function UpdatesView({ onAuthError }: { onAuthError: () => void }) {
+export function UpdatesView({
+  onAuthError,
+  onStatus,
+}: {
+  onAuthError: () => void;
+  onStatus?: (available: boolean) => void;
+}) {
   const { t } = useI18n();
   const [version, setVersion] = useState<string>("…");
+  const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [lines, setLines] = useState<string[]>([]);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  const apply = (s: UpdateStatus) => {
+    setStatus(s);
+    onStatus?.(s.available);
+  };
 
   useEffect(() => {
-    api
-      .me()
-      .then((m) => setVersion(m.version))
-      .catch((e) => e instanceof AuthError && onAuthError());
-  }, [onAuthError]);
+    api.me().then((m) => setVersion(m.version)).catch((e) => e instanceof AuthError && onAuthError());
+    api.updateStatus().then(apply).catch((e) => e instanceof AuthError && onAuthError());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Live update-output frames over the shared /ws.
+  useEffect(() => {
+    let closed = false;
+    let ws: WebSocket;
+    const connect = () => {
+      if (closed) return;
+      ws = openHealthSocket();
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "update" && typeof msg.line === "string") {
+            setLines((prev) => [...prev, msg.line].slice(-500));
+          }
+        } catch {
+          /* ignore */
+        }
+      };
+      ws.onerror = () => ws.close();
+    };
+    connect();
+    return () => {
+      closed = true;
+      ws?.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+  }, [lines]);
+
+  const check = async () => {
+    setChecking(true);
+    try {
+      apply(await api.checkUpdate());
+    } catch (e) {
+      if (e instanceof AuthError) onAuthError();
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const run = async () => {
+    if (!confirm(t("updates_run_confirm"))) return;
+    setRunning(true);
+    setLines([]);
+    try {
+      await api.runUpdate();
+    } catch (e) {
+      if (e instanceof AuthError) onAuthError();
+    }
+    // Keep `running` true: on a serviced host the bot restarts and the socket
+    // drops; the reconnect banner takes over from here.
+  };
+
+  const available = status?.available;
 
   return (
-    <Card title={t("updates_title")}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm text-fg">
-            {t("updates_current")} <span className="mono">{version}</span>
+    <div className="space-y-4">
+      <Card title={t("updates_title")}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm text-fg">
+              {t("updates_current")} <span className="mono">{version}</span>
+              {status?.branch && (
+                <span className="mono ml-2 text-xs text-fg-faint">
+                  {status.branch}
+                  {status.current ? ` · ${status.current}` : ""}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-fg-dim">
+              {available ? t("updates_behind").replace("{n}", String(status?.behindBy ?? 0)) : t("updates_latest")}
+            </p>
           </div>
-          <p className="mt-1 text-sm text-fg-dim">{t("updates_latest")}</p>
+          <div className="flex items-center gap-2">
+            {available ? (
+              <Badge tone="amber">{t("updates_available")}</Badge>
+            ) : (
+              <Badge tone="green">{t("updates_up_to_date")}</Badge>
+            )}
+            <Button onClick={check} disabled={checking || running}>
+              {checking ? t("updates_checking") : t("updates_check")}
+            </Button>
+          </div>
         </div>
-        <Badge tone="green">{t("updates_up_to_date")}</Badge>
-      </div>
 
-      <div className="mt-4 rounded-lg border border-line bg-input p-3 text-sm text-fg-dim">
-        <p>{t("updates_coming_desc")}</p>
+        {status?.error && <p className="mt-2 text-sm text-red-400">{status.error}</p>}
+        {status?.checkedAt && !status.error && (
+          <p className="mt-1 text-xs text-fg-faint">
+            {t("updates_checked").replace("{time}", relTime(status.checkedAt))}
+          </p>
+        )}
+
+        {/* Pending commits */}
+        {available && status && status.commits.length > 0 && (
+          <div className="mt-3 rounded-lg border border-line bg-input p-3">
+            <p className="mb-1.5 text-xs font-medium text-fg-dim">{t("updates_changes")}</p>
+            <ul className="space-y-0.5">
+              {status.commits.map((c, i) => (
+                <li key={i} className="mono truncate text-xs text-fg-muted" title={c}>
+                  {c}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Apply */}
+        {available && (
+          <div className="mt-3 flex items-center gap-3">
+            <Button variant="primary" onClick={run} disabled={running || status?.updating}>
+              {running || status?.updating ? t("updates_running") : t("updates_run")}
+            </Button>
+            <span className="text-xs text-fg-faint">
+              {status?.serviceInstalled ? t("updates_will_restart") : t("updates_manual_restart")}
+            </span>
+          </div>
+        )}
+      </Card>
+
+      {/* Streamed output */}
+      {lines.length > 0 && (
+        <Card title={t("updates_output")}>
+          <div
+            ref={boxRef}
+            className="max-h-80 overflow-auto rounded-lg bg-input p-3 font-mono text-xs leading-relaxed text-fg-muted"
+          >
+            {lines.map((l, i) => (
+              <div key={i} className="whitespace-pre-wrap break-words">
+                {l}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Manual fallback */}
+      <Card title={t("updates_manual_title")}>
+        <p className="text-sm text-fg-dim">{t("updates_manual_desc")}</p>
         <pre className="mono mt-2 overflow-x-auto rounded bg-surface-2 p-2 text-xs text-fg">
           scripts/update.sh
         </pre>
-      </div>
-
-      <div className="mt-3">
-        <Button disabled title={t("updates_coming_soon")}>
-          {t("updates_check")}
-        </Button>
-      </div>
-    </Card>
+      </Card>
+    </div>
   );
 }

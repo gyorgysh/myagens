@@ -13,14 +13,16 @@ const AGENTCTL = join(repoRoot, "scripts", "agentctl.sh");
 export function serviceInstalled(): boolean {
   try {
     if (process.platform === "darwin") {
-      return existsSync(join(homedir(), "Library", "LaunchAgents", "sh.gyorgy.telegram-agent.plist"));
+      // Matches the launchd label installed by scripts/macos/install-service.sh.
+      return existsSync(join(homedir(), "Library", "LaunchAgents", "sh.gyorgy.myhq.plist"));
     }
     if (process.platform === "linux") {
-      const out = execFileSync("systemctl", ["list-unit-files", "telegram-agent.service"], {
+      // Matches the systemd unit installed by scripts/linux/install-service.sh.
+      const out = execFileSync("systemctl", ["list-unit-files", "myhq.service"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       });
-      return /telegram-agent\.service/.test(out);
+      return /myhq\.service/.test(out);
     }
   } catch {
     /* systemctl missing or errored — treat as not installed */

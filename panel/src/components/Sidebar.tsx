@@ -85,6 +85,7 @@ export function Sidebar({
   onToggleTheme,
   onSignOut,
   chatEnabled = true,
+  updateAvailable = false,
   expanded = false,
   brandName = "MyHQ",
 }: {
@@ -94,6 +95,7 @@ export function Sidebar({
   onToggleTheme: () => void;
   onSignOut: () => void;
   chatEnabled?: boolean;
+  updateAvailable?: boolean;
   expanded?: boolean;
   brandName?: string;
 }) {
@@ -126,6 +128,7 @@ export function Sidebar({
             </div>
             {group.items.map((it) => {
               const active = it.id === tab;
+              const badge = it.id === "updates" && updateAvailable;
               return (
                 <button
                   key={it.id}
@@ -137,8 +140,18 @@ export function Sidebar({
                       : "border-transparent text-fg-dim hover:bg-surface-2 hover:text-fg"
                   }`}
                 >
-                  <span className="w-4 shrink-0 text-center">{it.icon}</span>
-                  <span className={labelCls}>{t(it.labelKey)}</span>
+                  <span className="relative w-4 shrink-0 text-center">
+                    {it.icon}
+                    {badge && (
+                      <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface" />
+                    )}
+                  </span>
+                  <span className={`flex-1 text-left ${labelCls}`}>{t(it.labelKey)}</span>
+                  {badge && (
+                    <span className={`rounded-full bg-accent/15 px-1.5 text-[10px] font-semibold text-accent ${labelCls}`}>
+                      1
+                    </span>
+                  )}
                 </button>
               );
             })}

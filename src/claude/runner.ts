@@ -109,8 +109,9 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
       : opts.prompt;
 
   // Recall durable memories relevant to this turn and fold them into the system
-  // prompt. Keyword match for now (memory Phase 1); empty store = no-op.
-  const recalled = memory.recallForPrompt(opts.prompt);
+  // prompt. Hybrid semantic + keyword match when embeddings are on (Phase 2),
+  // keyword-only fallback otherwise; empty store = no-op.
+  const recalled = await memory.recallForPromptAsync(opts.prompt);
   const memoryBlock = recalled.length ? formatMemories(recalled) : undefined;
 
   const response = query({

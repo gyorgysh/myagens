@@ -55,6 +55,22 @@ const schema = z.object({
   // Memory compaction thresholds.
   MEMORY_MAX_ENTRIES: z.coerce.number().int().positive().default(500),
   COLD_MAX: z.coerce.number().int().positive().default(200),
+  // --- Semantic memory (Phase 2): local embeddings for similarity recall ---
+  // Off by default; keyword search is always the fallback. When on, memories are
+  // embedded with a local model and recall blends cosine similarity with keywords.
+  EMBEDDING_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  // Which wire shape to speak: "ollama" (POST /api/embeddings) or "openai"
+  // (POST /v1/embeddings — LM Studio, OpenAI, most proxies).
+  EMBEDDING_PROVIDER: z.enum(["ollama", "openai"]).default("ollama"),
+  // Endpoint base URL. Default targets a local Ollama install.
+  EMBEDDING_BASE_URL: z.string().url().default("http://localhost:11434"),
+  // Embedding model id (e.g. "nomic-embed-text" for Ollama, "text-embedding-3-small" for OpenAI).
+  EMBEDDING_MODEL: z.string().min(1).default("nomic-embed-text"),
+  // Optional auth token (plain or a vault:<id> reference) for the embedding endpoint.
+  EMBEDDING_AUTH_TOKEN: z.string().optional(),
   // How replies stream back:
   //   rich  = Bot API 10.1 sendRichMessageDraft -> sendRichMessage (structured markdown)
   //   draft = Bot API 9.3 sendMessageDraft (plain preview), finalized with sendMessage

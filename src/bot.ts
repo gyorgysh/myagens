@@ -48,7 +48,7 @@ export function buildBot(): Telegraf {
       "data" in ctx.callbackQuery ? (ctx.callbackQuery.data as string) : undefined;
     if (data && permissions.isApprovalCallback(data)) {
       log.debug("Approval button pressed", { chatId: ctx.chat?.id, data });
-      const toast = await permissions.resolve(data);
+      const toast = await permissions.resolve(data, ctx.chat?.id);
       await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
     } else if (data && isGitCallback(data) && ctx.chat) {
       log.debug("Git button pressed", { chatId: ctx.chat.id, data });

@@ -44,14 +44,15 @@ export const memoryMcp = createSdkMcpServer({
     ),
     tool(
       "memory_search",
-      "Search your saved memories by keyword. Use this when a request might " +
-        "relate to something you were told before.",
+      "Search your saved memories by meaning and keyword. Use this when a request " +
+        "might relate to something you were told before — it matches related " +
+        "concepts, not just exact words.",
       {
-        query: z.string().describe("Keywords to search for."),
+        query: z.string().describe("What to search for — a phrase or keywords."),
         limit: z.number().int().min(1).max(25).optional().describe("Max results (default 10)."),
       },
       async (args) => {
-        const hits = memory.search(args.query, args.limit ?? 10);
+        const hits = await memory.semanticSearch(args.query, args.limit ?? 10);
         const text = hits.length ? formatMemories(hits) : "No matching memories.";
         return { content: [{ type: "text", text }] };
       },

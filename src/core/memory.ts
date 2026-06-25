@@ -1,6 +1,14 @@
 import { randomBytes } from "node:crypto";
 import { loadJson, saveJson } from "./jsonStore.js";
 import { audit } from "./audit.js";
+import {
+  cosineSimilarity,
+  embedBatch,
+  embedText,
+  embeddingModelTag,
+  embeddingsEnabled,
+} from "./embeddings.js";
+import { log } from "../logger.js";
 
 const FILE = "memory.json";
 
@@ -29,6 +37,11 @@ export interface MemoryEntry {
   createdAt: number;
   updatedAt: number;
   lastUsedAt?: number;
+  /** Semantic embedding of `text` (Phase 2). Absent until computed. */
+  embedding?: number[];
+  /** Tag of the model that produced `embedding` ("provider:model") — lets us
+   *  detect and recompute stale vectors when the embedding model changes. */
+  embeddingModel?: string;
 }
 
 interface MemoryFile {
@@ -46,6 +59,14 @@ export interface MemoryInput {
 /** Split text into lowercased word tokens of length >= 3 for matching. */
 function tokenize(text: string): string[] {
   return (text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((t) => t.length >= 3);
+}
+
+/** Count how many of `terms` appear in an entry's text+tags. */
+function keywordHits(entry: MemoryEntry, terms: Set<string>): number {
+  const hay = new Set(tokenize(`${entry.text} ${entry.tags.join(" ")}`));
+  let hits = 0;
+  for (const t of terms) if (hay.has(t)) hits++;
+  return hits;
 }
 
 function clampSalience(n: number | undefined, fallback: number): number {
@@ -94,9 +115,7 @@ export class MemoryStore {
     const scored: Array<{ e: MemoryEntry; score: number }> = [];
     for (const e of this.entries) {
       if (e.tier === "cold") continue;
-      const hay = new Set(tokenize(`${e.text} ${e.tags.join(" ")}`));
-      let hits = 0;
-      for (const t of terms) if (hay.has(t)) hits++;
+      const hits = keywordHits(e, terms);
       if (hits > 0) scored.push({ e, score: hits + e.salience });
     }
     scored.sort((a, b) => b.score - a.score || b.e.salience - a.e.salience);
@@ -110,10 +129,49 @@ export class MemoryStore {
     if (terms.size === 0) return this.list().slice(0, limit);
     const scored: Array<{ e: MemoryEntry; score: number }> = [];
     for (const e of this.entries) {
-      const hay = new Set(tokenize(`${e.text} ${e.tags.join(" ")}`));
-      let hits = 0;
-      for (const t of terms) if (hay.has(t)) hits++;
+      const hits = keywordHits(e, terms);
       if (hits > 0) scored.push({ e, score: hits + e.salience });
+    }
+    scored.sort((a, b) => b.score - a.score || b.e.salience - a.e.salience);
+    return scored.slice(0, limit).map((s) => s.e);
+  }
+
+  /**
+   * Hybrid semantic + keyword search over hot + warm entries. Embeds the query
+   * once, ranks each entry by a blend of cosine similarity (to its stored
+   * vector) and normalized keyword overlap, nudged by salience. Falls back to
+   * pure keyword `search()` if embeddings are disabled, the query can't be
+   * embedded, or no entries have vectors yet.
+   *
+   * `includeCold` widens the pool to every entry (used by panel search).
+   */
+  async semanticSearch(query: string, limit = 10, includeCold = false): Promise<MemoryEntry[]> {
+    this.applyDecay();
+    if (!embeddingsEnabled()) {
+      return includeCold ? this.searchAll(query, limit) : this.search(query, limit);
+    }
+    const pool = this.entries.filter((e) => (includeCold ? true : e.tier !== "cold"));
+    const withVectors = pool.filter((e) => e.embedding && e.embedding.length > 0);
+    const queryVec = await embedText(query);
+    if (!queryVec || withVectors.length === 0) {
+      // No usable vectors — degrade to keyword search.
+      return includeCold ? this.searchAll(query, limit) : this.search(query, limit);
+    }
+
+    const terms = new Set(tokenize(query));
+    const maxHits = Math.max(terms.size, 1);
+    const scored: Array<{ e: MemoryEntry; score: number }> = [];
+    for (const e of pool) {
+      const sim = e.embedding && e.embedding.length ? cosineSimilarity(queryVec, e.embedding) : 0;
+      // Normalize keyword overlap into 0..1 so the two signals are comparable.
+      const kw = terms.size ? keywordHits(e, terms) / maxHits : 0;
+      // Blend: semantic similarity leads, keyword overlap and salience refine.
+      const score = sim * 0.7 + kw * 0.3 + e.salience * 0.1;
+      // Keep only entries with some signal (a vector hit or a keyword hit).
+      if (sim > 0 || kw > 0) scored.push({ e, score });
+    }
+    if (scored.length === 0) {
+      return includeCold ? this.searchAll(query, limit) : this.search(query, limit);
     }
     scored.sort((a, b) => b.score - a.score || b.e.salience - a.e.salience);
     return scored.slice(0, limit).map((s) => s.e);
@@ -145,19 +203,28 @@ export class MemoryStore {
     this.entries.push(entry);
     this.persist();
     audit("memory.create", { id: entry.id, tags: entry.tags });
+    // Compute the embedding in the background; recall keyword-falls-back until ready.
+    void this.embedEntry(entry.id);
     return entry;
   }
 
   update(id: string, patch: Partial<MemoryInput>): MemoryEntry | undefined {
     const e = this.get(id);
     if (!e) return undefined;
+    const textChanged = patch.text !== undefined && patch.text.trim() && patch.text.trim() !== e.text;
     if (patch.text !== undefined) e.text = patch.text.trim() || e.text;
     if (patch.tags !== undefined) e.tags = dedupeTags(patch.tags);
     if (patch.salience !== undefined) e.salience = clampSalience(patch.salience, e.salience);
     if (patch.tier !== undefined) e.tier = patch.tier;
     e.updatedAt = Date.now();
+    // Text changed → the old vector is stale; drop it and recompute.
+    if (textChanged) {
+      delete e.embedding;
+      delete e.embeddingModel;
+    }
     this.persist();
     audit("memory.update", { id });
+    if (textChanged) void this.embedEntry(e.id);
     return e;
   }
 
@@ -182,21 +249,41 @@ export class MemoryStore {
   }
 
   /**
-   * Build entries to inject into the system prompt for a turn.
+   * Build entries to inject into the system prompt for a turn (keyword recall).
    * Returns all hot entries + top keyword-matched warm entries.
    * Bumps usage stats (salience + useCount) for every returned entry.
+   *
+   * Synchronous keyword-only path, kept as the fallback. Prefer
+   * `recallForPromptAsync` which adds semantic matching when embeddings are on.
    */
   recallForPrompt(prompt: string, warmLimit = 5): MemoryEntry[] {
     this.applyDecay();
-    const now = Date.now();
-
     const hot = this.entries.filter((e) => e.tier === "hot");
     const warmHits = this.search(prompt, warmLimit).filter((e) => e.tier === "warm");
+    return this.finishRecall(hot, warmHits);
+  }
 
-    // De-dupe: warm hits that are actually hot entries show up once (as hot).
+  /**
+   * Like `recallForPrompt` but uses hybrid semantic + keyword matching for the
+   * warm tier when embeddings are enabled. Hot entries are still always included.
+   * Falls back to keyword matching automatically if embeddings are off/unavailable.
+   */
+  async recallForPromptAsync(prompt: string, warmLimit = 5): Promise<MemoryEntry[]> {
+    this.applyDecay();
+    if (!embeddingsEnabled()) return this.recallForPrompt(prompt, warmLimit);
+    const hot = this.entries.filter((e) => e.tier === "hot");
+    // semanticSearch ranks the whole hot+warm pool; keep only the warm hits here,
+    // hot entries are added unconditionally below.
+    const hits = await this.semanticSearch(prompt, warmLimit + hot.length);
+    const warmHits = hits.filter((e) => e.tier === "warm").slice(0, warmLimit);
+    return this.finishRecall(hot, warmHits);
+  }
+
+  /** Merge hot + warm hits, de-dupe, bump usage stats, persist, return. */
+  private finishRecall(hot: MemoryEntry[], warmHits: MemoryEntry[]): MemoryEntry[] {
+    const now = Date.now();
     const hotIds = new Set(hot.map((e) => e.id));
     const combined = [...hot, ...warmHits.filter((e) => !hotIds.has(e.id))];
-
     if (combined.length > 0) {
       for (const e of combined) {
         e.useCount++;
@@ -205,6 +292,64 @@ export class MemoryStore {
       this.persist();
     }
     return combined;
+  }
+
+  /**
+   * Compute and store the embedding for one entry (no-op if embeddings are off
+   * or the entry already has a current-model vector). Persists on success.
+   */
+  async embedEntry(id: string): Promise<void> {
+    if (!embeddingsEnabled()) return;
+    const e = this.get(id);
+    if (!e) return;
+    const tag = embeddingModelTag();
+    if (e.embedding && e.embedding.length > 0 && e.embeddingModel === tag) return;
+    const vec = await embedText(e.text);
+    // Re-fetch in case the entry was removed/edited while we awaited.
+    const fresh = this.get(id);
+    if (!vec || !fresh) return;
+    fresh.embedding = vec;
+    fresh.embeddingModel = tag;
+    this.persist();
+  }
+
+  /**
+   * Backfill embeddings for every entry missing a current-model vector. Runs
+   * batched and best-effort; intended to be kicked off once at startup. No-op
+   * when embeddings are disabled. Returns the number of entries embedded.
+   */
+  async ensureEmbeddings(batchSize = 16): Promise<number> {
+    if (!embeddingsEnabled()) return 0;
+    const tag = embeddingModelTag();
+    const pending = this.entries.filter(
+      (e) => !e.embedding || e.embedding.length === 0 || e.embeddingModel !== tag,
+    );
+    if (pending.length === 0) return 0;
+    log.info("Embedding memories", { count: pending.length, model: tag });
+    let embedded = 0;
+    for (let i = 0; i < pending.length; i += batchSize) {
+      const batch = pending.slice(i, i + batchSize);
+      const vectors = await embedBatch(batch.map((e) => e.text));
+      if (!vectors) {
+        log.debug("Embedding backfill aborted — endpoint unavailable");
+        break; // Endpoint down; keyword search covers us, retry next startup.
+      }
+      let changed = false;
+      for (let j = 0; j < batch.length; j++) {
+        const vec = vectors[j];
+        if (!vec || vec.length === 0) continue;
+        // Re-fetch by id in case the array mutated mid-backfill.
+        const fresh = this.get(batch[j].id);
+        if (!fresh) continue;
+        fresh.embedding = vec;
+        fresh.embeddingModel = tag;
+        embedded++;
+        changed = true;
+      }
+      if (changed) this.persist();
+    }
+    if (embedded > 0) log.info("Memory embedding complete", { embedded });
+    return embedded;
   }
 
   /** Count entries by tier. */

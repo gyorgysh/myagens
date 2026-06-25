@@ -441,6 +441,14 @@ function Card({
 
       {!running && !isDone && (dstatus === "stopped" || dstatus === "error") && (
         <div className="mt-2 flex gap-1.5">
+          {dstatus === "error" && (
+            <button
+              onClick={delegate}
+              className="flex-1 rounded border border-line py-1 text-xs text-accent hover:bg-surface-2"
+            >
+              {t("tasks_retry")}
+            </button>
+          )}
           <button
             onClick={() => moveTo("backlog")}
             className="flex-1 rounded border border-line py-1 text-xs text-fg-dim hover:bg-surface-2 hover:text-fg"

@@ -223,7 +223,7 @@ export function buildBot(): Telegraf {
     const chatId = alertTargets[0];
     if (chatId === undefined) return;
     if (r.status === "ok" && r.res) {
-      await sendSummaryReport(bot.telegram, chatId, r.res, `✅ ${r.title}`).catch(() => {});
+      await sendSummaryReport(bot.telegram, chatId, r.res, `Task: ${r.title}`).catch(() => {});
       return;
     }
     const notice =
@@ -509,7 +509,6 @@ async function sendSummaryReport(
   const tools = res.toolCalls?.length ?? 0;
   if (tools > 0) parts.push(`${tools} tool call${tools === 1 ? "" : "s"}`);
   if (typeof res.durationMs === "number") parts.push(fmtDuration(res.durationMs));
-  if (typeof res.costUsd === "number" && res.costUsd > 0) parts.push(`$${res.costUsd.toFixed(3)}`);
   const footer = parts.length ? `✅ Report · ${parts.join(" · ")}` : "✅ Report";
   // Render through the same path as the streamed reply so headings/lists/bold
   // look the way the transcript did (the HTML path leaves `#`/`-` literal).

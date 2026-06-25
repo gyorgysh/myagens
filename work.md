@@ -328,6 +328,23 @@ curl -H "$AUTH" $BASE/api/usage
 curl -H "$AUTH" $BASE/api/audit
 ```
 
+## Temporary swap (Linux only)
+When a task requires more memory than is available (large builds, model inference,
+bulk data processing), add temporary swap from the project directory:
+
+```bash
+./scripts/tmpswap.sh on 4          # add 4GB (default); first arg is size in GB
+# ... do the heavy work ...
+./scripts/tmpswap.sh off           # remove when done (reclaims disk space)
+```
+
+The script checks that the requested size does not exceed 80% of free disk space
+before creating the file. The swap lives at `/var/tmp/myhq-swap` by default and
+is NOT added to `/etc/fstab` — it disappears on reboot even if you forget to run
+`off`. Always remove it after the task to reclaim the disk space.
+
+On macOS the script exits cleanly with a message: macOS manages swap automatically.
+
 ## Conventions
 - Where new files go: for one-off creations (a script you were asked to write, a
   generated file, a download, scratch work), write them into the current working

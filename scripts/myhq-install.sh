@@ -12,7 +12,8 @@
 #
 # Non-interactive overrides (env vars): MYHQ_REPO, MYHQ_DIR, MYHQ_BRANCH,
 # MYHQ_TOKEN, MYHQ_USER_IDS, MYHQ_API_KEY, MYHQ_MODE=service|manual,
-# MYHQ_VOICE=none|api|vosk, MYHQ_OPENAI_KEY, MYHQ_YES=1.
+# MYHQ_VOICE=none|api|vosk, MYHQ_OPENAI_KEY,
+# MYHQ_PANEL=y|n, MYHQ_PANEL_PORT, MYHQ_PANEL_TOKEN, MYHQ_YES=1.
 
 set -euo pipefail
 
@@ -21,6 +22,9 @@ BRANCH="${MYHQ_BRANCH:-main}"
 DEFAULT_DIR="${MYHQ_DIR:-$HOME/claude-code-telegram}"
 TUTORIAL="https://gyorgy.sh/blog/claude-code-telegram"
 MIN_NODE=20
+
+PANEL_PORT_CHOSEN=""
+PANEL_TOKEN_CHOSEN=""
 
 # --- pretty output ----------------------------------------------------------
 if [ -t 1 ]; then
@@ -302,6 +306,90 @@ set_env() {
   mv "$tmp" "$file"
 }
 
+# --- panel (optional web dashboard) ----------------------------------------
+
+# Returns 0 if nothing is listening on the given TCP port.
+port_free() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ! ss -tnlp 2>/dev/null | grep -q ":${port}[[:space:]]" && return 0
+  elif command -v lsof >/dev/null 2>&1; then
+    ! lsof -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null | grep -q . && return 0
+  else
+    ! nc -z 127.0.0.1 "$port" 2>/dev/null && return 0
+  fi
+  return 1
+}
+
+# Generates a cryptographically random token (tries openssl, then python3, then urandom).
+gen_token() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -base64 48 | tr -d '=+/\n' | cut -c1-48
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+  else
+    head -c 48 /dev/urandom | base64 | tr -d '=+/\n' | cut -c1-48
+  fi
+}
+
+configure_panel() {
+  local env="$APP_DIR/.env"
+  local choice="${MYHQ_PANEL:-}"
+
+  printf '\n' >"${TTY:-/dev/stdout}"
+  if [ -z "$choice" ]; then
+    printf '%s\n' "${B}MyHQ Panel${R} ${DIM}(embedded web dashboard — health, sessions, tasks, memory, vault, and more)${R}" >"${TTY:-/dev/stdout}"
+    if confirm "Enable the panel? (recommended)" "Y"; then choice=y; else choice=n; fi
+  fi
+
+  if [ "$choice" != "y" ]; then
+    ok "Panel skipped. Enable later: set PANEL_ENABLED=true and PANEL_TOKEN in .env."
+    return
+  fi
+
+  # Port — default 8787, check if taken, fall through to manual entry.
+  local port="${MYHQ_PANEL_PORT:-8787}"
+  if [ -z "${MYHQ_PANEL_PORT:-}" ]; then
+    if ! port_free "$port"; then
+      warn "Port $port is already in use by another service."
+      port="$(ask "Enter an alternative port" "8788")"
+    else
+      port="$(ask "Panel port" "$port")"
+    fi
+  fi
+  if ! port_free "$port"; then
+    warn "Port $port still appears busy — you can change PANEL_PORT in .env later."
+  fi
+
+  # Token — auto-generate (recommended) or enter manually.
+  local token="${MYHQ_PANEL_TOKEN:-}"
+  if [ -z "$token" ]; then
+    printf '\n%s\n' "${B}Panel token${R} ${DIM}(the password for all panel access — treat it like a root password)${R}" >"${TTY:-/dev/stdout}"
+    printf '%s\n' "  ${B}1)${R} Auto-generate a strong random token ${DIM}(recommended)${R}" >"${TTY:-/dev/stdout}"
+    printf '%s\n' "  ${B}2)${R} Enter my own" >"${TTY:-/dev/stdout}"
+    case "$(ask "Choose 1 or 2" "1")" in
+      2)
+        token="$(ask "Your token (min 16 characters)" "")"
+        if [ "${#token}" -lt 16 ]; then
+          warn "Too short — falling back to an auto-generated token."
+          token=""
+        fi
+        ;;
+    esac
+    [ -z "$token" ] && token="$(gen_token)"
+  fi
+
+  set_env "$env" PANEL_ENABLED true
+  set_env "$env" PANEL_TOKEN   "$token"
+  set_env "$env" PANEL_PORT    "$port"
+
+  PANEL_PORT_CHOSEN="$port"
+  PANEL_TOKEN_CHOSEN="$token"
+
+  ok "Panel enabled on port $port."
+  printf '%s\n' "  Token: ${B}${token}${R} ${DIM}(also saved to .env — keep it private)${R}" >"${TTY:-/dev/stdout}"
+}
+
 # --- voice (optional) -------------------------------------------------------
 configure_voice() {
   local env="$APP_DIR/.env"
@@ -392,13 +480,18 @@ EOF
 }
 
 final_notes() {
+  local panel_line=""
+  if [ -n "$PANEL_PORT_CHOSEN" ]; then
+    panel_line="  • Open the panel:   ${B}http://127.0.0.1:${PANEL_PORT_CHOSEN}${R}  (unlock with the token saved to .env)"$'\n'
+  fi
+
   cat <<EOF
 
-${GR}${B}Done.${R} claude-code-telegram is installed at ${B}${APP_DIR}${R}.
+${GR}${B}Done.${R} MyHQ is installed at ${B}${APP_DIR}${R}.
 
 ${B}Next steps${R}
   • If you didn't set an API key, log the CLI in once: ${B}claude${R}  (then /login)
-  • Tune the operator playbook: ${B}${APP_DIR}/work.md${R}
+${panel_line}  • Tune the operator playbook: ${B}${APP_DIR}/work.md${R}
   • Manage the service: ${B}${APP_DIR}/scripts/agentctl.sh${R} {start|stop|restart|status|logs}
   • Update later:        ${B}${APP_DIR}/scripts/update.sh${R}
   • Uninstall service:   ${B}${APP_DIR}/scripts/uninstall-service.sh${R}
@@ -425,6 +518,7 @@ main() {
   clone_repo
   build_app
   configure_env
+  configure_panel
   configure_voice
   choose_run_mode
   final_notes

@@ -20,14 +20,17 @@
 
 .NOTES
     Non-interactive overrides (set before running):
-      MYHQ_REPO        Git repository URL
-      MYHQ_DIR         Install directory (default: $HOME\myhq)
-      MYHQ_BRANCH      Branch to clone (default: main)
-      MYHQ_TOKEN       Telegram bot token
-      MYHQ_USER_IDS    Comma-separated allowed Telegram user IDs
-      MYHQ_API_KEY     Anthropic API key
-      MYHQ_MODE        service | manual (default: prompt)
-      MYHQ_YES         Set to 1 to accept all defaults without prompting
+      MYHQ_REPO         Git repository URL
+      MYHQ_DIR          Install directory (default: $HOME\myhq)
+      MYHQ_BRANCH       Branch to clone (default: main)
+      MYHQ_TOKEN        Telegram bot token
+      MYHQ_USER_IDS     Comma-separated allowed Telegram user IDs
+      MYHQ_API_KEY      Anthropic API key
+      MYHQ_MODE         service | manual (default: prompt)
+      MYHQ_PANEL        y | n  (enable the web dashboard)
+      MYHQ_PANEL_PORT   Panel port number (default: 8787)
+      MYHQ_PANEL_TOKEN  Panel access token (auto-generated if empty)
+      MYHQ_YES          Set to 1 to accept all defaults without prompting
 #>
 
 Set-StrictMode -Version Latest
@@ -42,6 +45,8 @@ $InstallDir = if ($env:MYHQ_DIR)    { $env:MYHQ_DIR }    else { Join-Path $HOME 
 $MinNode    = 20
 $AutoYes    = $env:MYHQ_YES -eq "1"
 $Tutorial   = "https://gyorgy.sh/blog/claude-code-telegram"
+
+$Script:PanelPortChosen = ""
 
 # ---------------------------------------------------------------------------
 # Pretty output helpers
@@ -169,6 +174,30 @@ function Build-App {
 }
 
 # ---------------------------------------------------------------------------
+# Port check and token generation
+# ---------------------------------------------------------------------------
+function Test-PortFree {
+    param([int]$Port)
+    try {
+        $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+        return ($null -eq $conns -or $conns.Count -eq 0)
+    } catch {
+        # Fallback: attempt a connection — failure means the port is free.
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        try { $tcp.Connect('127.0.0.1', $Port); $tcp.Close(); return $false }
+        catch { return $true }
+        finally { $tcp.Dispose() }
+    }
+}
+
+function New-RandomToken {
+    $bytes = New-Object byte[] 48
+    $rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    return ([Convert]::ToBase64String($bytes) -replace '[+/=]')
+}
+
+# ---------------------------------------------------------------------------
 # .env wizard
 # ---------------------------------------------------------------------------
 function Write-Env {
@@ -200,12 +229,55 @@ function Configure-Env {
     $lang    = Ask "Default agent language (en, hu, fr, …)" "en"
 
     # Panel
-    $panelEnabled = Confirm "Enable the web management panel?"
+    Title "MyHQ Panel"
+    Write-Host "  Optional embedded web dashboard — health, sessions, tasks, memory, vault, and more."
+    $panelChoice = if ($env:MYHQ_PANEL) { $env:MYHQ_PANEL } else { "" }
+    $panelEnabled = if ($panelChoice -eq "y") { $true } elseif ($panelChoice -eq "n") { $false } else {
+        Confirm "Enable the panel? (recommended)" $true
+    }
+
     $panelToken = ""
-    $panelPort = "8787"
+    $panelPort  = "8787"
+
     if ($panelEnabled) {
-        $panelToken = Ask "Panel token (long random secret)" ([System.Guid]::NewGuid().ToString("N"))
-        $panelPort  = Ask "Panel port" "8787"
+        # Port — check if taken, offer alternative.
+        $defaultPort = if ($env:MYHQ_PANEL_PORT) { $env:MYHQ_PANEL_PORT } else { "8787" }
+        if (-not (Test-PortFree ([int]$defaultPort))) {
+            Warn "Port $defaultPort is already in use by another service."
+            $defaultPort = "8788"
+        }
+        $panelPort = Ask "Panel port" $defaultPort
+        if (-not (Test-PortFree ([int]$panelPort))) {
+            Warn "Port $panelPort also appears busy. You can change PANEL_PORT in .env later."
+        }
+
+        # Token — auto-generate or manual.
+        if ($env:MYHQ_PANEL_TOKEN) {
+            $panelToken = $env:MYHQ_PANEL_TOKEN
+        } else {
+            Write-Host ""
+            Write-Host "  Panel token — the password for all panel access." -ForegroundColor Cyan
+            Write-Host "  1) Auto-generate a strong random token (recommended)"
+            Write-Host "  2) Enter my own"
+            $tokenChoice = Ask "Choose 1 or 2" "1"
+            if ($tokenChoice -eq "2") {
+                $entered = Ask "Your token (min 16 characters)" ""
+                if ($entered.Length -lt 16) {
+                    Warn "Too short — using an auto-generated token instead."
+                    $panelToken = New-RandomToken
+                } else {
+                    $panelToken = $entered
+                }
+            } else {
+                $panelToken = New-RandomToken
+            }
+        }
+
+        $Script:PanelPortChosen = $panelPort
+        Write-Host ""
+        Ok "Panel configured on port $panelPort."
+        Write-Host "  Token: $panelToken" -ForegroundColor Yellow
+        Write-Host "  (Also saved to .env — keep it private.)" -ForegroundColor DarkGray
     }
 
     Write-Env @{
@@ -335,6 +407,9 @@ Write-UpdateScript
 Write-Host "`n"
 Ok "MyHQ installation complete!"
 Write-Host "  Install dir : $InstallDir" -ForegroundColor Cyan
+if ($Script:PanelPortChosen) {
+    Write-Host "  Panel       : http://127.0.0.1:$($Script:PanelPortChosen)  (token saved to .env)" -ForegroundColor Cyan
+}
 Write-Host "  Tutorial    : $Tutorial" -ForegroundColor Cyan
 Write-Host "  To update   : .\scripts\windows\myhq-update.ps1" -ForegroundColor Cyan
 Write-Host ""

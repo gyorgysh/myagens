@@ -484,6 +484,8 @@ export const api = {
     req<{ schedules: ScheduleView[] }>("POST", "/api/schedules", s),
   updateSchedule: (id: string, patch: { prompt?: string; when?: string; cwd?: string }) =>
     req<{ schedules: ScheduleView[] }>("PUT", `/api/schedules/${id}`, patch),
+  runScheduleNow: (id: string) =>
+    req<{ ok: boolean; schedules: ScheduleView[] }>("POST", `/api/schedules/${id}/run`, {}),
   deleteSchedule: (id: string) => req<{ ok: boolean }>("DELETE", `/api/schedules/${id}`),
   usage: () => get<UsageSummary>("/api/usage"),
 

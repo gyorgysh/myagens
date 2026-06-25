@@ -562,6 +562,8 @@ export const en = {
   sched_empty: "No schedules yet.",
   sched_next: "next {time}",
   sched_last: "last {time}",
+  sched_run_now: "Run now",
+  sched_run_busy: "Chat is busy, try again shortly.",
 
   // Status view
   status_kind_anthropic: "Anthropic",

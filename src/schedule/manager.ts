@@ -16,10 +16,12 @@ export type ScheduleRunner = (s: Schedule) => Promise<boolean>;
 export class ScheduleManager {
   private schedules: Schedule[] = loadSchedules();
   private timer?: NodeJS.Timeout;
+  private runner?: ScheduleRunner;
 
   /** Begin ticking. `run` executes a due schedule's prompt. */
   start(run: ScheduleRunner): void {
     if (this.timer) return;
+    this.runner = run;
     this.timer = setInterval(() => void this.tick(run), TICK_MS);
     this.timer.unref?.();
     log.info("Scheduler started", { count: this.schedules.length });
@@ -28,6 +30,19 @@ export class ScheduleManager {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+  }
+
+  /** Fire a schedule immediately by id, regardless of its nextRunAt. */
+  async runNow(id: string): Promise<"ok" | "not_found" | "no_runner" | "busy"> {
+    const s = this.schedules.find((s) => s.id === id);
+    if (!s) return "not_found";
+    if (!this.runner) return "no_runner";
+    const started = await this.runner(s);
+    if (!started) return "busy";
+    s.lastRunAt = Date.now();
+    s.nextRunAt = nextRun(s.spec, Date.now());
+    saveSchedules(this.schedules);
+    return "ok";
   }
 
   list(chatId: number): Schedule[] {

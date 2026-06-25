@@ -56,6 +56,18 @@ export function SchedulesView({ onAuthError }: { onAuthError: () => void }) {
     }
   };
 
+  const runNow = async (id: string) => {
+    setError(null);
+    try {
+      const r = await api.runScheduleNow(id);
+      setSchedules(r.schedules);
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      const msg = String(e);
+      setError(msg.includes("409") ? t("sched_run_busy") : msg);
+    }
+  };
+
   const del = async (id: string) => {
     if (!confirm(t("sched_delete_confirm"))) return;
     await api.deleteSchedule(id);
@@ -161,6 +173,7 @@ export function SchedulesView({ onAuthError }: { onAuthError: () => void }) {
                     {t("sched_next").replace("{time}", relTime(s.nextRunAt))}
                     {s.lastRunAt ? ` · ${t("sched_last").replace("{time}", relTime(s.lastRunAt))}` : ""}
                   </span>
+                  <Button onClick={() => void runNow(s.id)}>{t("sched_run_now")}</Button>
                   <Button onClick={() => startEdit(s)}>{t("edit")}</Button>
                   <Button variant="danger" onClick={() => del(s.id)}>
                     {t("delete")}

@@ -261,6 +261,13 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     if (!updated) return reply.code(404).send({ error: "not found" });
     return { schedules: listSchedules() };
   });
+  app.post("/api/schedules/:id/run", async (req, reply) => {
+    const result = await schedules.runNow((req.params as { id: string }).id);
+    if (result === "not_found") return reply.code(404).send({ error: "not found" });
+    if (result === "no_runner") return reply.code(503).send({ error: "scheduler not started" });
+    if (result === "busy") return reply.code(409).send({ error: "chat busy" });
+    return { ok: true, schedules: listSchedules() };
+  });
   app.delete("/api/schedules/:id", async (req, reply) => {
     if (!schedules.removeById((req.params as { id: string }).id))
       return reply.code(404).send({ error: "not found" });

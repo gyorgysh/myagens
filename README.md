@@ -1,14 +1,12 @@
 # MyHQ — Your Personal AI Headquarters
 
-**A self-hosted fleet of autonomous AI agents, deeply integrated with Telegram.** Talk to Atlas — your central coordinator — from your phone. He runs day-to-day operations, remembers everything, learns your workflows, and commands a team of specialized Leads. Each Lead owns a domain and can have its own Telegram bot.
+**A self-hosted fleet of autonomous AI agents, deeply integrated with Telegram.** Talk to Atlas, your central coordinator, from your phone. He runs day-to-day operations, remembers everything, learns your workflows, and commands a team of specialized Leads. Each Lead owns a domain and can have its own Telegram bot.
 
-![MyHQ Panel — Agents & Crew view](images/ft_agents.webp)
+![MyHQ Panel — Agents and Crew view](images/ft_agents.webp)
 
 Open source. Built on real **Claude Code** agents running on your machine, so every agent can read files, run commands, edit code, check services, and ship things — with replies streaming back live and risky actions gated behind your approval.
 
 > ⚠️ **These agents can read, write, and run commands on the machine they run on.** Access is gated by a Telegram user-id allow-list (and, for the panel, a secret token). Keep `ALLOWED_USER_IDS` tight and run it on a machine you control.
-
----
 
 ## The Command Structure
 
@@ -27,29 +25,24 @@ You (President)
 
 **You** set direction and make final calls. **Atlas** coordinates the team, handles whatever you send him, and knows his Leads' portfolios. **Leads** own their domain — they run specialized autonomous turns, have their own memory and session, and optionally appear as a separate Telegram bot you can message directly. **Assistants** are sub-agents scoped to a Lead.
 
----
-
 ## Two Ways In
 
 The same agents, two front doors:
 
-- **Telegram**: message Atlas from your phone. The old loop for touching a server (open a terminal, SSH in, run something, close it) becomes a chat with something already living on the server that knows your system. When a service falls over at 2 am you get a ping and fix it from the couch — no SSH client required. Your Leads have their own bots, so you can message your DevOps Lead directly without going through Atlas.
-- **MyHQ Panel**: an optional web dashboard served in the same process. Chat with Atlas in the browser, see your full crew hierarchy, watch live system health, run and schedule agents, delegate task-board cards to autonomous runs, browse memory and skills, manage secrets, and tune proactive monitoring.
+**Telegram**: message Atlas from your phone. The old loop for touching a server (open a terminal, SSH in, run something, close it) becomes a chat with something already living on the server that knows your system. When a service falls over at 2 am you get a ping and fix it from the couch, no SSH client required. Your Leads have their own bots, so you can message your DevOps Lead directly without going through Atlas.
 
----
+**MyHQ Panel**: an optional web dashboard served in the same process. Chat with Atlas in the browser, see your full crew hierarchy, watch live system health, run and schedule agents, delegate task-board cards to autonomous runs, browse memory and skills, manage secrets, and tune proactive monitoring.
 
 ## The Panel
 
 | | |
 | --- | --- |
 | ![Agents panel — Atlas and the crew](images/ft_agents_small.webp) | ![Tasks panel — Kanban board with delegate-to-agent](images/ft_tasks.webp) |
-| **Crew**: configure Atlas's model live; create Leads and Assistants with their own model, persona, skill, portfolio, and optional Telegram token. The Crew tab shows the full org chart. | **Tasks**: a Kanban board (Backlog / In progress / Done) with drag-and-drop, priority, WIP limits, and a **Delegate** button that hands a card to an autonomous agent run. |
+| **Crew**: configure Atlas's model live; create Leads and Assistants with their own model, persona, skill, portfolio, and optional Telegram token. The Crew tab shows the full org chart. | **Tasks**: a Kanban board (Backlog / In progress / Done) with drag-and-drop, priority, WIP limits, and a Delegate button that hands a card to an autonomous agent run. |
 | ![Heartbeat panel — proactive monitoring](images/ft_heartbeat.webp) | ![Schedules panel — timed autonomous prompts](images/ft_schedulers.webp) |
-| **Heartbeat**: proactive monitoring. Set CPU/mem/swap/disk thresholds; Atlas pings Telegram on breach, or runs an autonomous turn to investigate and act first. | **Schedules**: create timed autonomous prompts (`30m`, `2h`, `HH:MM`) from the panel or via `/schedule` in chat — results push back to Telegram. |
+| **Heartbeat**: proactive monitoring. Set CPU/mem/swap/disk thresholds; Atlas pings Telegram on breach, or runs an autonomous turn to investigate and act first. | **Schedules**: create timed autonomous prompts (`30m`, `2h`, `HH:MM`) from the panel or via `/schedule` in chat, with results pushed back to Telegram. |
 
 Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (browse / search / edit), **Vault** (AES-256-GCM secrets), **Skills**, **Prompt** (playbook editor), **Logs** (live tail), and more.
-
----
 
 ## In Telegram
 
@@ -59,8 +52,6 @@ Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** 
 | Upload files and photos — Atlas *sees* images inline. Here he asks for approval before running a `Bash` command. | Replies stream back live as they're written using Telegram's Rich Messages API, then land as a clean formatted message. |
 | ![Inline approve / deny / always-allow buttons](images/tg-claude-4.webp) | ![A tool call paused for approval](images/tg-claude-3.webp) |
 | Tap **✅ Approve**, **❌ Deny**, or **♾️ Always allow** — the last option whitelists the tool for the rest of the session. | Every non-read-only tool call pauses and shows exactly what's about to run before it happens. |
-
----
 
 ## What Makes It a Fleet, Not Just a Bot
 
@@ -74,13 +65,11 @@ Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** 
 
 **Atlas knows his team.** Every turn, Atlas's system prompt is automatically updated with the current Lead roster — who they are, what they own. He can reference them, coordinate with them, and tell you which Lead to ask.
 
-**Autonomous delegation.** Task cards on the board can be delegated to an agent run with one button. The agent can break the card into subtasks, complete them, and move the card to Done — without you touching it.
+**Autonomous delegation.** Task cards on the board can be delegated to an agent run with one button. The agent can break the card into subtasks, complete them, and move the card to Done without you touching it.
 
 **Proactive monitoring.** The heartbeat runs in the background watching host health and stalled task cards. It can alert you, or it can run an autonomous turn to investigate and act first.
 
 **Scheduled runs.** Set any agent or Lead to run a prompt on a timer — check disk space at 9am, summarize logs every 2 hours, pull a report every Monday.
-
----
 
 ## Quick Install
 
@@ -90,11 +79,9 @@ On a fresh **Linux** or **macOS** machine, the wizard installs everything (Node 
 curl -fsSL https://gyorgy.sh/myhq-install.sh | bash
 ```
 
-You'll need a [bot token](#setup) and your numeric Telegram user id. The wizard prompts for both. Prefer to read before you run? The script is [`scripts/myhq-install.sh`](scripts/myhq-install.sh).
+You'll need a [bot token](#setup-manual) and your numeric Telegram user id. The wizard prompts for both. Prefer to read before you run? The script is [`scripts/myhq-install.sh`](scripts/myhq-install.sh).
 
 > For an unattended run, set `MYHQ_TOKEN`, `MYHQ_USER_IDS`, and `MYHQ_MODE=service|manual` (and `MYHQ_YES=1`) in the environment.
-
----
 
 ## Setup (manual)
 
@@ -107,36 +94,33 @@ You'll need a [bot token](#setup) and your numeric Telegram user id. The wizard 
    cp .env.example .env
    # edit .env: TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, WORKDIR
    ```
-4. **Install & run**:
+4. **Install and run**:
    ```bash
    npm install
    npm run dev         # watch mode (reloads on change)
    # or: npm run build && npm start
    ```
 
----
-
 ## Run as a Service
 
 ```bash
-./scripts/install-service.sh        # builds, installs + starts the service
+./scripts/install-service.sh        # builds, installs and starts the service
 ./scripts/agentctl.sh status        # start | stop | restart | status | logs
 ./scripts/agentctl.sh logs          # follow logs
 ```
 
-- **Linux**: systemd unit (`myhq`). The installer adds a scoped, passwordless sudoers rule.
-- **macOS**: per-user LaunchAgent (`sh.gyorgy.myhq`) that runs in your login session; no sudo needed.
+**Linux**: systemd unit (`myhq`). The installer adds a scoped, passwordless sudoers rule.
 
-You can also ask Atlas to restart himself: *"restart yourself"* → `./scripts/agentctl.sh restart`.
+**macOS**: per-user LaunchAgent (`sh.gyorgy.myhq`) that runs in your login session; no sudo needed.
 
-### Update & uninstall
+You can also ask Atlas to restart himself: *"restart yourself"* triggers `./scripts/agentctl.sh restart`.
+
+### Update and uninstall
 
 ```bash
 ./scripts/update.sh                 # git pull + npm install + build, restarts if service is installed
 ./scripts/uninstall-service.sh      # remove the service (leaves checkout, .env and data/ intact)
 ```
-
----
 
 ## Configuration
 
@@ -177,15 +161,14 @@ You can also ask Atlas to restart himself: *"restart yourself"* → `./scripts/a
 
 Send a voice note and it's transcribed and run like a typed prompt. Two backends via `TRANSCRIBE_PROVIDER`:
 
-- **`openai`** (default): any OpenAI-compatible `/audio/transcriptions` endpoint. Use OpenAI directly, or **Groq's free tier**: set `TRANSCRIBE_BASE_URL=https://api.groq.com/openai/v1`, `TRANSCRIBE_MODEL=whisper-large-v3-turbo`, and a Groq `OPENAI_API_KEY`.
-- **`vosk`**: fully local and offline.
-  ```bash
-  npm install vosk
-  # install ffmpeg, download + unpack a model from https://alphacephei.com/vosk/models
-  ```
-  Then set `VOSK_MODEL_PATH=/path/to/vosk-model` and `TRANSCRIBE_PROVIDER=vosk`.
+**`openai`** (default): any OpenAI-compatible `/audio/transcriptions` endpoint. Use OpenAI directly, or **Groq's free tier**: set `TRANSCRIBE_BASE_URL=https://api.groq.com/openai/v1`, `TRANSCRIBE_MODEL=whisper-large-v3-turbo`, and a Groq `OPENAI_API_KEY`.
 
----
+**`vosk`**: fully local and offline.
+```bash
+npm install vosk
+# install ffmpeg, download and unpack a model from https://alphacephei.com/vosk/models
+```
+Then set `VOSK_MODEL_PATH=/path/to/vosk-model` and `TRANSCRIBE_PROVIDER=vosk`.
 
 ## Enabling the Panel
 
@@ -203,21 +186,15 @@ npm run build && npm start
 
 Open `http://127.0.0.1:8787` and unlock with your `PANEL_TOKEN`. Keep the bind on loopback and reach it only behind a reverse proxy or private network (e.g. Tailscale). Light / dark / hacker themes, URL per view.
 
----
-
 ## Permissions
 
 Nothing runs without your say-so. For every non-read-only tool call you get an inline prompt showing exactly what's about to happen:
 
-- **✅ Approve** — run it once.
-- **❌ Deny** — refuse it.
-- **♾️ Always allow `<Tool>`** — stop asking for that tool for the rest of this session.
+**✅ Approve** — run it once.
+**❌ Deny** — refuse it.
+**♾️ Always allow `<Tool>`** — stop asking for that tool for the rest of this session.
 
-Switch a chat to autonomous mode with `/mode auto` (and back with `/mode safe`). Read-only tools (`Read` / `Glob` / `Grep` …) always run automatically.
-
-Lead bots default to the same safe mode and show the same approve/deny prompts. Autonomous mode is per-bot.
-
----
+Switch a chat to autonomous mode with `/mode auto` (and back with `/mode safe`). Read-only tools (`Read` / `Glob` / `Grep`) always run automatically. Lead bots default to the same safe mode with the same approve/deny prompts.
 
 ## Full Feature List
 
@@ -225,19 +202,17 @@ Lead bots default to the same safe mode and show the same approve/deny prompts. 
 - **Live streaming**: uses Telegram's Rich Messages (Bot API 10.1) and message drafts (Bot API 9.3) — replies animate as previews and land as clean, structured messages.
 - **Durable memory**: agents save facts with `memory_write` and recall the relevant ones into every turn automatically. Adapts to you over time without any setup.
 - **Skill factory**: Atlas distils reusable workflows into a skills library with `skill_save` and refines them with `skill_patch`. Skills are loaded into any agent's system prompt.
-- **Proactive monitoring**: optional heartbeat watches host health (CPU/mem/swap/disk) and stalled task cards, pinging Telegram on breach — or running an autonomous turn to investigate first.
+- **Proactive monitoring**: optional heartbeat watches host health (CPU/mem/swap/disk) and stalled task cards, pinging Telegram on breach, or running an autonomous turn to investigate first.
 - **Secret vault**: AES-256-GCM encrypted secrets with the master key in the macOS Keychain (file fallback on Linux). Reference secrets anywhere as `vault:<id>` so tokens never sit in plaintext.
 - **Multi-agent task delegation**: task board cards can be delegated to an autonomous run. The agent can break cards into subtasks, complete them, and move the card to Done.
 - **Operator playbook (`work.md`)**: define once how recurring jobs should be done — restart Apache, edit crontab safely, deploy a project. Re-read every turn, so edits apply instantly.
 - **Session continuity**: context carries across messages; `/new` resets it. Sessions (resume token, cwd, mode, allow-lists, usage) survive restarts.
-- **Git review from chat**: `/diff` shows the diff with inline **Commit / Discard** buttons; `/commit <message>` stages and commits.
+- **Git review from chat**: `/diff` shows the diff with inline Commit / Discard buttons; `/commit <message>` stages and commits.
 - **Voice notes**: transcribed and run as prompts via OpenAI-compatible API (OpenAI, Groq) or fully local Vosk.
-- **Local model support**: point Atlas or any Lead at LM Studio, Ollama, or any Anthropic-compatible proxy — switchable live from the panel.
+- **Local model support**: point Atlas or any Lead at LM Studio, Ollama, or any Anthropic-compatible proxy, switchable live from the panel.
 - **File send/receive**: upload files and photos (agents see images inline); agents can send files back via the built-in `send_file` tool.
 - **Scheduled runs**: timed autonomous prompts on any interval or daily time, per-agent.
 - **Quiet by default**: messages from anyone not on the allow-list are silently ignored.
-
----
 
 ## Commands (Atlas)
 
@@ -250,7 +225,7 @@ Lead bots default to the same safe mode and show the same approve/deny prompts. 
 | `/projects` | Saved working dirs — switch/add/remove via inline buttons |
 | `/diff` | Review the working-tree diff, then commit or discard inline |
 | `/commit <message>` | Stage all changes and commit |
-| `/usage` | Show cost & activity for this chat (today + lifetime) |
+| `/usage` | Show cost and activity for this chat (today + lifetime) |
 | `/allow <Tool>` · `/allowed` · `/disallow <Tool\|all>` | Manage persistent always-allow rules |
 | `/schedule [list]` · `/schedule add <when> \| <prompt>` · `/schedule rm <id>` | Timed autonomous prompts (`when` = `30m`/`2h`/`1d` or `HH:MM`) |
 | `/stop` | Abort the running request |
@@ -258,8 +233,6 @@ Lead bots default to the same safe mode and show the same approve/deny prompts. 
 | `/help` | Show help |
 
 Lead bots support `/status`, `/stop`, `/mode`, and `/help`.
-
----
 
 ## Architecture
 
@@ -333,17 +306,17 @@ panel/                MyHQ Panel frontend (React + Vite + Tailwind v4)
 
 Built on [`telegraf`](https://github.com/telegraf/telegraf) and [`@anthropic-ai/claude-agent-sdk`](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk); the panel uses [`fastify`](https://fastify.dev) + [`systeminformation`](https://systeminformation.io) on the server and React + Vite + Tailwind on the client.
 
----
-
 ## Troubleshooting
 
-- **Atlas doesn't respond**: confirm your numeric id is in `ALLOWED_USER_IDS` — unknown users are silently ignored. Check logs with `LOG_LEVEL=debug`.
-- **`npm start` shows stale behavior**: `npm start` runs compiled `dist/`; rebuild with `npm run build` first.
-- **Rich formatting looks off**: try `STREAM_MODE=draft` or `STREAM_MODE=edit`. Rich/draft modes require a private chat.
-- **Approvals never resolve**: make sure only one instance is polling — two pollers split updates.
-- **Lead bot not starting**: check that `telegramToken` is a valid `vault:<id>` reference pointing to a real bot token in the vault, and that the Lead is enabled.
+**Atlas doesn't respond**: confirm your numeric id is in `ALLOWED_USER_IDS` — unknown users are silently ignored. Check logs with `LOG_LEVEL=debug`.
 
----
+**`npm start` shows stale behavior**: `npm start` runs compiled `dist/`; rebuild with `npm run build` first.
+
+**Rich formatting looks off**: try `STREAM_MODE=draft` or `STREAM_MODE=edit`. Rich/draft modes require a private chat.
+
+**Approvals never resolve**: make sure only one instance is polling — two pollers split updates.
+
+**Lead bot not starting**: check that `telegramToken` is a valid `vault:<id>` reference pointing to a real bot token in the vault, and that the Lead is enabled.
 
 ## Credits
 

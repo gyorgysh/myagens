@@ -27,6 +27,8 @@ export abstract class BaseDraftStreamer implements Streamer {
   protected closed = false;
   protected readonly draftId: number;
   protected readonly raw: RawApi;
+  /** Persistent messages sent by finalize() (the draft preview is ephemeral). */
+  protected persisted: number[] = [];
   private timer: NodeJS.Timeout | null = null;
   private keepalive: NodeJS.Timeout | null = null;
   private flushing = false;
@@ -100,6 +102,10 @@ export abstract class BaseDraftStreamer implements Streamer {
     if (this.keepalive) clearInterval(this.keepalive);
     this.timer = null;
     this.keepalive = null;
+  }
+
+  persistedMessageIds(): number[] {
+    return [...this.persisted];
   }
 
   /** Send the current streaming state (or a placeholder when empty) as a draft. */

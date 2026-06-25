@@ -1,6 +1,6 @@
 import { BaseDraftStreamer } from "./baseDraftStreamer.js";
 import { tameRichMarkdown } from "./formatting.js";
-import { sendFormattedMarkdown } from "./send.js";
+import { sendRichMarkdown } from "./send.js";
 
 /**
  * Streams a reply using Bot API 10.1 Rich Messages: `sendRichMessageDraft`
@@ -25,16 +25,6 @@ export class RichDraftStreamer extends BaseDraftStreamer {
   async finalize(footer?: string): Promise<void> {
     this.stopTimers();
     if (!this.content.trim()) return;
-    const tamed = tameRichMarkdown(this.content);
-    const markdown = footer ? `${tamed}\n\n${footer}` : tamed;
-    try {
-      await this.raw.callApi("sendRichMessage", {
-        chat_id: this.chatId,
-        rich_message: { markdown, skip_entity_detection: true },
-      });
-    } catch {
-      // Rich send failed (length/unsupported) — degrade to plain formatted messages.
-      await sendFormattedMarkdown(this.tg, this.chatId, tamed, footer);
-    }
+    this.persisted.push(...(await sendRichMarkdown(this.tg, this.chatId, this.content, footer)));
   }
 }

@@ -28,6 +28,6 @@ export class DraftStreamer extends BaseDraftStreamer {
 
   async finalize(footer?: string): Promise<void> {
     this.stopTimers();
-    await sendFormattedMarkdown(this.tg, this.chatId, this.content, footer);
+    this.persisted.push(...(await sendFormattedMarkdown(this.tg, this.chatId, this.content, footer)));
   }
 }

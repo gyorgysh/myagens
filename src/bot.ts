@@ -14,6 +14,7 @@ import { createCrewMcp } from "./mcp/crew.js";
 import { TelegramStreamer, type Streamer } from "./telegram/streamer.js";
 import { DraftStreamer } from "./telegram/draftStreamer.js";
 import { RichDraftStreamer } from "./telegram/richDraftStreamer.js";
+import { sendFormattedMarkdown, sendRichMarkdown } from "./telegram/send.js";
 import { PermissionManager, bashLeadCmd } from "./telegram/permissions.js";
 import { downloadIncomingFile, isViewableImage, readImageInput } from "./telegram/files.js";
 import { isGitCallback, resolveGitCallback } from "./telegram/gitFlow.js";
@@ -21,12 +22,13 @@ import { isProjectCallback, resolveProjectCallback } from "./telegram/projects.j
 import { transcribeAudio, voiceEnabled, voiceSetupHint } from "./telegram/voice.js";
 import { schedules, type ScheduleRunner } from "./schedule/manager.js";
 import { heartbeat } from "./core/heartbeat.js";
+import { taskDelegator } from "./core/taskRunner.js";
 import { resolveMainRun } from "./core/mainSettings.js";
 import { workers } from "./core/workers.js";
 import { escapeHtml, normalizeAgentText } from "./telegram/formatting.js";
 import { resolveAsk, hasPendingAsk } from "./core/crewAsk.js";
 import { autoExtractSkill } from "./core/autoSkill.js";
-import type { ImageInput } from "./claude/runner.js";
+import type { ImageInput, RunResult } from "./claude/runner.js";
 import type { Autonomy } from "./session/manager.js";
 import { sessions } from "./session/manager.js";
 import { log, preview } from "./logger.js";
@@ -203,6 +205,24 @@ export function buildBot(): Telegraf {
       runUserPrompt(permissions, chatId, prompt, bot.telegram, { autonomous: true });
       return true;
     },
+  });
+
+  // Delegated kanban cards run via runTurn (not handleUserPrompt), so they have
+  // no Telegram path of their own — report their outcome to the president here.
+  taskDelegator.onReport(async (r) => {
+    const chatId = alertTargets[0];
+    if (chatId === undefined) return;
+    if (r.status === "ok" && r.res) {
+      await sendSummaryReport(bot.telegram, chatId, r.res, `✅ ${r.title}`).catch(() => {});
+      return;
+    }
+    const notice =
+      r.status === "stopped"
+        ? `⏹ Task stopped — ${r.title}`
+        : `⚠️ Task failed — ${r.title}${r.error ? `: ${r.error}` : ""}`;
+    await bot.telegram
+      .sendMessage(chatId, `<i>${escapeHtml(notice)}</i>`, { parse_mode: "HTML" })
+      .catch(() => {});
   });
 
   return bot;
@@ -400,6 +420,14 @@ async function handleUserPrompt(
     });
     if (res.isError && res.text) {
       await tg.sendMessage(chatId, friendlyError(new Error(res.text))).catch(() => {});
+    } else if (autonomous && !res.isError) {
+      // Autonomous run (scheduled job / delegated card / heartbeat): the streamed
+      // transcript is noise for the President. Replace it with a single clean
+      // summary report of the job done, dropping the streamed messages first.
+      for (const id of streamer.persistedMessageIds()) {
+        await tg.deleteMessage(chatId, id).catch(() => {});
+      }
+      await sendSummaryReport(tg, chatId, res);
     }
 
     // Auto skill extraction (fire-and-forget, gated by env var).
@@ -433,6 +461,43 @@ async function imageInputs(path: string): Promise<ImageInput[] | undefined> {
     log.error("Failed to read image for vision", { path, error: errText(err) });
     return undefined;
   }
+}
+
+/**
+ * Post a clean summary report for an autonomous run, replacing the streamed
+ * transcript. The agent's final result text is the "summary of changes"; we add
+ * a compact footer (tools used + cost/duration) so the President gets a tidy
+ * report rather than a wall of streamed tokens.
+ */
+async function sendSummaryReport(
+  tg: Telegraf["telegram"],
+  chatId: number,
+  res: RunResult,
+  heading?: string,
+): Promise<void> {
+  const summary = (res.text ?? "").trim() || "Done.";
+  const body = heading ? `**${heading}**\n\n${summary}` : summary;
+  const parts: string[] = [];
+  const tools = res.toolCalls?.length ?? 0;
+  if (tools > 0) parts.push(`${tools} tool call${tools === 1 ? "" : "s"}`);
+  if (typeof res.durationMs === "number") parts.push(fmtDuration(res.durationMs));
+  if (typeof res.costUsd === "number" && res.costUsd > 0) parts.push(`$${res.costUsd.toFixed(3)}`);
+  const footer = parts.length ? `✅ Report · ${parts.join(" · ")}` : "✅ Report";
+  // Render through the same path as the streamed reply so headings/lists/bold
+  // look the way the transcript did (the HTML path leaves `#`/`-` literal).
+  if (config.STREAM_MODE === "rich") {
+    await sendRichMarkdown(tg, chatId, body, footer).catch(() => {});
+  } else {
+    await sendFormattedMarkdown(tg, chatId, body, footer).catch(() => {});
+  }
+}
+
+function fmtDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m ${Math.round(s % 60)}s`;
 }
 
 function summarizeArg(input: unknown): string {

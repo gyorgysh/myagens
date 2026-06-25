@@ -8,6 +8,13 @@ export interface Streamer {
   appendText(delta: string): void;
   setStatus(line: string): void;
   finalize(footer?: string): Promise<void>;
+  /**
+   * Persistent message IDs this streamer has sent (non-ephemeral). Empty for the
+   * draft backends, whose previews auto-expire and whose final reply is sent
+   * separately. Used to delete the streamed transcript when a turn replaces it
+   * with a summary report (autonomous runs).
+   */
+  persistedMessageIds(): number[];
 }
 
 /**
@@ -94,6 +101,10 @@ export class TelegramStreamer implements Streamer {
     } finally {
       this.flushing = false;
     }
+  }
+
+  persistedMessageIds(): number[] {
+    return [...this.messageIds];
   }
 
   /** Force a final render with an optional footer (e.g. cost/duration). */

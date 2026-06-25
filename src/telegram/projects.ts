@@ -69,7 +69,7 @@ export async function resolveProjectCallback(
   } else if (action === "go" && Number.isInteger(idx) && s.projects[idx]) {
     const dir = s.projects[idx];
     if (!existsSync(dir) || !statSync(dir).isDirectory()) {
-      return "Gone — that directory no longer exists";
+      return "Gone (that directory no longer exists)";
     }
     s.cwd = dir;
     sessions.save();

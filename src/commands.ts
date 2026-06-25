@@ -12,7 +12,7 @@ import { schedules, parseWhen, describeSpec } from "./schedule/manager.js";
 import * as git from "./git.js";
 import { escapeHtml } from "./telegram/formatting.js";
 import type { UsageStat } from "./session/store.js";
-import { loadProbeResult } from "./core/usageProbe.js";
+import { loadProbeResult, runProbe } from "./core/usageProbe.js";
 import { getPlanSettings, billingPeriodStart, daysUntilReset } from "./core/planSettings.js";
 import { log } from "./logger.js";
 
@@ -20,9 +20,9 @@ function buildStart(firstName?: string): string {
   const A = config.ATLAS_NAME;
   const B = config.BRAND_NAME;
   const hey = firstName ? `Hey ${escapeHtml(firstName)}` : "Hey";
-  return `👋 <b>${hey} — I'm ${A}, your ${B} coordinator.</b>
+  return `👋 <b>${hey}! I'm ${A}, your ${B} coordinator.</b>
 
-I run as a real Claude Code agent on this machine. I can read files, write code, run commands, check services, and ship things. Replies stream live as I work. Risky actions — anything that writes or executes — pause for your approval first.
+I run as a real Claude Code agent on this machine. I can read files, write code, run commands, check services, and ship things. Replies stream live as I work. Anything that writes or executes pauses for your approval first.
 
 <b>Talk to me like a person:</b>
 <i>"What's eating all the disk space?"</i>
@@ -31,42 +31,42 @@ I run as a real Claude Code agent on this machine. I can read files, write code,
 
 I coordinate a crew of specialist Leads (DevOps, Finance, Research, whatever you configure). Use /council to put a decision to a full team vote, or message a Lead directly if they have their own bot.
 
-You can send me files and photos — I see images inline. Voice notes are transcribed and run as prompts.
+You can send me files and photos (I see images inline) and voice notes (transcribed and run as prompts).
 
 /help for the full command list.`;
 }
 
 function buildHelp(): string {
   const A = config.ATLAS_NAME;
-  return `🤖 <b>${escapeHtml(A)} — Commands</b>
+  return `🤖 <b>${escapeHtml(A)}: Commands</b>
 
 <b>Conversation</b>
-/new — fresh context (clear session)
-/stop — abort the running request
+/new: fresh context (clear session)
+/stop: abort the running request
 
 <b>Files &amp; Git</b>
-/cd &lt;path&gt; — change working directory
-/pwd — current directory
-/projects — switch between saved working dirs
-/diff — review the working-tree diff with Commit / Discard buttons
-/commit &lt;message&gt; — stage all changes and commit
+/cd &lt;path&gt;: change working directory
+/pwd: current directory
+/projects: switch between saved working dirs
+/diff: review the working-tree diff with Commit / Discard buttons
+/commit &lt;message&gt;: stage all changes and commit
 
 <b>Autonomy</b>
-/mode supervised|standard|full — approval level for this chat
-/allow &lt;Tool&gt; · /allowed · /disallow &lt;Tool|all&gt; — persistent tool allow-rules
+/mode supervised|standard|full: approval level for this chat
+/allow &lt;Tool&gt; · /allowed · /disallow &lt;Tool|all&gt;: persistent tool allow-rules
 
 <b>Crew</b>
-/council &lt;idea&gt; — put a proposal to a full Lead council vote
+/council &lt;idea&gt;: put a proposal to a full Lead council vote
 
 <b>Scheduling</b>
-/schedule add &lt;when&gt; | &lt;prompt&gt; — timed autonomous run (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)
+/schedule add &lt;when&gt; | &lt;prompt&gt;: timed autonomous run (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)
 /schedule list · /schedule rm &lt;id&gt;
 
 <b>Info</b>
-/status — session info (cwd, model, autonomy, session id)
-/usage — plan, subscription limits, and API spend
-/lang [code] — show or set response language (e.g. <code>/lang hu</code>)
-/help — this message
+/status: session info (cwd, model, autonomy, session id)
+/usage: plan, subscription limits, and API spend
+/lang [code]: show or set response language (e.g. <code>/lang hu</code>)
+/help: this message
 
 Send files or photos (seen inline as vision input), or voice notes (transcribed and run as prompts).`;
 }
@@ -211,7 +211,7 @@ export function registerCommands(bot: Telegraf): void {
       }
       const lines = list.map(
         (x) =>
-          `• <code>${x.id}</code> — ${escapeHtml(describeSpec(x.spec))}, next ${new Date(x.nextRunAt).toLocaleString()}\n  <i>${escapeHtml(x.prompt.slice(0, 80))}</i>`,
+          `• <code>${x.id}</code>: ${escapeHtml(describeSpec(x.spec))}, next ${new Date(x.nextRunAt).toLocaleString()}\n  <i>${escapeHtml(x.prompt.slice(0, 80))}</i>`,
       );
       await ctx.replyWithHTML(
         `<b>⏰ Schedules</b>\n${lines.join("\n")}\n\nRemove with <code>/schedule rm &lt;id&gt;</code>.`,
@@ -252,7 +252,7 @@ export function registerCommands(bot: Telegraf): void {
       const sched = schedules.add(ctx.chat.id, s.cwd, prompt, spec);
       log.info("Command /schedule add", { chatId: ctx.chat.id, id: sched.id });
       await ctx.replyWithHTML(
-        `⏰ Scheduled <code>${sched.id}</code> — ${escapeHtml(describeSpec(spec))}.\n` +
+        `⏰ Scheduled <code>${sched.id}</code>: ${escapeHtml(describeSpec(spec))}.\n` +
           `First run ${new Date(sched.nextRunAt).toLocaleString()} in <code>${escapeHtml(s.cwd)}</code>.\n` +
           `<i>Runs autonomously (no approval prompts).</i>`,
       );
@@ -267,24 +267,35 @@ export function registerCommands(bot: Telegraf): void {
     const today = new Date().toISOString().slice(0, 10);
     const probe = loadProbeResult();
     const plan = getPlanSettings();
+
+    // Kick off a background refresh if data is absent or older than 5 minutes.
+    const probeAgeMs = probe ? Date.now() - new Date(probe.probedAt).getTime() : Infinity;
+    const stale = probeAgeMs > 5 * 60_000;
+    if (stale) void runProbe().catch(() => {});
+
     const lines: string[] = ["<b>📊 Usage</b>"];
 
-    // Plan + account
+    // Plan + account — probe data wins; planSettings is the fallback.
+    // Track whether this is a subscription user so we skip the API budget block.
+    let isSubscriber = plan.plan === "pro" || plan.plan === "max";
     if (probe?.account) {
+      isSubscriber = probe.account.hasPro || probe.account.hasMax;
       const planLabel = probe.account.hasMax
         ? "Claude Max"
         : probe.account.hasPro
           ? "Claude Pro"
           : "API (pay-per-token)";
-      const who = probe.account.email ? ` · <code>${escapeHtml(probe.account.email)}</code>` : "";
-      lines.push(`\n<b>Plan</b>  ${planLabel}${who}`);
+      const email = probe.account.email
+        ? ` · <tg-spoiler>${escapeHtml(probe.account.email)}</tg-spoiler>`
+        : "";
+      lines.push(`\n<b>Plan</b>  ${planLabel}${email}`);
     } else {
       const planLabel = plan.plan === "max" ? "Claude Max" : plan.plan === "pro" ? "Claude Pro" : "API (pay-per-token)";
       lines.push(`\n<b>Plan</b>  ${planLabel}`);
     }
 
-    // Subscription limits (OAuth)
-    if (probe?.limits && probe.limits.length > 0) {
+    // Subscription limits — only shown when the OAuth probe has real data.
+    if (probe?.source === "oauth" && probe.limits.length > 0) {
       lines.push("\n<b>Subscription limits</b>");
       for (const lim of probe.limits) {
         const msLeft = Math.max(0, new Date(lim.resetsAt).getTime() - Date.now());
@@ -298,8 +309,8 @@ export function registerCommands(bot: Telegraf): void {
     lines.push(`Today     ${fmtUsage(s.usage.daily[today])}`);
     lines.push(`Lifetime  ${fmtUsage(s.usage.total)}`);
 
-    // API budget (only when plan=api and a cap is configured)
-    if (plan.plan === "api" && plan.monthlyCap > 0) {
+    // API budget — only for confirmed API users with a cap set.
+    if (!isSubscriber && plan.monthlyCap > 0) {
       const periodStart = billingPeriodStart(plan.billingDay);
       const periodSpend = sessions.all().reduce((sum, sess) => {
         for (const [d, stat] of Object.entries(sess.usage.daily)) {
@@ -307,25 +318,27 @@ export function registerCommands(bot: Telegraf): void {
         }
         return sum;
       }, 0);
-      const pct = plan.monthlyCap > 0 ? Math.round((periodSpend / plan.monthlyCap) * 100) : 0;
+      const pct = Math.round((periodSpend / plan.monthlyCap) * 100);
       const daysLeft = daysUntilReset(plan.billingDay);
       lines.push(`\n<b>API budget</b>`);
       lines.push(`Period spend  <b>$${periodSpend.toFixed(2)}</b> / $${plan.monthlyCap.toFixed(2)} (${pct}%)  ${fmtBar(pct)}`);
       lines.push(`Billing resets in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`);
     }
 
-    // Activity from stats-cache (when available)
+    // Activity from stats-cache
     if (probe?.activity) {
       const a = probe.activity;
       lines.push(`\n<b>Activity</b>`);
       lines.push(`Messages  today ${a.messageCount}  ·  this week ${a.weeklyMessageCount}`);
     }
 
-    // Probe age
+    // Freshness footer
     if (probe) {
-      const ageMin = Math.round((Date.now() - new Date(probe.probedAt).getTime()) / 60_000);
+      const ageMin = Math.round(probeAgeMs / 60_000);
       const aged = ageMin < 2 ? "just now" : `${ageMin}m ago`;
-      lines.push(`\n<i>Subscription data from ${aged}</i>`);
+      lines.push(`\n<i>Subscription data from ${aged}${stale ? " · refreshing" : ""}</i>`);
+    } else {
+      lines.push(`\n<i>No subscription data yet · checking now</i>`);
     }
 
     await ctx.replyWithHTML(lines.join("\n"));
@@ -347,7 +360,7 @@ export function registerCommands(bot: Telegraf): void {
     const s = sessions.get(ctx.chat.id);
     if (s.busy && s.abort) {
       s.abort.abort();
-      log.info("Command /stop — aborting turn", { chatId: ctx.chat.id });
+      log.info("Command /stop: aborting turn", { chatId: ctx.chat.id });
       await ctx.reply("⏹ Stopping…");
     } else {
       await ctx.reply("Nothing is running.");
@@ -440,7 +453,7 @@ export function registerCommands(bot: Telegraf): void {
 }
 
 function fmtUsage(stat: UsageStat | undefined): string {
-  if (!stat || stat.turns === 0) return "—";
+  if (!stat || stat.turns === 0) return "-";
   const secs = Math.round(stat.durationMs / 1000);
   const time = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
   return `${stat.turns} turn${stat.turns === 1 ? "" : "s"} · $${stat.costUsd.toFixed(2)} · ${time}`;

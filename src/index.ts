@@ -74,6 +74,14 @@ async function main(): Promise<void> {
     maintenance.stop();
     stopProbeScheduler();
 
+    // Stop the panel and Telegram polling immediately so the port is released
+    // before launchd/systemd restarts the process. In-flight turns may still
+    // be running — we drain those below before actually exiting.
+    sessions.flush();
+    void stopPanel?.();
+    bot.stop(signal);
+    for (const lb of leadBots) lb.stop(signal);
+
     // Give in-flight turns up to 30 s to finish naturally before we abort them.
     // whenSettled() waits for the *whole* turn, not just the SDK stream: the
     // session.busy gate (registered above) keeps it busy through the post-stream
@@ -86,16 +94,9 @@ async function main(): Promise<void> {
       if (done) return;
       done = true;
       clearTimeout(deadline);
-      log.info("All turns finished — waiting 10 s before exit");
-      setTimeout(() => {
-        log.info("Flushing and exiting");
-        sessions.flush();
-        void stopPanel?.();
-        bot.stop(signal);
-        for (const lb of leadBots) lb.stop(signal);
-        // Short backstop in case bot.stop() stalls.
-        setTimeout(() => { log.info("Forcing exit"); process.exit(0); }, 3000).unref();
-      }, 10_000);
+      log.info("All turns finished — exiting");
+      // Give the panel server a moment to finish closing, then exit.
+      setTimeout(() => { process.exit(0); }, 500).unref();
     };
 
     const deadline = setTimeout(() => {

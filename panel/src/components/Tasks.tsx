@@ -307,6 +307,7 @@ function Card({
   const [priority, setPriority] = useState<Priority>(task.priority);
   const isDone = task.column.toLowerCase().includes("done") || task.column === "archive";
   const [delegateOpen, setDelegateOpen] = useState(!isDone);
+  const [notesOpen, setNotesOpen] = useState(!isDone);
 
   const running = live?.status === "running" || task.delegate?.status === "running";
   const dstatus = live?.status ?? task.delegate?.status;
@@ -393,7 +394,17 @@ function Card({
         />
         <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setEditing(true)}>
           <div className="text-sm text-fg">{task.title}</div>
-          {task.notes && <div className="mt-1 line-clamp-3 text-xs text-fg-dim">{task.notes}</div>}
+          {task.notes && isDone && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setNotesOpen((o) => !o); }}
+              className="mt-1 flex items-center gap-1 text-xs text-fg-faint hover:text-fg-dim"
+            >
+              {t("tasks_notes_toggle")} <span className="opacity-50">{notesOpen ? "▲" : "▼"}</span>
+            </button>
+          )}
+          {task.notes && (!isDone || notesOpen) && (
+            <div className="mt-1 line-clamp-3 text-xs text-fg-dim">{task.notes}</div>
+          )}
           {task.parentId && <div className="mt-1 text-xs text-fg-faint">{t("tasks_subtask")}</div>}
           <div className="mt-1 text-xs text-fg-faint">
             {t("tasks_created").replace("{date}", formatDate(task.createdAt))}

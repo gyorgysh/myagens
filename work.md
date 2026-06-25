@@ -200,6 +200,10 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/schedules 
   -d '{ "prompt": "Check disk usage and alert if over 80%", "when": "09:00", "cwd": "/home/user" }'
 # when: "30m", "2h", "1d", or "HH:MM" (daily, server local time)
 
+# Update a schedule (prompt, when, cwd)
+curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/schedules/<id> \
+  -d '{ "prompt": "New prompt", "when": "10:00", "cwd": "/home/user" }'
+
 # Pause/resume a schedule (paused ones stay in the list but never fire on tick)
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/schedules/<id>/enabled \
   -d '{ "enabled": false }'
@@ -252,12 +256,16 @@ curl -X DELETE -H "$AUTH" $BASE/api/skills/<id>
 ### Main agent (Atlas)
 
 ```bash
-# View current model, provider, persona, autonomy, language
+# View current model, provider, persona, autonomy, defaultLanguage
 curl -H "$AUTH" $BASE/api/agent
 
 # Update (all fields optional)
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
-  -d '{ "model": "claude-opus-4-8", "persona": "Concise and direct.", "autonomy": "standard", "language": "en" }'
+  -d '{ "model": "claude-opus-4-8", "persona": "Concise and direct.", "autonomy": "standard", "defaultLanguage": "en" }'
+
+# Toggle semantic memory embeddings
+curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent/embeddings \
+  -d '{ "enabled": true, "provider": "ollama", "baseUrl": "http://localhost:11434", "model": "nomic-embed-text" }'
 
 # Clear all session resume tokens (next message starts fresh)
 curl -X POST -H "$AUTH" $BASE/api/agent/reset

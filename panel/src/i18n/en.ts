@@ -219,6 +219,7 @@ export const en = {
   tasks_add_card: "+ Add card",
   tasks_card_title_placeholder: "Card title…",
   tasks_notes_placeholder: "Notes…",
+  tasks_notes_toggle: "Notes",
   tasks_click_rename: "Click to rename",
   tasks_set_wip: "Set WIP limit",
   tasks_remove_column: "Remove column (must be empty)",
@@ -615,6 +616,8 @@ export const en = {
     "Reset the code to the latest commit on this branch from GitHub. Discards local code changes (e.g. a self-update gone wrong) but keeps your data, secrets, config, and work.md. Use this if a change broke the panel or build — you can also trigger it from Telegram with /restore.",
   updates_restore: "Restore from GitHub",
   updates_active_warn: "A task is currently running — it will be stopped when the bot restarts.",
+  updates_tip_active_title: "Task running",
+  updates_tip_active_body: "A task is currently running. If you apply an update now, the bot will restart and the task will be stopped.",
   updates_restore_confirm:
     "Restore the code to the latest GitHub commit? Local code changes are discarded; your data and config are kept. The bot will rebuild and restart.",
 

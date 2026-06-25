@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, AuthError, openHealthSocket, type UpdateStatus } from "../api.ts";
-import { Badge, Button, Card } from "./ui.tsx";
+import { Badge, Button, Callout, Card } from "./ui.tsx";
 import { useI18n } from "../lib/useI18n.ts";
 import { relTime } from "../lib/format.ts";
 
@@ -103,6 +103,11 @@ export function UpdatesView({
 
   return (
     <div className="space-y-4">
+      {status?.active && (
+        <Callout title={t("updates_tip_active_title")}>
+          {t("updates_tip_active_body")}
+        </Callout>
+      )}
       <Card title={t("updates_title")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">

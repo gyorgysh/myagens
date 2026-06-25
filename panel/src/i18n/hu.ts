@@ -221,6 +221,7 @@ export const hu: Translations = {
   tasks_add_card: "+ Kártya hozzáadása",
   tasks_card_title_placeholder: "Kártya címe…",
   tasks_notes_placeholder: "Jegyzetek…",
+  tasks_notes_toggle: "Megjegyzések",
   tasks_click_rename: "Kattints az átnevezéshez",
   tasks_set_wip: "WIP limit beállítása",
   tasks_remove_column: "Oszlop eltávolítása (üresnek kell lennie)",
@@ -589,6 +590,8 @@ export const hu: Translations = {
     "Visszaállítja a kódot az ág legutóbbi GitHub commitjára. Eldobja a helyi kódváltoztatásokat (pl. egy elrontott önfrissítést), de megtartja az adatokat, titkokat, konfigurációt és a work.md fájlt. Akkor használd, ha egy változtatás elrontotta a panelt vagy a buildet — Telegramról is indítható a /restore paranccsal.",
   updates_restore: "Visszaállítás GitHubról",
   updates_active_warn: "Jelenleg fut egy feladat — a bot újraindításakor leáll.",
+  updates_tip_active_title: "Feladat fut",
+  updates_tip_active_body: "Jelenleg fut egy feladat. Ha most frissítesz, a bot újraindul és a feladat leáll.",
   updates_restore_confirm:
     "Visszaállítod a kódot a legutóbbi GitHub commitra? A helyi kódváltoztatások elvesznek; az adatok és a konfiguráció megmaradnak. A bot újraépül és újraindul.",
 

@@ -10,6 +10,7 @@ import { startPanel } from "./panel/server.js";
 import { workers } from "./core/workers.js";
 import { LeadBot } from "./telegram/leadBot.js";
 import { log } from "./logger.js";
+import { whenIdle } from "./core/activity.js";
 
 async function main(): Promise<void> {
   if (config.ANTHROPIC_API_KEY) {
@@ -60,36 +61,39 @@ async function main(): Promise<void> {
   const shutdown = (signal: "SIGINT" | "SIGTERM") => {
     log.info(`${signal} — shutting down`);
 
-    // Abort any in-flight turns so the SDK child processes (and the stdio
-    // pipes that keep the event loop alive) are released. Without this the
-    // process hangs and systemd ends up SIGKILLing it after TimeoutStopSec.
-    let aborted = 0;
-    for (const s of sessions.all()) {
-      if (s.busy && s.abort) {
-        s.abort.abort();
-        aborted++;
-      }
-    }
-    if (aborted) log.info("Aborted in-flight turns on shutdown", { count: aborted });
-
-    // Stop the scheduler and flush any debounced session/usage state before we go.
+    // Stop accepting new turns and new scheduled work.
     schedules.stop();
     heartbeat.stop();
     maintenance.stop();
     stopProbeScheduler();
-    sessions.flush();
-    void stopPanel?.();
 
-    bot.stop(signal);
-    for (const lb of leadBots) lb.stop(signal);
+    // Give in-flight turns (including fire-and-forget reflect/memory writes)
+    // up to 30 s to finish naturally before we abort them.
+    const GRACEFUL_MS = 30_000;
+    const deadline = setTimeout(() => {
+      log.info("Graceful deadline reached — aborting in-flight turns");
+      let aborted = 0;
+      for (const s of sessions.all()) {
+        if (s.busy && s.abort) {
+          s.abort.abort();
+          aborted++;
+        }
+      }
+      if (aborted) log.info("Aborted in-flight turns", { count: aborted });
+    }, GRACEFUL_MS);
+    // Don't let the timer itself keep the process alive past a clean exit.
+    deadline.unref();
 
-    // Backstop: if some handle still pins the loop, exit anyway rather than
-    // wait for the service-manager kill. unref so this timer itself can't
-    // hold the process open.
-    setTimeout(() => {
-      log.info("Forcing exit");
-      process.exit(0);
-    }, 3000).unref();
+    void whenIdle().then(() => {
+      log.info("All turns finished — flushing and exiting");
+      clearTimeout(deadline);
+      sessions.flush();
+      void stopPanel?.();
+      bot.stop(signal);
+      for (const lb of leadBots) lb.stop(signal);
+      // Short backstop in case bot.stop() stalls.
+      setTimeout(() => { log.info("Forcing exit"); process.exit(0); }, 3000).unref();
+    });
   };
 
   process.once("SIGINT", () => shutdown("SIGINT"));

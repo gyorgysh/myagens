@@ -474,6 +474,9 @@ export const en = {
   logs_lines: "{n} lines",
   logs_no_lines: "No log lines.",
   logs_failed_load: "Failed to load: {error}",
+  logs_search_placeholder: "Search…",
+  logs_date_today: "Today",
+  logs_date_label: "Date",
 
   // Main Agent card
   agent_main_title: "Main Agent",

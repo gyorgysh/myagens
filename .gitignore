@@ -15,5 +15,8 @@ models/
 data/
 !data/.gitkeep
 
+# Persistent log files (NDJSON, rotated every 72h)
+logs/
+
 # Machine-local Claude Code settings (keep personal allowlists out of the repo)
 .claude/settings.local.json

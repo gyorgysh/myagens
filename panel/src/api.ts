@@ -468,7 +468,16 @@ export const api = {
   me: () =>
     get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; atlasName: string; brandName: string }>("/api/me"),
   sessions: () => get<{ sessions: SessionView[] }>("/api/sessions"),
-  logs: () => get<{ logs: LogEntry[] }>("/api/logs"),
+  logs: (params?: { date?: string; q?: string; level?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.date) qs.set("date", params.date);
+    if (params?.q) qs.set("q", params.q);
+    if (params?.level) qs.set("level", params.level);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return get<{ logs: LogEntry[] }>(`/api/logs${suffix}`);
+  },
+  logDates: () => get<{ dates: string[] }>("/api/logs/dates"),
   schedules: () => get<{ schedules: ScheduleView[] }>("/api/schedules"),
   createSchedule: (s: { prompt: string; when: string; cwd?: string }) =>
     req<{ schedules: ScheduleView[] }>("POST", "/api/schedules", s),

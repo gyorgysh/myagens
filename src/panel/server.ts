@@ -16,7 +16,7 @@ import {
   daysUntilReset,
 } from "../core/planSettings.js";
 import { AGENT_LANGUAGES } from "../core/languages.js";
-import { log, onLog, recentLogs } from "../logger.js";
+import { log, onLog, recentLogs, availableLogDates, readLogFile, type LogEntry } from "../logger.js";
 import { getHealth } from "../core/health.js";
 import { listSessions, listSchedules, usageSummary } from "../core/snapshot.js";
 import { getPrompt, savePlaybook } from "../core/playbook.js";
@@ -266,7 +266,44 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   });
   app.get("/api/usage", async () => usageSummary());
   app.get("/api/audit", async () => ({ events: recentAudit() }));
-  app.get("/api/logs", async () => ({ logs: recentLogs() }));
+  // GET /api/logs
+  //   ?date=YYYY-MM-DD  — read from the persisted file for that date
+  //                        (omit to get the live in-memory ring for today)
+  //   &q=text           — case-insensitive substring search across msg + meta
+  //   &level=info       — filter to a single level
+  //   &limit=2000       — max entries returned (default 2000)
+  // GET /api/logs/dates — list available log dates, newest first
+  app.get("/api/logs/dates", async () => ({ dates: availableLogDates() }));
+  app.get("/api/logs", async (req) => {
+    const { date, q, level, limit } = (req.query ?? {}) as Record<string, string | undefined>;
+    if (date) {
+      // Validate date format before hitting the filesystem.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return { logs: [] };
+      }
+      return {
+        logs: readLogFile(date, {
+          q,
+          level: level as LogEntry["level"] | undefined,
+          limit: limit ? Number(limit) : undefined,
+        }),
+      };
+    }
+    // No date — return live ring buffer, with optional client-side-compatible
+    // in-process filtering so the panel can reuse the same path.
+    let logs = recentLogs();
+    if (level) logs = logs.filter((e) => e.level === level);
+    if (q) {
+      const needle = q.toLowerCase();
+      logs = logs.filter(
+        (e) =>
+          e.msg.toLowerCase().includes(needle) ||
+          (e.meta ? JSON.stringify(e.meta).toLowerCase().includes(needle) : false),
+      );
+    }
+    if (limit) logs = logs.slice(-Number(limit));
+    return { logs };
+  });
 
   // --- system prompt / playbook ---
   app.get("/api/prompt", async () => getPrompt());

@@ -96,6 +96,16 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
       }
     >
       <p className="mb-3 text-sm text-fg-dim">{t("memory_desc")}</p>
+
+      <div className="mb-4 flex gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
+        <span className="mt-0.5 shrink-0 text-base leading-none">💡</span>
+        <span>
+          <strong className="font-semibold text-blue-200">Tip:</strong> In chat, tell your agent{" "}
+          <em>"please remember…"</em> to save any fact you think it missed. You can also say{" "}
+          <em>"what do you remember about X?"</em> to verify recall before a long task.
+        </span>
+      </div>
+
       {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
 
       {editing && (

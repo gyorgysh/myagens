@@ -42,7 +42,7 @@ The same agents, two front doors:
 | ![Heartbeat panel: proactive monitoring](images/prev_hearthbeat.webp) | ![Schedules panel: timed autonomous prompts](images/prev_scheduler.webp) |
 | **Heartbeat**: proactive monitoring. Set CPU/mem/swap/disk thresholds; Atlas pings Telegram on breach, or runs an autonomous turn to investigate and act first. | **Schedules**: create timed autonomous prompts (`30m`, `2h`, `HH:MM`) from the panel or via `/schedule` in chat, with results pushed back to Telegram. |
 
-Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (tier-based fact store with hot/warm/cold recall), **Vault** (AES-256-GCM secrets), **Skills** (reusable workflows), **Prompt** (playbook editor), **Logs** (live tail), **Settings** (main agent, plan and budget tracker, language, model providers), and more.
+Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (tier-based fact store with hot/warm/cold recall), **Vault** (AES-256-GCM secrets), **Skills** (reusable workflows), **Prompt** (playbook editor), **Logs** (live tail + searchable history by date, level, and keyword; 72h rotation), **Settings** (main agent, plan and budget tracker, language, model providers), and more.
 
 ## In Telegram
 
@@ -265,6 +265,8 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Local model support**: point Atlas or any Lead at LM Studio, Ollama, or any Anthropic-compatible proxy, switchable live from the Settings tab.
 - **File send/receive**: upload files and photos (agents see images inline); agents can send files back via the built-in `send_file` tool.
 - **Scheduled runs**: timed autonomous prompts on any interval or daily time, per-agent.
+- **Persistent logs**: agent activity is written to dated NDJSON files in `logs/` (one per day, never truncated on restart). Files older than 72 hours rotate automatically. The panel Logs view lets you browse and search any past day by date, level, or keyword.
+- **Live model switching**: `/model` shows shortcut buttons for the main Claude tiers (Opus, Sonnet, Haiku) and lists any configured local or provider models as text. Switch with one tap or `/model <name>` directly. Takes effect on the next message.
 
 ## Commands (Atlas)
 
@@ -282,6 +284,7 @@ Lead bots default to standard mode with the same approve/deny prompts.
 | `/schedule [list]` / `/schedule add <when> \| <prompt>` / `/schedule rm <id>` | Timed autonomous prompts (`when` = `30m`/`2h`/`1d` or `HH:MM`) |
 | `/stop` | Abort the running request |
 | `/mode supervised\|standard\|full` | Set the approval level for this chat |
+| `/model [name]` | Show the model menu or switch directly: `/model claude-opus-4-8` |
 | `/lang [code]` | Show or set the agent's response language (e.g. `/lang hu`) |
 | `/council <idea>` | Put a proposal to a vote of all enabled Leads |
 | `/help` | Show help |

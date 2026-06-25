@@ -86,9 +86,7 @@ async function main(): Promise<void> {
       if (done) return;
       done = true;
       clearTimeout(deadline);
-      log.info("All turns finished — waiting 40 s before exit");
-      // 40-second hold lets OS-level hooks (file watchers, launchd hooks, etc.)
-      // observe the idle state before the process disappears.
+      log.info("All turns finished — waiting 10 s before exit");
       setTimeout(() => {
         log.info("Flushing and exiting");
         sessions.flush();
@@ -97,7 +95,7 @@ async function main(): Promise<void> {
         for (const lb of leadBots) lb.stop(signal);
         // Short backstop in case bot.stop() stalls.
         setTimeout(() => { log.info("Forcing exit"); process.exit(0); }, 3000).unref();
-      }, 40_000).unref();
+      }, 10_000).unref();
     };
 
     const deadline = setTimeout(() => {

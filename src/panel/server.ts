@@ -30,6 +30,8 @@ import {
   deleteTask,
   getWip,
   setWip,
+  pruneArchive,
+  autoArchive,
 } from "../core/tasks.js";
 import {
   listColumns,
@@ -428,7 +430,11 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   });
 
   // --- task board ---
-  app.get("/api/tasks", async () => ({ tasks: listTasks(), columns: listColumns(), wip: getWip() }));
+  app.get("/api/tasks", async () => {
+    pruneArchive();
+    autoArchive();
+    return { tasks: listTasks(), columns: listColumns(), wip: getWip() };
+  });
   // Column config CRUD
   app.get("/api/tasks/columns", async () => ({ columns: listColumns() }));
   app.post("/api/tasks/columns", async (req, reply) => {

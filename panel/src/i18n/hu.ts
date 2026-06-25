@@ -235,6 +235,16 @@ export const hu: Translations = {
   tasks_remove_confirm: "Eltávolítod a(z) \"{name}\" oszlopot?",
   tasks_failed_load: "Betöltés sikertelen: {error}",
   tasks_subtask: "↳ részfeladat",
+  tasks_move_to_planned: "Áthelyezés tervezettbe",
+  tasks_mark_done: "Kész jelölése",
+  tasks_archive: "Archívum",
+  tasks_archive_empty: "Nincs archivált kártya.",
+  tasks_archive_show: "Archívum mutatása ({n})",
+  tasks_archive_hide: "Archívum elrejtése",
+  tasks_created: "Létrehozva: {date}",
+  tasks_did_you_know_title: "Tudtad?",
+  tasks_did_you_know_body: "Kérheted az ügynököt, hogy adjon hozzá kártyát: „adj hozzá egy feladatot a lemezhasználat ellenőrzéséhez" — vagy delegálj egy kártyát autonóm futtatásra egy kattintással. A Kész oszlopból 1 nap után kerülnek az archívumba, ami 7 nap után automatikusan törlődik.",
+  col_archive: "Archívum",
 
   // Munkások
   workers_crew: "A csapatod",

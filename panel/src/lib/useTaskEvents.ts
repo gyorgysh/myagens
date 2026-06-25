@@ -9,20 +9,27 @@ export interface LiveTask {
 }
 
 type TaskMsg =
-  | { type: "task"; event: "start"; taskId: string; runId: string }
+  | { type: "task"; event: "start"; taskId: string; runId: string; column?: string }
   | { type: "task"; event: "delta"; taskId: string; runId: string; delta: string }
   | { type: "task"; event: "tool"; taskId: string; runId: string; tool: string }
-  | { type: "task"; event: "end"; taskId: string; runId: string; delegate?: TaskDelegation };
+  | { type: "task"; event: "end"; taskId: string; runId: string; delegate?: TaskDelegation; column?: string };
 
 /**
- * Track live delegated-task runs over the shared /ws, keyed by task id. The
- * caller refreshes the board on `end` (via onEnd) to pick up the moved card.
+ * Track live delegated-task runs over the shared /ws, keyed by task id.
+ * onColumnMove is called on start and end when the server moved the card to a
+ * different column, enabling the board to update optimistically without a
+ * full reload.
  */
-export function useTaskEvents(onEnd: () => void): Record<string, LiveTask> {
+export function useTaskEvents(
+  onEnd: () => void,
+  onColumnMove?: (taskId: string, column: string) => void,
+): Record<string, LiveTask> {
   const [byTask, setByTask] = useState<Record<string, LiveTask>>({});
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
   const onEndRef = useRef(onEnd);
+  const onMoveRef = useRef(onColumnMove);
   onEndRef.current = onEnd;
+  onMoveRef.current = onColumnMove;
 
   useEffect(() => {
     let closed = false;
@@ -44,6 +51,7 @@ export function useTaskEvents(onEnd: () => void): Record<string, LiveTask> {
         }
         if (m.event === "start") {
           set(m.taskId, () => ({ runId: m.runId, status: "running", output: "" }));
+          if (m.column) onMoveRef.current?.(m.taskId, m.column);
         } else if (m.event === "delta") {
           set(m.taskId, (p) => ({
             runId: m.runId,
@@ -65,6 +73,7 @@ export function useTaskEvents(onEnd: () => void): Record<string, LiveTask> {
             output: p?.runId === m.runId ? p.output : (m.delegate?.output ?? ""),
             tool: undefined,
           }));
+          if (m.column) onMoveRef.current?.(m.taskId, m.column);
           onEndRef.current();
         }
       };

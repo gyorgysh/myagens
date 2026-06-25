@@ -70,8 +70,9 @@ export class TaskDelegator {
     const abort = new AbortController();
     this.active.set(id, abort);
     setDelegate(id, { status: "running", runId, startedAt, output: "" });
+    const movedTo = task.column === "backlog" ? "doing" : task.column;
     if (task.column === "backlog") updateTask(id, { column: "doing" });
-    this.broadcast({ type: "task", event: "start", taskId: id, runId });
+    this.broadcast({ type: "task", event: "start", taskId: id, runId, column: movedTo });
     audit("task.delegate", { id, runId });
     void this.execute(id, task.title, task.notes, runId, startedAt, abort);
     return { ok: true };
@@ -114,7 +115,8 @@ export class TaskDelegator {
         output,
         error: res.isError ? res.text?.slice(0, 500) : undefined,
       });
-      if (!res.isError) updateTask(id, { column: "done" });
+      const finalColumn = res.isError ? undefined : "done";
+      if (finalColumn) updateTask(id, { column: finalColumn });
       await Promise.resolve(
         this.notify({ taskId: id, title, status: res.isError ? "error" : "ok", res }),
       ).catch(() => {});
@@ -139,7 +141,8 @@ export class TaskDelegator {
       ).catch(() => {});
     } finally {
       this.active.delete(id);
-      this.broadcast({ type: "task", event: "end", taskId: id, runId, delegate: getTask(id)?.delegate });
+      const endTask = getTask(id);
+      this.broadcast({ type: "task", event: "end", taskId: id, runId, delegate: endTask?.delegate, column: endTask?.column });
     }
   }
 }

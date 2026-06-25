@@ -120,7 +120,7 @@ export interface ClaudeRoot {
 
 /** Column id is now any string defined by the column config (no longer a fixed union). */
 export type Column = string;
-export interface ColumnDef { id: string; name: string; order: number; }
+export interface ColumnDef { id: string; name: string; order: number; collapsed?: boolean; }
 export type Priority = "low" | "normal" | "high";
 export interface TaskDelegation {
   status: "running" | "ok" | "error" | "stopped";

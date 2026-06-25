@@ -235,6 +235,14 @@ export const en = {
   tasks_subtask: "↳ subtask",
   tasks_move_to_planned: "Move to Planned",
   tasks_mark_done: "Mark Done",
+  tasks_archive: "Archive",
+  tasks_archive_empty: "No archived cards.",
+  tasks_archive_show: "Show archive ({n})",
+  tasks_archive_hide: "Hide archive",
+  tasks_created: "Created {date}",
+  tasks_did_you_know_title: "Did you know?",
+  tasks_did_you_know_body: "You can ask the agent to add cards: \"add a task to check disk usage\" — or delegate a card to an autonomous run with one click. Cards in Done auto-archive after 1 day, and the archive clears itself after 7 days.",
+  col_archive: "Archive",
 
   // Workers
   workers_crew: "Your Crew",

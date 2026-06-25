@@ -7,6 +7,8 @@ export interface ColumnDef {
   id: string;
   name: string;
   order: number;
+  /** If true the column renders collapsed in the panel (e.g. Archive). */
+  collapsed?: boolean;
 }
 
 interface ColumnFile {
@@ -18,12 +20,20 @@ const DEFAULTS: ColumnDef[] = [
   { id: "backlog", name: "Planned", order: 0 },
   { id: "doing", name: "In Progress", order: 1 },
   { id: "done", name: "Done", order: 2 },
+  { id: "archive", name: "Archive", order: 3, collapsed: true },
 ];
 
 function load(): ColumnDef[] {
   const f = loadJson<ColumnFile>(FILE, { version: 1, columns: DEFAULTS });
   if (!f.columns || f.columns.length === 0) return DEFAULTS;
-  return [...f.columns].sort((a, b) => a.order - b.order);
+  const cols = [...f.columns].sort((a, b) => a.order - b.order);
+  // Backfill the archive column for existing installs that predate it.
+  if (!cols.some((c) => c.id === "archive")) {
+    const archiveCol: ColumnDef = { id: "archive", name: "Archive", order: cols.length, collapsed: true };
+    cols.push(archiveCol);
+    saveJson<ColumnFile>(FILE, { version: 1, columns: cols });
+  }
+  return cols;
 }
 
 function persist(cols: ColumnDef[]): void {

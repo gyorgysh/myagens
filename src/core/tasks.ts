@@ -184,3 +184,82 @@ export function deleteTask(id: string): boolean {
   audit("task.delete", { id });
   return true;
 }
+
+/**
+ * Move a card to the archive column, stripping notes/delegation data so the
+ * archive stays lightweight (title + metadata only).
+ */
+export function archiveTask(id: string): Task | undefined {
+  const tasks = load();
+  const task = tasks.find((t) => t.id === id);
+  if (!task || task.column === "archive") return task;
+  const maxOrder = Math.max(0, ...tasks.filter((t) => t.column === "archive").map((t) => t.order));
+  task.column = "archive";
+  task.notes = "";
+  task.delegate = undefined;
+  task.order = maxOrder + 1;
+  task.updatedAt = Date.now();
+  persist(tasks);
+  audit("task.archive", { id });
+  return task;
+}
+
+/**
+ * Remove archived cards that are older than 7 days.
+ * Called on each GET /api/tasks so the board self-cleans passively.
+ */
+export function pruneArchive(): void {
+  const WEEK = 7 * 24 * 60 * 60 * 1000;
+  const tasks = load();
+  const cutoff = Date.now() - WEEK;
+  const next = tasks.filter((t) => !(t.column === "archive" && t.updatedAt < cutoff));
+  if (next.length !== tasks.length) persist(next);
+}
+
+/**
+ * Auto-archive candidates:
+ * - Any non-archive column that has >10 cards: archive the oldest (lowest updatedAt) ones to stay at 10.
+ * - Done cards older than 1 day move to archive.
+ */
+export function autoArchive(): void {
+  const DAY = 24 * 60 * 60 * 1000;
+  let tasks = load();
+  const cutoff = Date.now() - DAY;
+  let changed = false;
+
+  // Archive done cards older than 1 day.
+  for (const t of tasks) {
+    if (t.column === "done" && t.updatedAt < cutoff) {
+      t.column = "archive";
+      t.notes = "";
+      t.delegate = undefined;
+      t.updatedAt = Date.now();
+      changed = true;
+    }
+  }
+
+  // Re-load column counts after the done sweep.
+  const byCols: Record<string, Task[]> = {};
+  for (const t of tasks) {
+    if (t.column === "archive") continue;
+    (byCols[t.column] ??= []).push(t);
+  }
+  for (const [col, cards] of Object.entries(byCols)) {
+    if (cards.length <= 10) continue;
+    const sorted = [...cards].sort((a, b) => a.updatedAt - b.updatedAt);
+    const toArchive = sorted.slice(0, cards.length - 10);
+    const ids = new Set(toArchive.map((t) => t.id));
+    for (const t of tasks) {
+      if (ids.has(t.id)) {
+        t.column = "archive";
+        t.notes = "";
+        t.delegate = undefined;
+        t.updatedAt = Date.now();
+        changed = true;
+      }
+    }
+    audit("task.auto_archive", { col, count: toArchive.length });
+  }
+
+  if (changed) persist(tasks);
+}

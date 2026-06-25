@@ -14,7 +14,7 @@ import { createCrewMcp } from "./mcp/crew.js";
 import { TelegramStreamer, type Streamer } from "./telegram/streamer.js";
 import { DraftStreamer } from "./telegram/draftStreamer.js";
 import { RichDraftStreamer } from "./telegram/richDraftStreamer.js";
-import { sendFormattedMarkdown, sendRichMarkdown } from "./telegram/send.js";
+import { sendFormattedMarkdown, sendRichMarkdown, sendExpandableQuote } from "./telegram/send.js";
 import { PermissionManager, bashLeadCmd } from "./telegram/permissions.js";
 import { downloadIncomingFile, isViewableImage, readImageInput } from "./telegram/files.js";
 import { isGitCallback, resolveGitCallback } from "./telegram/gitFlow.js";
@@ -428,6 +428,23 @@ async function handleUserPrompt(
         await tg.deleteMessage(chatId, id).catch(() => {});
       }
       await sendSummaryReport(tg, chatId, res);
+    } else if (!res.isError && res.text) {
+      // If the agent ended its reply with a \n---\n delimiter, split the output:
+      // replace the streamed message(s) with a collapsed expandable blockquote
+      // (the full transcript as a log), then send the short reply line as a
+      // normal chat message so the conversation stays clean.
+      const splitIdx = res.text.lastIndexOf("\n---\n");
+      if (splitIdx !== -1) {
+        const bulk = res.text.slice(0, splitIdx).trim();
+        const reply = res.text.slice(splitIdx + 5).trim();
+        if (bulk && reply) {
+          for (const id of streamer.persistedMessageIds()) {
+            await tg.deleteMessage(chatId, id).catch(() => {});
+          }
+          await sendExpandableQuote(tg, chatId, bulk).catch(() => {});
+          await tg.sendMessage(chatId, reply, { link_preview_options: { is_disabled: true } }).catch(() => {});
+        }
+      }
     }
 
     // Post-turn reflection: distil a durable fact and/or reusable skill

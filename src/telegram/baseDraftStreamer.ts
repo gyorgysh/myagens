@@ -1,7 +1,7 @@
 import type { Telegram } from "telegraf";
 import type { Streamer } from "./streamer.js";
 
-const DRAFT_INTERVAL_MS = 900;
+const DRAFT_INTERVAL_MS = 250;
 /** Drafts are a 30s ephemeral preview; refresh well within that during quiet spells. */
 const KEEPALIVE_MS = 20_000;
 

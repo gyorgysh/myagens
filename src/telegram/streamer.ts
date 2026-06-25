@@ -1,7 +1,7 @@
 import type { Telegram } from "telegraf";
 import { escapeHtml, markdownToHtml, splitForTelegram } from "./formatting.js";
 
-const EDIT_INTERVAL_MS = 1200;
+const EDIT_INTERVAL_MS = 250;
 
 /** Common surface for the streaming backends (edit-in-place or message drafts). */
 export interface Streamer {

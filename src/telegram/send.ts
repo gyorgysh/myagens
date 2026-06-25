@@ -70,6 +70,36 @@ async function sendChunk(tg: Telegram, chatId: number, text: string): Promise<nu
   }
 }
 
+/**
+ * Send a plain text message as a Telegram expandable blockquote (Bot API 9.0+).
+ * The content is collapsed by default — the user taps to expand. Useful for
+ * preserving the full agent transcript without filling the chat. Falls back to a
+ * plain sendMessage if the entity type is rejected (older Bot API).
+ */
+export async function sendExpandableQuote(
+  tg: Telegram,
+  chatId: number,
+  text: string,
+): Promise<number | undefined> {
+  const plain = stripTags(text).trim();
+  if (!plain) return undefined;
+  // Telegram caps entity messages at 4096 chars; truncate gracefully.
+  const capped = plain.length > 4000 ? `${plain.slice(0, 4000)}…` : plain;
+  try {
+    const msg = await tg.sendMessage(chatId, capped, {
+      entities: [{ type: "expandable_blockquote", offset: 0, length: capped.length }],
+      link_preview_options: { is_disabled: true },
+    } as unknown as Parameters<typeof tg.sendMessage>[2]);
+    return msg.message_id;
+  } catch {
+    // Fallback: send as plain text so the log is never dropped.
+    const msg = await tg.sendMessage(chatId, capped, {
+      link_preview_options: { is_disabled: true },
+    });
+    return msg.message_id;
+  }
+}
+
 export function stripTags(html: string): string {
   return html
     .replace(/<\/?(b|i|code|pre)>/g, "")

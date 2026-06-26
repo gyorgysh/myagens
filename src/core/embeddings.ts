@@ -7,13 +7,17 @@ const TIMEOUT_MS = 15_000;
 const PROBE_TIMEOUT_MS = 3_000;
 
 const FILE = "embeddings.json";
-interface EmbeddingsFile { version: 1; enabled: boolean; provider: "ollama" | "openai"; baseUrl: string; model: string; }
+/** Which local backend the user prefers when both are running. */
+export type PreferredBackend = "ollama" | "lmstudio";
+interface EmbeddingsFile { version: 1; enabled: boolean; provider: "ollama" | "openai"; baseUrl: string; model: string; preferredBackend?: PreferredBackend | null; }
 
 /** Runtime override: null = follow EMBEDDING_ENABLED from .env */
 let _runtimeEnabled: boolean | null = null;
 let _runtimeProvider: "ollama" | "openai" | null = null;
 let _runtimeBaseUrl: string | null = null;
 let _runtimeModel: string | null = null;
+/** Preferred local backend for auto-probe ordering; null = no preference. */
+let _preferredBackend: PreferredBackend | null = null;
 
 function loadOverride(): void {
   const f = loadJson<EmbeddingsFile>(FILE, null as unknown as EmbeddingsFile);
@@ -22,6 +26,7 @@ function loadOverride(): void {
     _runtimeProvider = f.provider ?? null;
     _runtimeBaseUrl = f.baseUrl ?? null;
     _runtimeModel = f.model ?? null;
+    _preferredBackend = f.preferredBackend ?? null;
   }
 }
 loadOverride();
@@ -29,7 +34,36 @@ loadOverride();
 /** Persist the runtime override so it survives restarts. */
 function saveOverride(): void {
   const c = embeddingConfig();
-  saveJson<EmbeddingsFile>(FILE, { version: 1, enabled: _runtimeEnabled ?? c.enabled, provider: c.provider, baseUrl: c.baseUrl, model: c.model });
+  saveJson<EmbeddingsFile>(FILE, {
+    version: 1,
+    enabled: _runtimeEnabled ?? c.enabled,
+    provider: c.provider,
+    baseUrl: c.baseUrl,
+    model: c.model,
+    preferredBackend: _preferredBackend,
+  });
+}
+
+/** The user's preferred local backend when both are running (null = none). */
+export function preferredBackend(): PreferredBackend | null {
+  return _preferredBackend;
+}
+
+/** Set (or clear) the preferred local backend; persisted across restarts. */
+export function setPreferredBackend(pref: PreferredBackend | null): void {
+  _preferredBackend = pref;
+  saveOverride();
+  log.info("Preferred embedding backend set", { preferredBackend: pref });
+}
+
+/** Which backend the active embedding config points at ("ollama"|"lmstudio"|null). */
+export function activeBackend(): PreferredBackend | null {
+  if (!embeddingsEnabled()) return null;
+  const c = embeddingConfig();
+  if (c.provider === "ollama") return "ollama";
+  // OpenAI-shape on the LM Studio port is LM Studio; anything else is a custom endpoint.
+  if (/:1234(\/|$)/.test(c.baseUrl)) return "lmstudio";
+  return null;
 }
 
 /** Toggle semantic embeddings at runtime (panel toggle / auto-probe). */
@@ -194,10 +228,21 @@ export async function autoProbeEmbeddings(): Promise<void> {
   // Skip if the user made an explicit choice (env or panel save).
   if (_runtimeEnabled !== null || config.EMBEDDING_ENABLED) return;
 
-  const candidates: Array<{ provider: "ollama" | "openai"; baseUrl: string; model: string }> = [
-    { provider: "ollama", baseUrl: "http://localhost:11434", model: "nomic-embed-text" },
-    { provider: "openai", baseUrl: "http://localhost:1234", model: "nomic-embed-text" },
-  ];
+  const ollamaCandidate = { provider: "ollama" as const, baseUrl: "http://localhost:11434", model: "nomic-embed-text", backend: "ollama" as const };
+  // LM Studio: discover the real embedding model id at runtime (it ships as
+  // e.g. "text-embedding-nomic-embed-text-v1.5"), falling back to that name.
+  const lmStudioCandidate = {
+    provider: "openai" as const,
+    baseUrl: "http://localhost:1234",
+    model: (await discoverEmbedModel("openai", "http://localhost:1234")) ?? "text-embedding-nomic-embed-text-v1.5",
+    backend: "lmstudio" as const,
+  };
+
+  // Try the user's preferred backend first when set; otherwise Ollama-first.
+  const candidates =
+    _preferredBackend === "lmstudio"
+      ? [lmStudioCandidate, ollamaCandidate]
+      : [ollamaCandidate, lmStudioCandidate];
 
   for (const c of candidates) {
     try {
@@ -210,6 +255,47 @@ export async function autoProbeEmbeddings(): Promise<void> {
     } catch {
       // Unreachable — probeEndpoint swallows errors.
     }
+  }
+}
+
+/**
+ * Best-effort: ask an endpoint for its model list and return the first id that
+ * looks like an embedding model (contains "embed"). Used so LM Studio detection
+ * picks the actual installed id rather than guessing a fixed version string.
+ * Returns null if unreachable or no embedding model is present.
+ */
+export async function discoverEmbedModel(
+  provider: "ollama" | "openai",
+  baseUrl: string,
+): Promise<string | null> {
+  try {
+    const ids = await listEndpointModels(provider, baseUrl);
+    const embed = ids.find((id) => /embed/i.test(id));
+    return embed ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** List model ids from an endpoint (OpenAI /v1/models or Ollama /api/tags). */
+async function listEndpointModels(provider: "ollama" | "openai", baseUrl: string): Promise<string[]> {
+  const base = baseUrl.replace(/\/+$/, "");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+  try {
+    if (provider === "ollama") {
+      const res = await fetch(`${base.replace(/\/v1$/, "")}/api/tags`, { signal: ctrl.signal });
+      if (!res.ok) return [];
+      const json = (await res.json()) as { models?: Array<{ name?: unknown }> };
+      return (json.models ?? []).map((m) => (typeof m.name === "string" ? m.name : "")).filter(Boolean);
+    }
+    const url = /\/v1$/.test(base) ? `${base}/models` : `${base}/v1/models`;
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data?: Array<{ id?: unknown }> };
+    return (json.data ?? []).map((m) => (typeof m.id === "string" ? m.id : "")).filter(Boolean);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

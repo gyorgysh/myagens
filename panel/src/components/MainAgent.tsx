@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { api, AuthError, type MainAgent, type Autonomy, type EmbeddingConfig, type OllamaStatus } from "../api.ts";
+import { api, AuthError, type MainAgent, type Autonomy, type EmbeddingConfig, type OllamaStatus, type LmStudioStatus, type PreferredBackend } from "../api.ts";
 import { Badge, Button, Callout, Card, Input, Label, Select, TextArea } from "./ui.tsx";
 import { useI18n } from "../lib/useI18n.ts";
 import type { TranslationKey } from "../i18n/en.ts";
@@ -34,6 +34,9 @@ export function MainAgentCard({ onAuthError }: { onAuthError: () => void }) {
   const [embBaseUrl, setEmbBaseUrl] = useState("");
   const [embModel, setEmbModel] = useState("");
   const [ollama, setOllama] = useState<OllamaStatus | null>(null);
+  const [lmStudio, setLmStudio] = useState<LmStudioStatus | null>(null);
+  const [preferred, setPreferred] = useState<PreferredBackend | null>(null);
+  const [active, setActive] = useState<PreferredBackend | null>(null);
   const [fetched, setFetched] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -53,13 +56,16 @@ export function MainAgentCard({ onAuthError }: { onAuthError: () => void }) {
         setEmbProvider(a.embeddings.provider);
         setEmbBaseUrl(a.embeddings.baseUrl);
         setEmbModel(a.embeddings.model);
+        setPreferred(a.preferredBackend);
+        setActive(a.activeBackend);
       })
       .catch((e) => e instanceof AuthError && onAuthError());
 
   useEffect(() => {
     void load();
-    // Best-effort: probe for a locally running Ollama to offer one-click connect.
+    // Best-effort: probe for locally running model servers to offer one-click connect.
     api.ollamaStatus().then(setOllama).catch(() => {});
+    api.lmStudioStatus().then(setLmStudio).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -147,6 +153,39 @@ export function MainAgentCard({ onAuthError }: { onAuthError: () => void }) {
       flash(String(e));
     } finally {
       setBusy(null);
+    }
+  };
+
+  // One-click: register LM Studio as a provider + enable embeddings against it.
+  const connectLmStudio = async () => {
+    setBusy("lmstudio");
+    try {
+      const r = await api.lmStudioConnect();
+      setLmStudio(r.status);
+      if (r.embeddingsEnabled) {
+        setEmbEnabled(r.status.embeddingsOn);
+        setEmbProvider("openai");
+        setEmbBaseUrl(r.status.baseUrl);
+        if (r.status.embedModel) setEmbModel(r.status.embedModel);
+        await load();
+      }
+      flash(t("lmstudio_connected"));
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      flash(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Persist the preferred backend used by auto-detect when both servers run.
+  const choosePreferred = async (pref: PreferredBackend | null) => {
+    setPreferred(pref);
+    try {
+      await api.savePreferredBackend(pref);
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      flash(String(e));
     }
   };
 
@@ -270,7 +309,14 @@ export function MainAgentCard({ onAuthError }: { onAuthError: () => void }) {
       {embeddings && (
         <div className="mt-4 border-t border-line pt-4">
           <div className="flex items-center justify-between mb-2">
-            <Label>{t("settings_embeddings")}</Label>
+            <div className="flex items-center gap-2">
+              <Label>{t("settings_embeddings")}</Label>
+              {active && (
+                <Badge tone="green">
+                  {t("emb_active_backend").replace("{backend}", active === "ollama" ? "Ollama" : "LM Studio")}
+                </Badge>
+              )}
+            </div>
             <button
               type="button"
               role="switch"
@@ -302,6 +348,61 @@ export function MainAgentCard({ onAuthError }: { onAuthError: () => void }) {
                   )}
                 </div>
               </Callout>
+            </div>
+          )}
+          {lmStudio?.running && (
+            <div className="mb-3">
+              <Callout title={t("lmstudio_detected_title")}>
+                <div className="space-y-2">
+                  <p>
+                    {t("lmstudio_detected_body").replace("{count}", String(lmStudio.models.length))}
+                  </p>
+                  {!lmStudio.embedModel && (
+                    <p className="text-fg-faint">{t("lmstudio_no_embed_model")}</p>
+                  )}
+                  {lmStudio.providerExists && lmStudio.embeddingsOn ? (
+                    <p className="font-medium text-accent">{t("lmstudio_connected")}</p>
+                  ) : (
+                    <Button onClick={connectLmStudio} disabled={busy === "lmstudio"}>
+                      {busy === "lmstudio" ? t("lmstudio_connecting") : t("lmstudio_connect")}
+                    </Button>
+                  )}
+                </div>
+              </Callout>
+            </div>
+          )}
+          {ollama?.running && lmStudio?.running && (
+            <div className="mb-3">
+              <Label>{t("emb_preferred_label")}</Label>
+              <p className="mb-1.5 text-xs text-fg-dim">{t("emb_preferred_hint")}</p>
+              <div className="flex flex-wrap gap-1">
+                {([
+                  { value: "ollama" as const, label: "Ollama" },
+                  { value: "lmstudio" as const, label: "LM Studio" },
+                ]).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => choosePreferred(opt.value)}
+                    className={`rounded px-2.5 py-1 text-xs font-medium border transition-colors ${
+                      preferred === opt.value
+                        ? "bg-[var(--accent)] text-white border-transparent"
+                        : "border-line text-fg-dim hover:text-fg"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => choosePreferred(null)}
+                  className={`rounded px-2.5 py-1 text-xs font-medium border transition-colors ${
+                    !preferred ? "bg-[var(--accent)] text-white border-transparent" : "border-line text-fg-dim hover:text-fg"
+                  }`}
+                >
+                  {t("emb_preferred_auto")}
+                </button>
+              </div>
             </div>
           )}
           {embEnabled && (

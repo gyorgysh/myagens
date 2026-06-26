@@ -429,6 +429,8 @@ export interface EmbeddingConfig {
   model: string;
 }
 
+export type PreferredBackend = "ollama" | "lmstudio";
+
 export interface OllamaStatus {
   running: boolean;
   baseUrl: string;
@@ -440,6 +442,21 @@ export interface OllamaStatus {
 
 export interface OllamaConnectResult {
   status: OllamaStatus;
+  providerCreated: boolean;
+  embeddingsEnabled: boolean;
+}
+
+export interface LmStudioStatus {
+  running: boolean;
+  baseUrl: string;
+  models: string[];
+  embedModel: string | null;
+  providerExists: boolean;
+  embeddingsOn: boolean;
+}
+
+export interface LmStudioConnectResult {
+  status: LmStudioStatus;
   providerCreated: boolean;
   embeddingsEnabled: boolean;
 }
@@ -456,6 +473,10 @@ export interface MainAgent {
   autonomy: Autonomy;
   defaultLanguage: string;
   embeddings: EmbeddingConfig;
+  /** User-preferred local backend when both are running (null = none). */
+  preferredBackend: PreferredBackend | null;
+  /** Which backend the active embedding config points at (null = off/custom). */
+  activeBackend: PreferredBackend | null;
 }
 
 export interface Provider {
@@ -566,9 +587,13 @@ export const api = {
   resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),
   saveEmbeddings: (s: { enabled: boolean; provider?: "ollama" | "openai"; baseUrl?: string; model?: string }) =>
-    req<{ embeddings: EmbeddingConfig }>("PUT", "/api/agent/embeddings", s),
+    req<{ embeddings: EmbeddingConfig; activeBackend: PreferredBackend | null }>("PUT", "/api/agent/embeddings", s),
+  savePreferredBackend: (preferredBackend: PreferredBackend | null) =>
+    req<{ preferredBackend: PreferredBackend | null }>("PUT", "/api/agent/embeddings/preferred", { preferredBackend }),
   ollamaStatus: () => get<OllamaStatus>("/api/integrations/ollama"),
   ollamaConnect: () => req<OllamaConnectResult>("POST", "/api/integrations/ollama/connect"),
+  lmStudioStatus: () => get<LmStudioStatus>("/api/integrations/lmstudio"),
+  lmStudioConnect: () => req<LmStudioConnectResult>("POST", "/api/integrations/lmstudio/connect"),
 
   workers: () =>
     get<{

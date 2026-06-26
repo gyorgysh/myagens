@@ -57,8 +57,9 @@ import {
 } from "../core/providers.js";
 import { fetchProviderModels } from "../core/providerModels.js";
 import { mainSettingsView, setMainSettings } from "../core/mainSettings.js";
-import { embeddingConfig, setEmbeddingsEnabled } from "../core/embeddings.js";
+import { embeddingConfig, setEmbeddingsEnabled, preferredBackend, setPreferredBackend, activeBackend, type PreferredBackend } from "../core/embeddings.js";
 import { ollamaStatus, connectOllama } from "../core/ollama.js";
+import { lmStudioStatus, connectLmStudio } from "../core/lmstudio.js";
 import { serviceInstalled, restartService } from "../core/agentControl.js";
 import { isActive } from "../core/activity.js";
 import { getUpdateStatus, checkForUpdate, runUpdate, runRestore } from "../core/updateControl.js";
@@ -213,6 +214,8 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     ...mainSettingsView(),
     serviceInstalled: serviceInstalled(),
     embeddings: embeddingConfig(),
+    preferredBackend: preferredBackend(),
+    activeBackend: activeBackend(),
   }));
   app.put("/api/agent/embeddings", async (req) => {
     const { enabled, provider, baseUrl, model } = (req.body ?? {}) as {
@@ -222,7 +225,13 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       model?: string;
     };
     setEmbeddingsEnabled(enabled, { provider, baseUrl, model });
-    return { embeddings: embeddingConfig() };
+    return { embeddings: embeddingConfig(), activeBackend: activeBackend() };
+  });
+  // Preferred local backend when both Ollama and LM Studio are running.
+  app.put("/api/agent/embeddings/preferred", async (req) => {
+    const { preferredBackend: pref } = (req.body ?? {}) as { preferredBackend?: PreferredBackend | null };
+    setPreferredBackend(pref === "ollama" || pref === "lmstudio" ? pref : null);
+    return { preferredBackend: preferredBackend() };
   });
   app.put("/api/agent", async (req) => {
     const { model, providerId, persona, autonomy, defaultLanguage } = (req.body ?? {}) as {
@@ -786,11 +795,19 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     return { ok: true };
   });
 
-  // --- Integrations (local Ollama) ---
+  // --- Integrations (local Ollama / LM Studio) ---
   app.get("/api/integrations/ollama", async () => ollamaStatus());
   app.post("/api/integrations/ollama/connect", async (_req, reply) => {
     try {
       return await connectOllama();
+    } catch (err) {
+      return reply.code(409).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+  app.get("/api/integrations/lmstudio", async () => lmStudioStatus());
+  app.post("/api/integrations/lmstudio/connect", async (_req, reply) => {
+    try {
+      return await connectLmStudio();
     } catch (err) {
       return reply.code(409).send({ error: err instanceof Error ? err.message : String(err) });
     }

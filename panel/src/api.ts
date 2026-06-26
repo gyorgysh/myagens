@@ -429,6 +429,21 @@ export interface EmbeddingConfig {
   model: string;
 }
 
+export interface OllamaStatus {
+  running: boolean;
+  baseUrl: string;
+  models: string[];
+  hasEmbedModel: boolean;
+  providerExists: boolean;
+  embeddingsOn: boolean;
+}
+
+export interface OllamaConnectResult {
+  status: OllamaStatus;
+  providerCreated: boolean;
+  embeddingsEnabled: boolean;
+}
+
 export interface MainAgent {
   model: string;
   providerId: string;
@@ -552,6 +567,8 @@ export const api = {
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),
   saveEmbeddings: (s: { enabled: boolean; provider?: "ollama" | "openai"; baseUrl?: string; model?: string }) =>
     req<{ embeddings: EmbeddingConfig }>("PUT", "/api/agent/embeddings", s),
+  ollamaStatus: () => get<OllamaStatus>("/api/integrations/ollama"),
+  ollamaConnect: () => req<OllamaConnectResult>("POST", "/api/integrations/ollama/connect"),
 
   workers: () =>
     get<{

@@ -145,6 +145,43 @@ function Ensure-ClaudeCLI {
     }
 }
 
+function Ensure-Ollama {
+    # Opt-in (heavy ~275MB model). Powers local semantic memory via nomic-embed-text.
+    if (-not (Confirm "Install Ollama + pull nomic-embed-text for local semantic memory?" $true)) {
+        Say "Skipping Ollama — semantic memory stays keyword-only (enable later in the panel)."
+        return
+    }
+    if (Get-Command ollama -ErrorAction SilentlyContinue) {
+        Ok "Ollama found."
+    } else {
+        if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Warn "winget not available — install Ollama from https://ollama.com/download and re-run."
+            return
+        }
+        Say "Installing Ollama via winget…"
+        try {
+            winget install --id Ollama.Ollama --silent --accept-package-agreements --accept-source-agreements 2>$null
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
+                        [System.Environment]::GetEnvironmentVariable("Path","User")
+        } catch {
+            Warn "Ollama install failed — get it from https://ollama.com/download."
+            return
+        }
+        if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
+            Warn "Ollama installed but not in PATH yet — open a new terminal, then run 'ollama pull nomic-embed-text'."
+            return
+        }
+        Ok "Ollama installed."
+    }
+    Say "Pulling nomic-embed-text (~275MB)…"
+    try {
+        ollama pull nomic-embed-text 2>&1 | Out-Null
+        Ok "Embedding model ready — semantic memory will auto-enable."
+    } catch {
+        Warn "Couldn't pull nomic-embed-text — run 'ollama pull nomic-embed-text' once the daemon is up."
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Clone / build
 # ---------------------------------------------------------------------------
@@ -398,6 +435,7 @@ Ensure-Node
 Ensure-Git
 Clone-Repo
 Ensure-ClaudeCLI
+Ensure-Ollama
 Build-App
 Configure-Env
 Claude-Login

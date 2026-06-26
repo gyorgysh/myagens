@@ -197,6 +197,34 @@ ensure_claude_cli() {
   ok "Claude Code CLI installed."
 }
 
+# --- Ollama + nomic-embed-text (local semantic memory; opt-in, ~275MB model) -
+ensure_ollama() {
+  confirm "Install Ollama + pull nomic-embed-text for local semantic memory?" "Y" || {
+    say "Skipping Ollama — semantic memory stays keyword-only (enable later in the panel)."
+    return 0
+  }
+  if command -v ollama >/dev/null 2>&1; then
+    ok "Ollama present."
+  else
+    say "Installing Ollama…"
+    if [ "$OS" = "mac" ]; then
+      brew install ollama 2>/dev/null || { warn "Couldn't install Ollama — get it from https://ollama.com/download and re-run."; return 0; }
+    else
+      curl -fsSL https://ollama.com/install.sh | sh || { warn "Ollama install failed — see https://ollama.com/download."; return 0; }
+    fi
+    ok "Ollama installed."
+  fi
+  # Pull the embedding model so autoProbeEmbeddings() lights up semantic memory.
+  if command -v ollama >/dev/null 2>&1; then
+    say "Pulling nomic-embed-text (~275MB)…"
+    if ollama pull nomic-embed-text >/dev/null 2>&1; then
+      ok "Embedding model ready — semantic memory will auto-enable."
+    else
+      warn "Couldn't pull nomic-embed-text — run 'ollama pull nomic-embed-text' once the daemon is up."
+    fi
+  fi
+}
+
 # --- RAM / swap (Claude Code is memory-hungry; 4GB is the comfortable floor) -
 check_ram_swap() {
   if [ "$OS" = "mac" ]; then
@@ -524,6 +552,7 @@ main() {
   ensure_node
   ensure_git
   ensure_claude_cli
+  ensure_ollama
   clone_repo
   build_app
   configure_env

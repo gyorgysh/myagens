@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
-import { api, AuthError, type MainAgent, type Autonomy, type EmbeddingConfig } from "../api.ts";
-import { Badge, Button, Card, Input, Label, Select, TextArea } from "./ui.tsx";
+import { api, AuthError, type MainAgent, type Autonomy, type EmbeddingConfig, type OllamaStatus } from "../api.ts";
+import { Badge, Button, Callout, Card, Input, Label, Select, TextArea } from "./ui.tsx";
 import { useI18n } from "../lib/useI18n.ts";
 import type { TranslationKey } from "../i18n/en.ts";
 
@@ -33,6 +33,7 @@ export function MainAgentCard({ onAuthError }: { onAuthError: () => void }) {
   const [embProvider, setEmbProvider] = useState<"ollama" | "openai">("ollama");
   const [embBaseUrl, setEmbBaseUrl] = useState("");
   const [embModel, setEmbModel] = useState("");
+  const [ollama, setOllama] = useState<OllamaStatus | null>(null);
   const [fetched, setFetched] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -57,6 +58,8 @@ export function MainAgentCard({ onAuthError }: { onAuthError: () => void }) {
 
   useEffect(() => {
     void load();
+    // Best-effort: probe for a locally running Ollama to offer one-click connect.
+    api.ollamaStatus().then(setOllama).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -116,6 +119,29 @@ export function MainAgentCard({ onAuthError }: { onAuthError: () => void }) {
       const r = await api.saveEmbeddings({ enabled: embEnabled, provider: embProvider, baseUrl: embBaseUrl, model: embModel });
       setEmbeddings(r.embeddings);
       flash(t("agent_saved"));
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      flash(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // One-click: register Ollama as a provider + enable embeddings against it.
+  const connectOllama = async () => {
+    setBusy("ollama");
+    try {
+      const r = await api.ollamaConnect();
+      setOllama(r.status);
+      // Reflect the (possibly) freshly-enabled embeddings into the form + agent.
+      if (r.embeddingsEnabled) {
+        setEmbEnabled(r.status.embeddingsOn);
+        setEmbProvider("ollama");
+        setEmbBaseUrl(r.status.baseUrl);
+        setEmbModel("nomic-embed-text");
+        await load();
+      }
+      flash(t("ollama_connected"));
     } catch (e) {
       if (e instanceof AuthError) return onAuthError();
       flash(String(e));
@@ -255,6 +281,29 @@ export function MainAgentCard({ onAuthError }: { onAuthError: () => void }) {
               <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${embEnabled ? "translate-x-4" : "translate-x-1"}`} />
             </button>
           </div>
+          {ollama?.running && (
+            <div className="mb-3">
+              <Callout title={t("ollama_detected_title")}>
+                <div className="space-y-2">
+                  <p>
+                    {t("ollama_detected_body").replace("{count}", String(ollama.models.length))}
+                  </p>
+                  {!ollama.hasEmbedModel && (
+                    <p className="text-fg-faint">
+                      {t("ollama_no_embed_model")} <code className="mono">ollama pull nomic-embed-text</code>
+                    </p>
+                  )}
+                  {ollama.providerExists && ollama.embeddingsOn ? (
+                    <p className="font-medium text-accent">{t("ollama_connected")}</p>
+                  ) : (
+                    <Button onClick={connectOllama} disabled={busy === "ollama"}>
+                      {busy === "ollama" ? t("ollama_connecting") : t("ollama_connect")}
+                    </Button>
+                  )}
+                </div>
+              </Callout>
+            </div>
+          )}
           {embEnabled && (
             <div className="space-y-2">
               <div className="grid gap-2 sm:grid-cols-3">

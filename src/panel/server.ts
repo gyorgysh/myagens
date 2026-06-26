@@ -58,6 +58,7 @@ import {
 import { fetchProviderModels } from "../core/providerModels.js";
 import { mainSettingsView, setMainSettings } from "../core/mainSettings.js";
 import { embeddingConfig, setEmbeddingsEnabled } from "../core/embeddings.js";
+import { ollamaStatus, connectOllama } from "../core/ollama.js";
 import { serviceInstalled, restartService } from "../core/agentControl.js";
 import { isActive } from "../core/activity.js";
 import { getUpdateStatus, checkForUpdate, runUpdate, runRestore } from "../core/updateControl.js";
@@ -783,6 +784,16 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     if (!deleteProvider((req.params as { id: string }).id))
       return reply.code(404).send({ error: "not found" });
     return { ok: true };
+  });
+
+  // --- Integrations (local Ollama) ---
+  app.get("/api/integrations/ollama", async () => ollamaStatus());
+  app.post("/api/integrations/ollama/connect", async (_req, reply) => {
+    try {
+      return await connectOllama();
+    } catch (err) {
+      return reply.code(409).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   // --- Terminal ---

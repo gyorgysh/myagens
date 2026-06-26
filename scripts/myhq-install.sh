@@ -400,6 +400,12 @@ configure_panel() {
 
   # Token — auto-generate (recommended) or enter manually.
   local token="${MYHQ_PANEL_TOKEN:-}"
+  # The panel rejects tokens shorter than 16 chars (SEC-3); if one was passed
+  # in via the env override, replace it with a strong generated one.
+  if [ -n "$token" ] && [ "${#token}" -lt 16 ]; then
+    warn "MYHQ_PANEL_TOKEN is shorter than 16 chars — using an auto-generated token instead."
+    token=""
+  fi
   if [ -z "$token" ]; then
     printf '\n%s\n' "${B}Panel token${R} ${DIM}(the password for all panel access — treat it like a root password)${R}" >"${TTY:-/dev/stdout}"
     printf '%s\n' "  ${B}1)${R} Auto-generate a strong random token ${DIM}(recommended)${R}" >"${TTY:-/dev/stdout}"

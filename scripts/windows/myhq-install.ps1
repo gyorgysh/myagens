@@ -288,8 +288,12 @@ function Configure-Env {
             Warn "Port $panelPort also appears busy. You can change PANEL_PORT in .env later."
         }
 
-        # Token — auto-generate or manual.
-        if ($env:MYHQ_PANEL_TOKEN) {
+        # Token — auto-generate or manual. The panel rejects tokens shorter
+        # than 16 chars (SEC-3); replace a too-short env override with a strong one.
+        if ($env:MYHQ_PANEL_TOKEN -and $env:MYHQ_PANEL_TOKEN.Length -lt 16) {
+            Warn "MYHQ_PANEL_TOKEN is shorter than 16 chars — using an auto-generated token instead."
+            $panelToken = New-RandomToken
+        } elseif ($env:MYHQ_PANEL_TOKEN) {
             $panelToken = $env:MYHQ_PANEL_TOKEN
         } else {
             Write-Host ""

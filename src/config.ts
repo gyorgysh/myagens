@@ -36,6 +36,10 @@ const schema = z.object({
   CLAUDE_MODEL: z.string().min(1).default("claude-opus-4-8"),
   ANTHROPIC_API_KEY: z.string().optional(),
   APPROVAL_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
+  // Agentic loop detection: when the same tool call (name + input) repeats this
+  // many times in one turn, pause and ask Skip / Approve once / Continue, so a
+  // runaway retry can't burn tokens unattended. Set to 0 to disable.
+  LOOP_THRESHOLD: z.coerce.number().int().nonnegative().default(3),
   // Branding overrides (allows white-labelling / self-hosting with a different name).
   ATLAS_NAME: z.string().min(1).default("Atlas"),
   BRAND_NAME: z.string().min(1).default("MyHQ"),

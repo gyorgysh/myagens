@@ -16,6 +16,8 @@ import { DraftStreamer } from "./telegram/draftStreamer.js";
 import { RichDraftStreamer } from "./telegram/richDraftStreamer.js";
 import { sendFormattedMarkdown, sendRichMarkdown, sendExpandableQuote } from "./telegram/send.js";
 import { PermissionManager, bashLeadCmd } from "./telegram/permissions.js";
+import { LoopPromptManager } from "./telegram/loopPrompt.js";
+import { LoopDetector } from "./core/loopDetector.js";
 import { downloadIncomingFile, isViewableImage, readImageInput } from "./telegram/files.js";
 import { isGitCallback, resolveGitCallback } from "./telegram/gitFlow.js";
 import { isProjectCallback, resolveProjectCallback } from "./telegram/projects.js";
@@ -37,13 +39,14 @@ import { reflectOnTurn } from "./core/reflect.js";
 import { chatBridge, mainChatId } from "./core/chatBridge.js";
 import type { ImageInput, RunResult } from "./claude/runner.js";
 import type { Autonomy } from "./session/manager.js";
-import { sessions } from "./session/manager.js";
+import { sessions, AUTO_UNTIL_ERROR_TOOLS } from "./session/manager.js";
 import { log, preview } from "./logger.js";
 import { loadProbeResult } from "./core/usageProbe.js";
 
 export function buildBot(): Telegraf {
   const bot = new Telegraf(config.TELEGRAM_BOT_TOKEN);
   const permissions = new PermissionManager(bot.telegram);
+  const loops = new LoopPromptManager(bot.telegram);
 
   bot.use(authMiddleware);
   registerCommands(bot);
@@ -51,7 +54,7 @@ export function buildBot(): Telegraf {
   // Panel Chat is a window onto the main Telegram chat: let it drive turns and
   // abort them through the same flow the Telegram handlers use.
   chatBridge.attach(
-    (chatId, prompt) => runUserPrompt(permissions, chatId, prompt, bot.telegram),
+    (chatId, prompt) => runUserPrompt(permissions, loops, chatId, prompt, bot.telegram),
     (chatId) => {
       const s = sessions.get(chatId);
       s.abort?.abort();
@@ -65,6 +68,10 @@ export function buildBot(): Telegraf {
     if (data && permissions.isApprovalCallback(data)) {
       log.debug("Approval button pressed", { chatId: ctx.chat?.id, data });
       const toast = await permissions.resolve(data, ctx.chat?.id);
+      await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
+    } else if (data && loops.isLoopCallback(data)) {
+      log.debug("Loop button pressed", { chatId: ctx.chat?.id, data });
+      const toast = await loops.resolve(data);
       await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
     } else if (data && isGitCallback(data) && ctx.chat) {
       log.debug("Git button pressed", { chatId: ctx.chat.id, data });
@@ -112,7 +119,7 @@ export function buildBot(): Telegraf {
         : `The user uploaded a file, saved at: ${path}. Take a look.`;
       const images = isViewableImage(path) ? await imageInputs(path) : undefined;
       const run = () =>
-        runUserPrompt(permissions, ctx.chat.id, prompt, ctx.telegram, { images });
+        runUserPrompt(permissions, loops, ctx.chat.id, prompt, ctx.telegram, { images });
       if (await maybeOfferResume(ctx.telegram, ctx.chat.id, run)) return;
       run();
     } catch (err) {
@@ -139,7 +146,7 @@ export function buildBot(): Telegraf {
         : `The user sent this image (also saved at: ${path}).`;
       const images = await imageInputs(path);
       const run = () =>
-        runUserPrompt(permissions, ctx.chat.id, prompt, ctx.telegram, { images });
+        runUserPrompt(permissions, loops, ctx.chat.id, prompt, ctx.telegram, { images });
       if (await maybeOfferResume(ctx.telegram, ctx.chat.id, run)) return;
       run();
     } catch (err) {
@@ -172,7 +179,7 @@ export function buildBot(): Telegraf {
       }
       log.info("Voice transcribed", { chatId, text: preview(text) });
       await ctx.replyWithHTML(`🎤 <i>${escapeHtml(text)}</i>`).catch(() => {});
-      const run = () => runUserPrompt(permissions, chatId, text, ctx.telegram);
+      const run = () => runUserPrompt(permissions, loops, chatId, text, ctx.telegram);
       if (await maybeOfferResume(ctx.telegram, chatId, run)) return;
       run();
     } catch (err) {
@@ -193,7 +200,7 @@ export function buildBot(): Telegraf {
       }
     }
     const chatId = ctx.chat.id;
-    const run = () => runUserPrompt(permissions, chatId, text, ctx.telegram);
+    const run = () => runUserPrompt(permissions, loops, chatId, text, ctx.telegram);
     if (await maybeOfferResume(ctx.telegram, chatId, run)) return;
     run();
   });
@@ -211,7 +218,7 @@ export function buildBot(): Telegraf {
         parse_mode: "HTML",
       })
       .catch(() => {});
-    runUserPrompt(permissions, s.chatId, s.prompt, bot.telegram, {
+    runUserPrompt(permissions, loops, s.chatId, s.prompt, bot.telegram, {
       autonomous: true,
       cwd: s.cwd,
     });
@@ -242,7 +249,7 @@ export function buildBot(): Telegraf {
     runActive: async (prompt) => {
       const chatId = alertTargets[0];
       if (chatId === undefined || sessions.get(chatId).busy) return false;
-      runUserPrompt(permissions, chatId, prompt, bot.telegram, { autonomous: true });
+      runUserPrompt(permissions, loops, chatId, prompt, bot.telegram, { autonomous: true });
       return true;
     },
   });
@@ -279,12 +286,13 @@ interface TurnOptions {
 
 function runUserPrompt(
   permissions: PermissionManager,
+  loops: LoopPromptManager,
   chatId: number,
   prompt: string,
   tg: Telegraf["telegram"],
   opts: TurnOptions = {},
 ): void {
-  handleUserPrompt(permissions, chatId, prompt, tg, opts).catch((err) => {
+  handleUserPrompt(permissions, loops, chatId, prompt, tg, opts).catch((err) => {
     const session = sessions.get(chatId);
     session.busy = false;
     session.abort = undefined;
@@ -296,6 +304,7 @@ function runUserPrompt(
 /** Run a single Claude Code turn for a chat, streaming output back live. */
 async function handleUserPrompt(
   permissions: PermissionManager,
+  loops: LoopPromptManager,
   chatId: number,
   prompt: string,
   tg: Telegraf["telegram"],
@@ -362,11 +371,42 @@ async function handleUserPrompt(
   // Effective autonomy for this turn.
   const autonomy: Autonomy = autonomous ? "full" : session.autonomy;
 
+  // auto_until_error: start each turn trusting the happy path (clear any leftover
+  // supervised cooldown from a previous turn).
+  if (autonomy === "auto_until_error") sessions.resetEscalation(chatId);
+
+  // Per-turn agentic loop detection: catch the model firing the same tool call
+  // over and over (a failing retry burning tokens). Fresh per turn so counts
+  // never leak across requests.
+  const loopDetector = new LoopDetector(config.LOOP_THRESHOLD);
+
   const canUseTool = async (
     toolName: string,
     input: Record<string, unknown>,
   ): Promise<PermissionResult> => {
     const lead = toolName === "Bash" ? bashLeadCmd(input) : undefined;
+
+    // Loop guard runs before the normal permission flow so a runaway retry is
+    // caught even for otherwise auto-allowed tools (Read/Grep/Bash, …).
+    const loop = loopDetector.record(toolName, input);
+    if (loop.isLoop) {
+      log.warn("Loop detected — prompting user", {
+        chatId,
+        tool: toolName,
+        count: loop.count,
+      });
+      const choice = await loops.request(chatId, toolName, loopSummary(toolName, input), loop.count);
+      if (choice === "skip") {
+        return { behavior: "deny", message: "User skipped this repeated call (loop detected)." };
+      }
+      if (choice === "once") {
+        loopDetector.approveOnce(loop.hash);
+      } else {
+        // "continue": stop prompting for this exact call for the rest of the turn.
+        loopDetector.silence(loop.hash);
+      }
+      // Fall through to the normal permission flow with the user's intent honored.
+    }
 
     if (autonomy === "standard") {
       // Standard: auto-allow safe tools; risky tools prompt.
@@ -376,6 +416,24 @@ async function handleUserPrompt(
         (lead !== undefined && session.allowedBashCmds.has(lead))
       ) {
         log.debug("Tool auto-allowed", { chatId, tool: toolName });
+        return { behavior: "allow", updatedInput: input };
+      }
+    } else if (autonomy === "auto_until_error") {
+      // Auto-until-error: auto-allow the trusted set + safe tools, UNLESS a
+      // recent tool error opened a supervised cooldown — then prompt for the
+      // next few calls (decrementing the counter) before resuming auto-approval.
+      const cooldown = session.escalation?.cooldown ?? 0;
+      if (cooldown > 0) {
+        session.escalation = { cooldown: cooldown - 1 };
+        log.info("auto_until_error: escalated to prompt", { chatId, tool: toolName, cooldown });
+        // fall through to the prompt below.
+      } else if (
+        AUTO_ALLOWED_TOOLS.has(toolName) ||
+        AUTO_UNTIL_ERROR_TOOLS.includes(toolName as (typeof AUTO_UNTIL_ERROR_TOOLS)[number]) ||
+        session.sessionAllowedTools.has(toolName) ||
+        (lead !== undefined && session.allowedBashCmds.has(lead))
+      ) {
+        log.debug("Tool auto-allowed (auto_until_error)", { chatId, tool: toolName });
         return { behavior: "allow", updatedInput: input };
       }
     }
@@ -430,6 +488,8 @@ async function handleUserPrompt(
   // Panel mirror: a stable assistant message id the streamed text/tools fold into.
   const mirrorMsgId = mirror ? chatBridge.mirrorStart() : "";
   let mirrorText = "";
+  // Set once an autonomous loop has triggered an abort, so we only notify once.
+  let loopAborted = false;
 
   try {
     const res = await runTurn({
@@ -464,10 +524,43 @@ async function handleUserPrompt(
         log.info("Tool use", { chatId, tool: name, arg: preview(summarizeArg(input), 80) });
         streamer.setStatus(`🔧 <i>${name}</i> ${summarizeInput(input)}`);
         if (mirror) chatBridge.mirrorTool(mirrorMsgId, name, preview(summarizeArg(input), 120));
+
+        // In "full" autonomy the SDK runs in bypassPermissions and never calls
+        // canUseTool, so the loop guard above can't fire. Detect the runaway
+        // here instead and abort the turn (there's no human to prompt mid-run),
+        // notifying the user so an overnight retry can't burn tokens unchecked.
+        if (autonomy === "full" && !loopAborted) {
+          const loop = loopDetector.record(name, input);
+          if (loop.isLoop) {
+            loopAborted = true;
+            log.warn("Loop detected in autonomous run — aborting", {
+              chatId,
+              tool: name,
+              count: loop.count,
+            });
+            void tg
+              .sendMessage(
+                chatId,
+                `🔁 <b>Loop detected</b> — stopped an autonomous run after <b>${name}</b> ` +
+                  `repeated the same call ${loop.count}× to avoid burning tokens.`,
+                { parse_mode: "HTML" },
+              )
+              .catch(() => {});
+            session.abort?.abort();
+          }
+        }
       },
       onSessionId: (id) => {
         log.debug("Session id", { chatId, sessionId: id });
         session.sessionId = id;
+      },
+      onToolResult: (isError) => {
+        // auto_until_error: a failed tool drops us to supervised approval for
+        // the next few calls so a human sees the failure path.
+        if (isError && autonomy === "auto_until_error") {
+          sessions.noteToolError(chatId);
+          log.info("auto_until_error: tool error — escalating to supervised", { chatId });
+        }
       },
     });
     if (mirror) {
@@ -525,7 +618,11 @@ async function handleUserPrompt(
   } catch (err) {
     await streamer.finalize().catch(() => {});
     const stopped = session.abort?.signal.aborted;
-    if (stopped) {
+    if (loopAborted) {
+      // The loop-detection notification already explained the abort; don't pile
+      // a generic "Stopped." on top of it.
+      log.info("Turn aborted by loop guard", { chatId, ms: Date.now() - startedAt });
+    } else if (stopped) {
       log.info("Turn stopped by user", { chatId, ms: Date.now() - startedAt });
       await tg.sendMessage(chatId, "⏹ Stopped.").catch(() => {});
     } else {
@@ -602,6 +699,17 @@ function summarizeArg(input: unknown): string {
 function summarizeInput(input: unknown): string {
   const s = summarizeArg(input);
   return s ? `<code>${escapeHtml(s.slice(0, 80))}</code>` : "";
+}
+
+/** Plain-text summary of a tool call for the loop-detection prompt. */
+function loopSummary(toolName: string, input: unknown): string {
+  const arg = summarizeArg(input);
+  if (arg) return arg;
+  try {
+    return JSON.stringify(input ?? {});
+  } catch {
+    return toolName;
+  }
 }
 
 function errText(err: unknown): string {

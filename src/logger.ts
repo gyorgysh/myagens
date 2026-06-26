@@ -291,19 +291,75 @@ export function summarizeUsage(
 }
 
 // ---------------------------------------------------------------------------
+// Secret redaction
+// ---------------------------------------------------------------------------
+
+// Logs persist to disk (NDJSON), the in-memory ring, the console, and the panel
+// WS, so any secret that lands in a log line leaks broadly. Tool-use entries in
+// particular carry shell command previews that may embed inline credentials
+// (curl -H "Authorization: Bearer …", --password=…, --token=…). Scrub the
+// common shapes centrally in emit() so every sink is covered. Best-effort,
+// pattern-based: it can't catch every secret, but it knocks out the obvious ones.
+const REDACTED = "«redacted»";
+const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  // Authorization: Bearer <token> / api keys after a Bearer keyword.
+  [/\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${REDACTED}`],
+  // Known key prefixes (Anthropic, OpenAI, generic sk-/pk-).
+  [/\b(sk-ant-|sk-|pk-)[A-Za-z0-9._-]{8,}/gi, `$1${REDACTED}`],
+  [/\b\d{6,}:[A-Za-z0-9_-]{30,}\b/g, REDACTED], // telegram bot token id:secret
+  // key/value pairs: token=…, "api_key":"…", password: "…". Optional quotes around
+  // the key and (independently) the value, so it catches both shell and JSON forms.
+  [
+    /("?)\b(api[_-]?key|secret|token|password|passwd|pwd|auth[_-]?token|authorization|access[_-]?token|client[_-]?secret)\1(\s*[:=]\s*)("?)([^"\s,}]{4,})\4/gi,
+    `$1$2$1$3$4${REDACTED}$4`,
+  ],
+  // CLI flags carrying a secret: --token <secret>, --password=<secret>. Only the
+  // long-flag forms — bundled short flags like `-psecret` are too ambiguous to
+  // tell apart from ordinary flags (`-prefix`), so we leave them.
+  [/(--(?:token|password|passwd|pwd|secret|api[_-]?key|auth)[ =])(\S{4,})/gi, `$1${REDACTED}`],
+];
+
+function redactString(s: string): string {
+  let out = s;
+  for (const [re, repl] of SECRET_PATTERNS) out = out.replace(re, repl);
+  return out;
+}
+
+/** Deep-redact a meta object by scrubbing every string value (and key=val shapes). */
+function redactMeta(meta: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(meta)) {
+    if (typeof v === "string") out[k] = redactString(v);
+    else if (v && typeof v === "object") {
+      // Redact over the serialised form, then re-parse. If anything goes wrong
+      // (logging must never throw), fall back to the original value.
+      try {
+        out[k] = JSON.parse(redactString(JSON.stringify(v)));
+      } catch {
+        out[k] = v;
+      }
+    } else out[k] = v;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Core emit
 // ---------------------------------------------------------------------------
 
-function emit(level: Level, msg: string, meta?: Record<string, unknown>): void {
+function emit(level: Level, msg: string, rawMeta?: Record<string, unknown>): void {
   if (RANK[level] > threshold) return;
+  const safeMsg = redactString(msg);
+  const meta =
+    rawMeta && Object.keys(rawMeta).length ? redactMeta(rawMeta) : rawMeta;
   const time = new Date().toISOString();
   const fields =
     meta && Object.keys(meta).length ? " " + JSON.stringify(meta) : "";
-  const line = `${time} ${level.toUpperCase().padEnd(5)} ${msg}${fields}`;
+  const line = `${time} ${level.toUpperCase().padEnd(5)} ${safeMsg}${fields}`;
   // eslint-disable-next-line no-console
   (level === "error" ? console.error : level === "warn" ? console.warn : console.log)(line);
 
-  const entry: LogEntry = { seq: seq++, ts: Date.now(), level, msg, meta };
+  const entry: LogEntry = { seq: seq++, ts: Date.now(), level, msg: safeMsg, meta };
   ring.push(entry);
   if (ring.length > RING_MAX) ring.shift();
 

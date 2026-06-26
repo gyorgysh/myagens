@@ -22,6 +22,35 @@ interface ProviderFile {
   providers: Provider[];
 }
 
+/** Panel-safe view: never carries the plaintext authToken, only a masked hint. */
+export interface ProviderView {
+  id: string;
+  name: string;
+  baseUrl: string;
+  hasToken: boolean;
+  tokenHint: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+function tokenHint(token: string): string {
+  if (!token) return "";
+  return token.length <= 4 ? "••••" : `••••${token.slice(-4)}`;
+}
+
+/** Strip the plaintext authToken, replacing it with a boolean + masked hint. */
+export function toProviderView(p: Provider): ProviderView {
+  return {
+    id: p.id,
+    name: p.name,
+    baseUrl: p.baseUrl,
+    hasToken: Boolean(p.authToken),
+    tokenHint: tokenHint(p.authToken),
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  };
+}
+
 function load(): Provider[] {
   return loadJson<ProviderFile>(FILE, { version: 1, providers: [] }).providers;
 }
@@ -32,6 +61,11 @@ function persist(providers: Provider[]): void {
 
 export function listProviders(): Provider[] {
   return load().sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Masked provider list for the panel (no plaintext tokens). */
+export function listProviderViews(): ProviderView[] {
+  return listProviders().map(toProviderView);
 }
 
 export function getProvider(id: string): Provider | undefined {
@@ -67,7 +101,10 @@ export function updateProvider(id: string, input: Partial<ProviderInput>): Provi
   if (!p) return undefined;
   if (input.name !== undefined) p.name = input.name.trim() || p.name;
   if (input.baseUrl !== undefined) p.baseUrl = input.baseUrl.trim();
-  if (input.authToken !== undefined) p.authToken = input.authToken.trim();
+  // A blank authToken means "keep the existing one" — the panel never receives
+  // the plaintext back (SEC-2), so it can only send a token the user re-typed.
+  if (input.authToken !== undefined && input.authToken.trim() !== "")
+    p.authToken = input.authToken.trim();
   p.updatedAt = Date.now();
   persist(providers);
   audit("provider.update", { id });

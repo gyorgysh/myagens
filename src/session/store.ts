@@ -1,8 +1,14 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { config } from "../config.js";
 import { log } from "../logger.js";
+import { ensureDataDir } from "../core/jsonStore.js";
 import type { Autonomy } from "./manager.js";
+
+/** Drop prototype-polluting keys when parsing an on-disk state file. */
+function safeReviver(key: string, value: unknown): unknown {
+  if (key === "__proto__" || key === "constructor" || key === "prototype") return undefined;
+  return value;
+}
 
 /** Cumulative usage counters for a window (lifetime or a single day). */
 export interface UsageStat {
@@ -49,7 +55,7 @@ export function emptyUsage(): Usage {
 export function loadState(file: string = config.STATE_FILE): PersistedSession[] {
   try {
     const raw = readFileSync(file, "utf8");
-    const parsed = JSON.parse(raw) as StateFile;
+    const parsed = JSON.parse(raw, safeReviver) as StateFile;
     if (!parsed || !Array.isArray(parsed.sessions)) return [];
     return parsed.sessions.map(normalize);
   } catch (err) {
@@ -64,7 +70,7 @@ export function loadState(file: string = config.STATE_FILE): PersistedSession[] 
 export function saveState(sessions: PersistedSession[], file: string = config.STATE_FILE): void {
   const data: StateFile = { version: 1, sessions: sessions.map(prune) };
   try {
-    mkdirSync(dirname(file), { recursive: true });
+    ensureDataDir();
     const tmp = `${file}.tmp`;
     writeFileSync(tmp, JSON.stringify(data, null, 2));
     renameSync(tmp, file);

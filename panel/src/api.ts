@@ -489,7 +489,10 @@ export interface Provider {
   id: string;
   name: string;
   baseUrl: string;
-  authToken: string;
+  // The plaintext token is never sent to the client (SEC-2); only whether one
+  // is set and a masked hint of its last few chars.
+  hasToken: boolean;
+  tokenHint: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -524,6 +527,27 @@ export interface UpdateStatus {
   serviceInstalled: boolean;
   /** A turn/delegation is in flight — update/restore would interrupt it. */
   active?: boolean;
+}
+
+export type TunnelProviderId = "ngrok" | "cloudflare";
+export type TunnelState = "stopped" | "starting" | "running" | "error";
+export interface TunnelView {
+  enabled: boolean;
+  state: TunnelState;
+  provider: TunnelProviderId;
+  hasToken: boolean;
+  domain: string;
+  autoStart: boolean;
+  basicAuth: boolean;
+  basicAuthUser: string;
+  hasPassword: boolean;
+  url?: string;
+  error?: string;
+  startedAt?: number;
+}
+export interface TunnelPassword {
+  user: string;
+  password: string | null;
 }
 
 export const api = {
@@ -699,9 +723,22 @@ export const api = {
     req<{ models: string[] }>("POST", "/api/providers/models", { baseUrl, authToken }),
   providerModels: (id: string) => get<{ models: string[] }>(`/api/providers/${id}/models`),
 
-  terminalStatus: () => get<{ available: boolean; shell: string }>("/api/terminal"),
+  terminalStatus: () =>
+    get<{ available: boolean; reason: "disabled" | "unsupported" | null; shell: string }>(
+      "/api/terminal",
+    ),
   terminalSpawn: (cols: number, rows: number) =>
     req<{ ok: boolean }>("POST", "/api/terminal/spawn", { cols, rows }),
   terminalResize: (cols: number, rows: number) =>
     req<{ ok: boolean }>("POST", "/api/terminal/resize", { cols, rows }),
+
+  tunnel: () => get<TunnelView>("/api/tunnel"),
+  saveTunnel: (s: { provider?: TunnelProviderId; authToken?: string; domain?: string; autoStart?: boolean; basicAuth?: boolean }) =>
+    req<TunnelView>("PUT", "/api/tunnel", s),
+  startTunnel: () => req<TunnelView>("POST", "/api/tunnel/start"),
+  stopTunnel: () => req<TunnelView>("POST", "/api/tunnel/stop"),
+  tunnelPassword: () => get<TunnelPassword>("/api/tunnel/password"),
+  // No password → rotate to a fresh random one; a password → set it.
+  setTunnelPassword: (password?: string) =>
+    req<TunnelPassword>("POST", "/api/tunnel/password", password ? { password } : {}),
 };

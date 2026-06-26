@@ -13,7 +13,8 @@
 # Non-interactive overrides (env vars): MYHQ_REPO, MYHQ_DIR, MYHQ_BRANCH,
 # MYHQ_TOKEN, MYHQ_USER_IDS, MYHQ_API_KEY, MYHQ_MODE=service|manual,
 # MYHQ_VOICE=none|api|vosk, MYHQ_OPENAI_KEY,
-# MYHQ_PANEL=y|n, MYHQ_PANEL_PORT, MYHQ_PANEL_TOKEN, MYHQ_YES=1.
+# MYHQ_PANEL=y|n, MYHQ_PANEL_PORT, MYHQ_PANEL_TOKEN,
+# MYHQ_REMOTE=none|ngrok|cloudflare|both, MYHQ_YES=1.
 
 set -euo pipefail
 
@@ -400,6 +401,12 @@ configure_panel() {
 
   # Token — auto-generate (recommended) or enter manually.
   local token="${MYHQ_PANEL_TOKEN:-}"
+  # The panel rejects tokens shorter than 16 chars (SEC-3); if one was passed
+  # in via the env override, replace it with a strong generated one.
+  if [ -n "$token" ] && [ "${#token}" -lt 16 ]; then
+    warn "MYHQ_PANEL_TOKEN is shorter than 16 chars — using an auto-generated token instead."
+    token=""
+  fi
   if [ -z "$token" ]; then
     printf '\n%s\n' "${B}Panel token${R} ${DIM}(the password for all panel access — treat it like a root password)${R}" >"${TTY:-/dev/stdout}"
     printf '%s\n' "  ${B}1)${R} Auto-generate a strong random token ${DIM}(recommended)${R}" >"${TTY:-/dev/stdout}"
@@ -425,6 +432,81 @@ configure_panel() {
 
   ok "Panel enabled on port $port."
   printf '%s\n' "  Token: ${B}${token}${R} ${DIM}(also saved to .env — keep it private)${R}" >"${TTY:-/dev/stdout}"
+}
+
+# --- remote access (optional tunnel relay) ----------------------------------
+# Installs a tunnel CLI (ngrok and/or cloudflared) and flips PANEL_TUNNEL_ENABLED
+# so the user can reach the panel from their phone over a secure public URL,
+# still behind the panel login. Only offered when the panel is on. The relay
+# itself is started later from the panel's Remote Access view, not here.
+install_tunnel_cli() {
+  # $1 = ngrok | cloudflared. Returns 0 on success.
+  local name="$1"
+  if command -v "$name" >/dev/null 2>&1; then ok "$name present."; return 0; fi
+  say "Installing $name…"
+  if [ "$OS" = "mac" ]; then
+    case "$name" in
+      ngrok)       brew install ngrok 2>/dev/null || brew install ngrok/ngrok/ngrok 2>/dev/null ;;
+      cloudflared) brew install cloudflared 2>/dev/null ;;
+    esac
+  else
+    case "$name" in
+      ngrok)
+        # ngrok publishes an apt repo; fall back to the raw binary otherwise.
+        if [ "${PKG:-}" = "apt" ] || command -v apt-get >/dev/null 2>&1; then
+          need_sudo
+          curl -fsSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+            | $SUDO tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null 2>&1 || true
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
+            | $SUDO tee /etc/apt/sources.list.d/ngrok.list >/dev/null 2>&1 || true
+          $SUDO apt-get update -y >/dev/null 2>&1 || true
+          $SUDO apt-get install -y ngrok >/dev/null 2>&1 || true
+        fi ;;
+      cloudflared)
+        pkg_install cloudflared >/dev/null 2>&1 || true ;;
+    esac
+  fi
+  if command -v "$name" >/dev/null 2>&1; then
+    ok "$name installed."; return 0
+  fi
+  case "$name" in
+    ngrok)       warn "Couldn't install ngrok automatically — get it from https://ngrok.com/download." ;;
+    cloudflared) warn "Couldn't install cloudflared automatically — see https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/." ;;
+  esac
+  return 1
+}
+
+configure_remote_access() {
+  local env="$APP_DIR/.env"
+  # No point exposing a panel that isn't enabled.
+  [ -n "$PANEL_PORT_CHOSEN" ] || return 0
+
+  local choice="${MYHQ_REMOTE:-}"
+  if [ -z "$choice" ]; then
+    printf '\n%s\n' "${B}Reach the panel from your phone?${R} ${DIM}(secure public tunnel to this panel, still behind your login)${R}" >"${TTY:-/dev/stdout}"
+    printf '%s\n' "  ${B}1)${R} No, local only ${DIM}(default — most secure)${R}" >"${TTY:-/dev/stdout}"
+    printf '%s\n' "  ${B}2)${R} ngrok ${DIM}(needs a free authtoken from ngrok.com)${R}" >"${TTY:-/dev/stdout}"
+    printf '%s\n' "  ${B}3)${R} Cloudflare ${DIM}(free quick tunnel, no account needed)${R}" >"${TTY:-/dev/stdout}"
+    printf '%s\n' "  ${B}4)${R} Install both, decide later in the panel" >"${TTY:-/dev/stdout}"
+    case "$(ask "Choose 1-4" "1")" in
+      2) choice=ngrok ;; 3) choice=cloudflare ;; 4) choice=both ;; *) choice=none ;;
+    esac
+  fi
+
+  case "$choice" in
+    none)
+      ok "Remote access off. Enable it later in the panel's Remote Access view."
+      return ;;
+    ngrok)       install_tunnel_cli ngrok || true ;;
+    cloudflare)  install_tunnel_cli cloudflared || true ;;
+    both)        install_tunnel_cli ngrok || true; install_tunnel_cli cloudflared || true ;;
+  esac
+
+  set_env "$env" PANEL_TUNNEL_ENABLED true
+  ok "Remote access unlocked. Open the panel's ${B}Remote Access${R} view to add a token (if needed) and start the tunnel."
+  if [ "$choice" = "ngrok" ] || [ "$choice" = "both" ]; then
+    say "  ngrok needs a free authtoken from https://dashboard.ngrok.com/get-started/your-authtoken — paste it in that view."
+  fi
 }
 
 # --- voice (optional) -------------------------------------------------------
@@ -557,6 +639,7 @@ main() {
   build_app
   configure_env
   configure_panel
+  configure_remote_access
   configure_voice
   choose_run_mode
   final_notes

@@ -2,6 +2,7 @@ import { config } from "../config.js";
 import { resolveSecret } from "./vault.js";
 import { loadJson, saveJson } from "./jsonStore.js";
 import { log } from "../logger.js";
+import { assertSafeUrl } from "./safeUrl.js";
 
 const TIMEOUT_MS = 15_000;
 const PROBE_TIMEOUT_MS = 3_000;
@@ -228,6 +229,9 @@ async function postJson(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
+    // SSRF guard: this call carries the embedding auth token, so never let it
+    // hit a cloud-metadata / link-local target.
+    await assertSafeUrl(url);
     const res = await fetch(url, {
       method: "POST",
       headers,
@@ -345,6 +349,7 @@ async function listEndpointModels(provider: "ollama" | "openai", baseUrl: string
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   try {
+    await assertSafeUrl(base); // SSRF guard for the user-supplied base URL
     if (provider === "ollama") {
       const res = await fetch(`${base.replace(/\/v1$/, "")}/api/tags`, { signal: ctrl.signal });
       if (!res.ok) return [];
@@ -366,6 +371,7 @@ async function probeEndpoint(provider: "ollama" | "openai", baseUrl: string, mod
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   try {
+    await assertSafeUrl(baseUrl); // SSRF guard for the user-supplied base URL
     if (provider === "ollama") {
       const url = `${baseUrl.replace(/\/+$/, "")}/api/embeddings`;
       const res = await fetch(url, {

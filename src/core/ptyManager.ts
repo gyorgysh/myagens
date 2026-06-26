@@ -9,9 +9,42 @@
 
 import { statSync } from "fs";
 import { log as logger } from "../logger.js";
+import { config } from "../config.js";
 
-/** Maximum scrollback kept in memory (bytes). Sent to new clients on connect. */
+/** Maximum scrollback kept in memory (bytes). Replayed only within a session. */
 const SCROLLBACK_CAP = 10_000;
+
+/**
+ * Build the environment handed to the spawned shell.
+ *
+ * Default (PANEL_TERMINAL_INHERIT_ENV=false): a minimal sanitized env so the
+ * shell can't simply `env`/`echo $ANTHROPIC_API_KEY` the bot's secrets back out.
+ * Only a small allow-list of non-sensitive vars is forwarded. When inherit is
+ * explicitly enabled, fall back to the full process env (legacy behaviour).
+ */
+function buildShellEnv(): NodeJS.ProcessEnv {
+  if (config.PANEL_TERMINAL_INHERIT_ENV) {
+    return { ...process.env, TERM: "xterm-256color" };
+  }
+  const allow = [
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "LANG",
+    "LC_ALL",
+    "TZ",
+    "TMPDIR",
+    "PWD",
+  ];
+  const env: NodeJS.ProcessEnv = { TERM: "xterm-256color" };
+  for (const key of allow) {
+    const val = process.env[key];
+    if (val !== undefined) env[key] = val;
+  }
+  return env;
+}
 
 /** Default shell search order. */
 const SHELL_CANDIDATES = [
@@ -57,6 +90,19 @@ export class PtyManager {
 
   start(broadcast: BroadcastFn): void {
     this.broadcast = broadcast;
+    // Feature is opt-in: a panel-token holder gets arbitrary host execution.
+    if (!config.PANEL_TERMINAL_ENABLED) {
+      this._available = false;
+      logger.info("[pty] terminal disabled (PANEL_TERMINAL_ENABLED=false)");
+      return;
+    }
+    // Loud warning when the panel is reachable beyond loopback: a terminal
+    // behind an exposed panel is a remote shell.
+    if (config.PANEL_HOST !== "127.0.0.1" && config.PANEL_HOST !== "localhost") {
+      logger.warn(
+        `[pty] terminal ENABLED while panel binds ${config.PANEL_HOST} — this is a remote shell; ensure the panel is firewalled / behind a private network`,
+      );
+    }
     // Probe availability in background.
     void loadPty().then((m) => {
       this._available = m !== null;
@@ -64,11 +110,16 @@ export class PtyManager {
     });
   }
 
+  get enabled(): boolean {
+    return config.PANEL_TERMINAL_ENABLED;
+  }
+
   get available(): boolean {
-    return this._available ?? false;
+    return config.PANEL_TERMINAL_ENABLED && (this._available ?? false);
   }
 
   get availableResolved(): boolean | null {
+    if (!config.PANEL_TERMINAL_ENABLED) return false;
     return this._available;
   }
 
@@ -83,6 +134,7 @@ export class PtyManager {
 
   /** Lazily spawn (or re-use) the PTY process. */
   private async spawnIfNeeded(cols = 120, rows = 30): Promise<void> {
+    if (!config.PANEL_TERMINAL_ENABLED) return; // hard gate
     if (this.pty) return;
     const ptyMod = await loadPty();
     if (!ptyMod) return;
@@ -96,7 +148,7 @@ export class PtyManager {
         cols,
         rows,
         cwd: process.env.HOME ?? "/",
-        env: { ...process.env, TERM: "xterm-256color" },
+        env: buildShellEnv(),
       });
     } catch (e) {
       // Native spawn can fail even when the module loads (e.g. a non-executable

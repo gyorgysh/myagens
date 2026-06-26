@@ -5,7 +5,7 @@ import { memoryMcp } from "../mcp/memory.js";
 import { tasksMcp } from "../mcp/tasks.js";
 import { skillsMcp } from "../mcp/skills.js";
 import { SessionManager } from "../session/manager.js";
-import { allowedUserIds } from "../config.js";
+import { isAuthorized } from "../auth.js";
 import { resolveSecret } from "../core/vault.js";
 import { getProvider } from "../core/providers.js";
 import { log } from "../logger.js";
@@ -32,10 +32,12 @@ export class LeadBot {
   async start(): Promise<void> {
     const { bot, sessions, lead } = this;
 
-    // Auth middleware — same allowed users as the main bot.
+    // Auth middleware — identical rule to the main bot: allow-listed user in a
+    // private 1:1 chat. The shared helper also enforces the private-chat check,
+    // so a Lead bot added to a group can't leak the agent's output (host paths,
+    // command results) to other members.
     bot.use(async (ctx, next) => {
-      const userId = ctx.from?.id;
-      if (!userId || !allowedUserIds.has(userId)) return;
+      if (!isAuthorized(ctx)) return;
       return next();
     });
 

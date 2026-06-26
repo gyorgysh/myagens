@@ -1,5 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { config as loadEnv } from "dotenv";
 import { z } from "zod";
 
@@ -121,6 +123,31 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  // Panel terminal: a full interactive host shell streamed over /ws. A panel
+  // token holder gets arbitrary command execution as the bot's user, so this is
+  // OFF by default and must be explicitly opted into. Set true + restart to enable.
+  PANEL_TERMINAL_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  // Whether the terminal shell inherits the bot's full environment (which holds
+  // secrets loaded from .env: TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY, PANEL_TOKEN,
+  // OPENAI_API_KEY, …). Off by default: the shell gets a minimal sanitized env
+  // (PATH/HOME/USER/SHELL/TERM/LANG) so a terminal session can't trivially read
+  // those secrets back out via `env`. Set true only if you understand the risk.
+  PANEL_TERMINAL_INHERIT_ENV: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  // Remote access: let the panel spawn a tunnel relay (ngrok / cloudflared) so it
+  // is reachable from a phone over the internet, gated by the panel login. The
+  // panel token is host-equivalent, so this is OFF by default and must be opted
+  // into. When enabled, the actual relay still only runs when the user starts it
+  // from the Remote Access view (with a provider + token configured).
+  PANEL_TUNNEL_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 // Fail closed: a panel with host access must never run without a token.
@@ -132,9 +159,77 @@ const refined = schema.superRefine((cfg, ctx) => {
       message: "PANEL_TOKEN is required when PANEL_ENABLED=true",
     });
   }
+  // A short token is brute-forceable; the panel can read/write/run on the host.
+  if (cfg.PANEL_ENABLED && cfg.PANEL_TOKEN && cfg.PANEL_TOKEN.length < 16) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["PANEL_TOKEN"],
+      message: "PANEL_TOKEN must be at least 16 characters (use a long random secret)",
+    });
+  }
 });
 
+/**
+ * When the panel auto-heals a missing/weak PANEL_TOKEN at startup, the freshly
+ * generated value lands here so `index.ts` can DM it to the user once the bot
+ * connects. Null when no regeneration happened.
+ */
+export let regeneratedPanelToken: string | null = null;
+
+/** Cryptographically strong, URL/.env-safe token (no quoting needed). */
+function generatePanelToken(): string {
+  // 24 bytes -> 32 base64url chars, comfortably above the 16-char minimum.
+  return randomBytes(24).toString("base64url");
+}
+
+/**
+ * Self-heal a missing or too-short PANEL_TOKEN before validation, so an existing
+ * install with a weak/blank token (which the SEC-3 16-char minimum would now
+ * reject at startup) keeps booting instead of crash-looping after an update.
+ *
+ * Generates a strong token, rewrites the PANEL_TOKEN line in `.env` in place
+ * (or appends one), mutates `process.env` so this run uses it, and records it in
+ * `regeneratedPanelToken` so the user is notified over Telegram with the new
+ * value. Only runs when the panel is enabled. Best-effort: if `.env` can't be
+ * written, the token still applies to the live process and the user is notified.
+ */
+function healPanelToken(): void {
+  const enabled = process.env.PANEL_ENABLED === "true";
+  if (!enabled) return;
+  const current = process.env.PANEL_TOKEN ?? "";
+  if (current.length >= 16) return;
+
+  const token = generatePanelToken();
+  process.env.PANEL_TOKEN = token;
+  regeneratedPanelToken = token;
+
+  const envPath = join(repoRoot, ".env");
+  try {
+    let body = existsSync(envPath) ? readFileSync(envPath, "utf8") : "";
+    const line = `PANEL_TOKEN=${token}`;
+    if (/^PANEL_TOKEN=.*$/m.test(body)) {
+      body = body.replace(/^PANEL_TOKEN=.*$/m, line);
+    } else {
+      if (body.length && !body.endsWith("\n")) body += "\n";
+      body += `${line}\n`;
+    }
+    writeFileSync(envPath, body, { mode: 0o600 });
+    // eslint-disable-next-line no-console
+    console.warn(
+      "PANEL_TOKEN was missing or shorter than 16 chars; generated a new strong token and wrote it to .env.",
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `PANEL_TOKEN was weak; generated a new one for this run but could not persist it to .env (${
+        err instanceof Error ? err.message : String(err)
+      }). It will change again on the next restart until .env is writable.`,
+    );
+  }
+}
+
 function parseConfig() {
+  healPanelToken();
   const parsed = refined.safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues

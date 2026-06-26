@@ -44,7 +44,7 @@ The same agents, two front doors:
 | ![Memory panel: tier-based fact store](images/v01_memory.webp) | ![Settings: main agent model picker and local model providers](images/v01_llm.webp) |
 | **Memory**: a tier-based fact store (hot/warm/cold) that agents write to and recall from automatically, with optional semantic search. Search, edit, promote, demote, and delete entries from the panel. | **Settings**: choose the model and provider for the main agent and every sub-agent, add local model servers (LM Studio, Ollama) or proxies, and tune semantic-memory embeddings. See [Bring Your Own Model](#bring-your-own-model). |
 
-Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (tier-based fact store with hot/warm/cold recall plus optional semantic search), **Vault** (AES-256-GCM secrets), **Skills** (reusable workflows), **Prompt** (playbook editor), **Logs** (live tail + searchable history by date, level, and keyword; 72h rotation), **Terminal** (a live shell session in the browser), **Connectors** (external-service catalogue), **Updates** (check, apply, and roll back versions in place), **Settings** (main agent, plan and budget tracker, language, model providers with live local-backend status), and more.
+Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (tier-based fact store with hot/warm/cold recall plus optional semantic search), **Vault** (AES-256-GCM secrets), **Skills** (reusable workflows), **Prompt** (playbook editor), **Logs** (a human-readable activity feed, raw searchable history with 72h rotation, and usage analytics), **Terminal** (a live shell session in the browser, off by default), **Connectors** (external-service catalogue), **Updates** (check, apply, and roll back versions in place), **Remote Access** (expose the panel over a secure tunnel for phone access), **Settings** (main agent, plan and budget tracker, language, model providers with live local-backend status), and more.
 
 ## In Telegram
 
@@ -176,6 +176,7 @@ You can also ask Atlas to restart himself: "restart yourself" triggers `./script
 | `CLAUDE_MODEL` | no | Default model id (default `claude-opus-4-8`) |
 | `ANTHROPIC_API_KEY` | no | API key; omit to use `claude` CLI login |
 | `APPROVAL_TIMEOUT_MS` | no | Approval wait before auto-deny (default `300000`) |
+| `LOOP_THRESHOLD` | no | Repeats of an identical tool call before the loop guard fires (default `3`; `0` disables) |
 | `STREAM_MODE` | no | `rich` (default), `draft`, or `edit` |
 | `ATLAS_NAME` | no | Override the main agent's name (default `Atlas`) |
 | `BRAND_NAME` | no | Override the product name (default `MyHQ`) |
@@ -203,6 +204,9 @@ You can also ask Atlas to restart himself: "restart yourself" triggers `./script
 | `PANEL_PORT` | no | Port (default `8787`) |
 | `PANEL_CHAT_ENABLED` | no | `false` to hide the panel Chat view (default `true`) |
 | `PANEL_CHAT_BYPASS` | no | `true` to unlock the Chat's auto (no-approval) mode (default `false`) |
+| `PANEL_TERMINAL_ENABLED` | no | `true` to enable the in-browser shell (default `false`; a panel-token holder gets host execution) |
+| `PANEL_TERMINAL_INHERIT_ENV` | no | `true` to give the terminal the full process env instead of a sanitized allow-list (default `false`, risky) |
+| `PANEL_TUNNEL_ENABLED` | no | `true` to allow Remote Access (expose the panel over an ngrok/cloudflared tunnel; default `false`) |
 
 ### Streaming modes
 
@@ -262,7 +266,8 @@ Everything the panel does is a REST call you can script. Auth is the same `PANEL
 | Logs | `GET /api/logs`, `GET /api/logs/dates`, `GET /api/logs/search`, `GET /api/logs/summary` |
 | Updates | `GET /api/update`, `POST /api/update/check\|run\|restore` |
 | Panel chat and terminal | `GET /api/chat`, `POST /api/chat/send\|stop\|clear\|approve`, `PUT /api/chat/settings`, `GET /api/terminal`, `POST /api/terminal/spawn\|resize` |
-| Realtime | `GET /ws` (worker, chat, task, health, and log frames) |
+| Remote access (tunnel) | `GET\|PUT /api/tunnel`, `POST /api/tunnel/start\|stop`, `GET\|POST /api/tunnel/password` (all `PUT`/`start`/`stop`/`password` are 403 unless `PANEL_TUNNEL_ENABLED`) |
+| Realtime | `GET /ws` (worker, chat, task, health, tunnel, and log frames) |
 
 ## Permissions
 
@@ -307,10 +312,13 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Local model support**: point Atlas or any Lead at LM Studio, Ollama, or any Anthropic-compatible proxy, switchable live from the Settings tab.
 - **File send/receive**: upload files and photos (agents see images inline); agents can send files back via the built-in `send_file` tool.
 - **Scheduled runs**: timed autonomous prompts on any interval or daily time, per-agent.
-- **Persistent logs**: agent activity is written to dated NDJSON files in `logs/` (one per day, never truncated on restart). Files older than 72 hours rotate automatically. The panel Logs view lets you browse and search any past day by date, level, or keyword.
+- **Persistent logs**: agent activity is written to dated NDJSON files in `logs/` (one per day, never truncated on restart). Files older than 72 hours rotate automatically. Secrets (bearer tokens, API keys, bot tokens, `key=value` credential pairs) are redacted before any line is written or shown. The panel Logs view has three tabs: an **Activity** feed of human-readable rows (Reading, Running command, Editing, plus lifecycle events like new messages, scheduled runs, and updates), the raw **Logs** view (browse and search any past day by date, level, or keyword, including a cross-file 72h search), and **Analytics** (most-used tools and shell commands).
 - **Live model switching**: `/model` shows shortcut buttons for the main Claude tiers (Opus, Sonnet, Haiku) and lists any configured local or provider models as text. Switch with one tap or `/model <name>` directly. Takes effect on the next message.
 - **Session resume after restart**: the first Telegram message after a restart offers to resume the previous conversation or start fresh, so a deploy or reboot never silently drops your context. Auto-resumes after 10 seconds if you do not pick.
-- **Panel terminal**: a real shell session in the browser for quick checks without SSH, served over the same authenticated WebSocket as the rest of the panel.
+- **Panel terminal**: a real shell session in the browser for quick checks without SSH, served over the same authenticated WebSocket as the rest of the panel. **Off by default** (`PANEL_TERMINAL_ENABLED`) since a panel-token holder would otherwise get arbitrary host execution; when on, the shell gets a sanitized env so it can't read the bot's secrets back out.
+- **Remote access (tunnel)**: expose the loopback panel to the internet so you can reach it from your phone, still behind the panel login. The Remote Access view spawns an **ngrok** or **cloudflared** relay pointed at the panel port and shows the public URL. **Off by default** (`PANEL_TUNNEL_ENABLED`); even when enabled the relay only runs on an explicit Start (or auto-start after a reboot), an HTTP Basic Auth gate (username `myhq`, auto-generated password) sits in front as a second factor, the public URL and login are DM'd to you and surfaced by `/status`, and the ngrok token is stored in the vault.
+- **Agentic loop detection**: a per-turn guard hashes each tool call and, after `LOOP_THRESHOLD` identical repeats (default 3), prompts you to Skip / Approve once / Continue (interactive turns) or aborts a runaway autonomous turn, so a stuck retry loop can't burn tokens overnight.
+- **Security hardening**: the panel token is rate-limited against brute force, enforced to a 16-char minimum (a weak or missing token is auto-healed on startup and the new one DM'd to you), and only accepted as a Bearer header for REST (never a query string). Provider auth tokens are never returned in plaintext. Server-side outbound fetches are SSRF-guarded (cloud-metadata and link-local IPs blocked). Lead bots enforce private-chat-only auth. The `.claude` file editor is locked to known directories with symlink-escape protection. The data dir is `chmod 0700`, store reads are protected against prototype pollution, and Telegram-added group members can't read agent output.
 - **In-panel updates**: the Updates view checks for a new version, applies it, and can roll back, mirroring `scripts/update.sh` without leaving the dashboard.
 - **Connectors catalogue**: a registry for external services (Gmail, Google Calendar, Google Drive, Notion, Apple Calendar, Apple Mail) with a vault-backed credential slot, ready to wire up (placeholders for now).
 

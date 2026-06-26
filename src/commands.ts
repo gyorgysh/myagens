@@ -20,6 +20,7 @@ import { serviceInstalled } from "./core/agentControl.js";
 import { listProviders } from "./core/providers.js";
 import { fetchProviderModels } from "./core/providerModels.js";
 import { resolveSecret } from "./core/vault.js";
+import { tunnelManager } from "./core/tunnelManager.js";
 import { log } from "./logger.js";
 
 // ---------------------------------------------------------------------------
@@ -456,14 +457,37 @@ export function registerCommands(bot: Telegraf): void {
 
   bot.command("status", async (ctx) => {
     const s = sessions.get(ctx.chat.id);
-    await ctx.replyWithHTML(
-      `<b>Status</b>\n` +
-        `📂 <code>${s.cwd}</code>\n` +
-        `🧠 ${config.ATLAS_NAME} · <code>${mainSettingsView().effectiveModel}</code>\n` +
-        `🔒 autonomy: <b>${s.autonomy}</b>\n` +
-        `🔗 session: <code>${s.sessionId ?? "(new)"}</code>\n` +
-        `⚙️ ${s.busy ? "running…" : "idle"}`,
-    );
+    const lines = [
+      `<b>Status</b>`,
+      `📂 <code>${s.cwd}</code>`,
+      `🧠 ${config.ATLAS_NAME} · <code>${mainSettingsView().effectiveModel}</code>`,
+      `🔒 autonomy: <b>${s.autonomy}</b>`,
+      `🔗 session: <code>${s.sessionId ?? "(new)"}</code>`,
+      `⚙️ ${s.busy ? "running…" : "idle"}`,
+    ];
+
+    // Remote access tunnel — show the provider + public link when it's live so
+    // the user can open the panel from their phone.
+    const tv = tunnelManager.view();
+    if (tv.enabled) {
+      const provider = tv.provider === "cloudflare" ? "Cloudflare" : "ngrok";
+      if (tv.state === "running" && tv.url) {
+        lines.push(`🌐 remote (<b>${provider}</b>): ${escapeHtml(tv.url)}`);
+        if (tv.basicAuth && tv.hasPassword) {
+          const pw = tunnelManager.revealPassword();
+          lines.push(
+            `🔑 login: <code>${escapeHtml(tv.basicAuthUser)}</code>` +
+              (pw ? ` / <code>${escapeHtml(pw)}</code>` : ""),
+          );
+        }
+      } else if (tv.state === "starting") {
+        lines.push(`🌐 remote (<b>${provider}</b>): starting…`);
+      } else {
+        lines.push(`🌐 remote (<b>${provider}</b>): off`);
+      }
+    }
+
+    await ctx.replyWithHTML(lines.join("\n"));
   });
 
   bot.command("update", async (ctx) => {

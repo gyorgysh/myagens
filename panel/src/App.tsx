@@ -24,6 +24,7 @@ import { LogsView } from "./components/Logs.tsx";
 import { HeartbeatView_ } from "./components/Heartbeat.tsx";
 import { SettingsView } from "./components/Settings.tsx";
 import { TerminalView } from "./components/Terminal.tsx";
+import { RemoteAccessView } from "./components/RemoteAccess.tsx";
 
 /** Tab from the URL path (e.g. /status), falling back to health. */
 function tabFromPath(): Tab | "settings" {
@@ -173,6 +174,7 @@ export function App() {
           {tab === "sessions" && <SessionsView onAuthError={onAuthError} />}
           {tab === "schedules" && <SchedulesView onAuthError={onAuthError} />}
           {tab === "heartbeat" && <HeartbeatView_ onAuthError={onAuthError} />}
+          {tab === "remote" && <RemoteAccessView onAuthError={onAuthError} />}
           {tab === "usage" && <UsageView onAuthError={onAuthError} />}
           {tab === "settings" && <SettingsView onAuthError={onAuthError} />}
 

@@ -10,6 +10,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 
 interface TerminalStatus {
   available: boolean;
+  reason?: "disabled" | "unsupported" | null;
   shell: string;
 }
 
@@ -162,11 +163,18 @@ export function TerminalView({ onAuthError }: { onAuthError: () => void }) {
   }
 
   if (!status.available) {
+    const disabled = status.reason === "disabled";
     return (
       <div className="space-y-4">
-        <Callout title={t("terminal_unavailable_title")}>
-          {t("terminal_unavailable_body")}
+        <Callout
+          title={disabled ? t("terminal_disabled_title") : t("terminal_unavailable_title")}
+        >
+          {disabled ? t("terminal_disabled_body") : t("terminal_unavailable_body")}
         </Callout>
+        <LockedTerminal
+          shell={status.shell}
+          label={disabled ? t("terminal_disabled_overlay") : t("terminal_unavailable_overlay")}
+        />
       </div>
     );
   }
@@ -184,6 +192,50 @@ export function TerminalView({ onAuthError }: { onAuthError: () => void }) {
         className="min-h-0 flex-1 p-1"
         style={{ contain: "strict" }}
       />
+    </div>
+  );
+}
+
+/** A blurred, non-interactive mock terminal shown when the real terminal is
+ *  disabled/unavailable — communicates "this is where the shell would be" with
+ *  a lock badge over fake prompt lines, instead of leaving the page empty. */
+function LockedTerminal({ shell, label }: { shell: string; label: string }) {
+  const { t } = useI18n();
+  // Static, harmless sample lines purely for visual texture behind the blur.
+  const lines = [
+    "$ git status",
+    "On branch main",
+    "nothing to commit, working tree clean",
+    "$ npm run build",
+    "✓ built in 1.24s",
+    "$ ls -la",
+    "drwxr-xr-x  12 user  staff   384 .",
+    "$ ▍",
+  ];
+  return (
+    <div className="relative h-[calc(100vh-16rem)] min-h-64 overflow-hidden rounded-xl border border-line bg-base">
+      {/* Header bar mirrors the live terminal's */}
+      <div className="flex items-center gap-2 border-b border-line px-3 py-1.5">
+        <span className="mono text-xs text-fg-faint">{shell}</span>
+        <span className="ml-auto text-xs text-fg-faint">🔒</span>
+      </div>
+      {/* Blurred fake terminal body */}
+      <div
+        aria-hidden
+        className="mono select-none space-y-1 p-3 text-xs text-fg-dim blur-[3px]"
+      >
+        {lines.map((l, i) => (
+          <div key={i}>{l}</div>
+        ))}
+      </div>
+      {/* Lock overlay */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-base/40 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface text-2xl">
+          🔒
+        </div>
+        <div className="text-sm font-medium text-fg">{label}</div>
+        <div className="max-w-xs text-xs text-fg-faint">{t("terminal_locked_hint")}</div>
+      </div>
     </div>
   );
 }

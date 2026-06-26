@@ -1,5 +1,12 @@
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, join, relative, resolve, sep } from "node:path";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { config, repoRoot } from "../config.js";
 import { sessions } from "../session/manager.js";
 import { audit } from "./audit.js";
@@ -24,14 +31,45 @@ export interface ClaudeRoot {
   files: ClaudeFile[];
 }
 
-/** Candidate roots: the bot workdir, repo root, and every session cwd/project. */
+/**
+ * A path is too shallow to ever be a legitimate project root (filesystem root,
+ * a top-level dir like /etc, or a drive root). Allowing one would let a session
+ * cwd of "/" widen the editable scope to the whole disk, so we drop them.
+ */
+function tooShallow(abs: string): boolean {
+  // Count path segments below the root. resolve() already normalised it.
+  const segments = abs.split(sep).filter(Boolean);
+  // < 2 segments means "/", "/etc", "C:\", "C:\Users" — reject the first two.
+  return segments.length < 2;
+}
+
+/**
+ * Candidate roots: the bot workdir, repo root, and every session cwd/project.
+ * Each is canonicalised (symlinks resolved) and filtered so a too-shallow root
+ * can't broaden the write scope. Returns absolute, real paths.
+ */
 function roots(): string[] {
-  const set = new Set<string>([config.WORKDIR, repoRoot]);
+  const raw = new Set<string>([config.WORKDIR, repoRoot]);
   for (const s of sessions.all()) {
-    set.add(s.cwd);
-    for (const p of s.projects) set.add(p);
+    raw.add(s.cwd);
+    for (const p of s.projects) raw.add(p);
   }
-  return [...set];
+  const out = new Set<string>();
+  for (const r of raw) {
+    const real = realPath(resolve(r));
+    if (!real || tooShallow(real)) continue;
+    out.add(real);
+  }
+  return [...out];
+}
+
+/** realpathSync that returns undefined instead of throwing on a missing path. */
+function realPath(p: string): string | undefined {
+  try {
+    return realpathSync(p);
+  } catch {
+    return undefined;
+  }
 }
 
 const SUBDIRS: Array<{ dir: string; kind: ClaudeFile["kind"] }> = [
@@ -80,11 +118,38 @@ export function listClaudeFiles(): ClaudeRoot[] {
   return result;
 }
 
-/** True if `path` is an editable Claude config file inside a known root. */
+/**
+ * Canonicalise a path that may not exist yet: realpath the deepest existing
+ * ancestor (so symlinks anywhere in the path are resolved), then re-append the
+ * non-existent tail. This stops a symlinked component from escaping the scope.
+ */
+function canonicalize(path: string): string {
+  let abs = resolve(path);
+  const tail: string[] = [];
+  // Walk up until we hit a path that exists, realpath it, then rebuild.
+  while (!existsSync(abs)) {
+    const parent = dirname(abs);
+    if (parent === abs) break; // reached the root
+    tail.unshift(basename(abs));
+    abs = parent;
+  }
+  const realBase = realPath(abs) ?? abs;
+  return tail.length ? join(realBase, ...tail) : realBase;
+}
+
+/**
+ * True if `path` is an editable Claude config file inside a known root.
+ * The path is canonicalised first (symlinks resolved) and containment is
+ * checked against the canonical root paths, so the editor can't be turned into
+ * an arbitrary-file write primitive via a symlink or a "/" session cwd.
+ */
 function isAllowed(path: string): boolean {
-  const abs = resolve(path);
+  const abs = canonicalize(path);
   if (!abs.endsWith(".md")) return false;
-  const inRoot = roots().some((r) => abs === join(r, "CLAUDE.md") || abs.startsWith(resolve(r) + sep));
+  // Must be a CLAUDE.md at a root, or a .md somewhere under a root's .claude/.
+  const inRoot = roots().some(
+    (r) => abs === join(r, "CLAUDE.md") || abs.startsWith(r + sep),
+  );
   if (!inRoot) return false;
   return abs.includes(`${sep}.claude${sep}`) || basename(abs) === "CLAUDE.md";
 }

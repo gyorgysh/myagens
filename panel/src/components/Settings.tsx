@@ -931,6 +931,12 @@ function ProvidersSettings({ onAuthError }: { onAuthError: () => void }) {
   const rank = (s: ProviderStatus) => (s.connected ? 2 : s.running ? 1 : 0);
   const ordered = [...providers].sort((a, b) => rank(statusFor(b)) - rank(statusFor(a)) || a.name.localeCompare(b.name));
 
+  // When editing an existing provider, the plaintext token isn't available
+  // (SEC-2); show its masked hint and treat a blank field as "keep existing".
+  const editingProvider = editing && editing !== "new" ? providers.find((p) => p.id === editing) : undefined;
+  const editingHasToken = !!editingProvider?.hasToken;
+  const editingTokenHint = editingProvider?.tokenHint ?? "";
+
   const bothRunning = !!ollama?.running && !!lmStudio?.running;
 
   // Embeddings mode shown in the segmented control. When .env pins it ("on"/"off")
@@ -1030,7 +1036,15 @@ function ProvidersSettings({ onAuthError }: { onAuthError: () => void }) {
             </div>
             <div>
               <Label>{t("settings_provider_auth")}</Label>
-              <Input value={form.authToken} onChange={(e) => setForm({ ...form, authToken: e.target.value })} placeholder="lmstudio" />
+              <Input
+                value={form.authToken}
+                onChange={(e) => setForm({ ...form, authToken: e.target.value })}
+                placeholder={
+                  editing !== "new" && editingHasToken
+                    ? `${editingTokenHint} — ${t("settings_provider_auth_keep")}`
+                    : "lmstudio"
+                }
+              />
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1065,7 +1079,7 @@ function ProvidersSettings({ onAuthError }: { onAuthError: () => void }) {
               busy={busy}
               hideConnect={envLocked}
               onConnect={() => (backendKind(p.baseUrl) === "ollama" ? connectOllama() : connectLmStudio())}
-              onEdit={() => { setForm({ name: p.name, baseUrl: p.baseUrl, authToken: p.authToken }); setEditing(p.id); }}
+              onEdit={() => { setForm({ name: p.name, baseUrl: p.baseUrl, authToken: "" }); setEditing(p.id); }}
               onDelete={() => del(p.id)}
             />
           ))}

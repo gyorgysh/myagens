@@ -59,12 +59,15 @@ import { listConnectors, setConnector } from "../core/connectors.js";
 import { vault, importProviderSecrets, resolveSecret } from "../core/vault.js";
 import {
   listProviders,
+  listProviderViews,
+  toProviderView,
   getProvider,
   createProvider,
   updateProvider,
   deleteProvider,
 } from "../core/providers.js";
 import { fetchProviderModels } from "../core/providerModels.js";
+import { BlockedUrlError } from "../core/safeUrl.js";
 import { mainSettingsView, setMainSettings } from "../core/mainSettings.js";
 import { embeddingConfig, setEmbeddingsEnabled, preferredBackend, setPreferredBackend, activeBackend, envEmbeddingMode, embeddingsAuto, enterAutoMode, type PreferredBackend } from "../core/embeddings.js";
 import { ollamaStatus, connectOllama } from "../core/ollama.js";
@@ -75,6 +78,7 @@ import { getUpdateStatus, checkForUpdate, runUpdate, runRestore } from "../core/
 import { recentAudit } from "../core/audit.js";
 import { sessions } from "../session/manager.js";
 import { ptyManager } from "../core/ptyManager.js";
+import { tunnelManager, BASIC_AUTH_USER } from "../core/tunnelManager.js";
 import { PanelHub } from "./hub.js";
 import { runTurn } from "../claude/runner.js";
 
@@ -112,6 +116,8 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
   taskDelegator.start((m) => hub.broadcast(m));
   // Wire the PTY terminal session to all clients.
   ptyManager.start((m) => hub.broadcast(m));
+  // Wire remote-access tunnel state changes to all clients.
+  tunnelManager.start((m) => hub.broadcast(m));
   // Stream live log lines to every panel client.
   const unsubLog = onLog((entry) => hub.broadcast({ type: "log", entry }));
 
@@ -121,11 +127,54 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
   const updateTimer = setInterval(() => void checkForUpdate(), 6 * 3_600_000);
   updateTimer.unref();
 
+  // Remote-access gate: when a request arrives through the public tunnel (ngrok /
+  // cloudflared proxy to loopback and set x-forwarded-* headers), it must clear an
+  // HTTP Basic Auth challenge (user `myhq` + the generated password) BEFORE anything
+  // — including the SPA shell and the login page — is served. Local/LAN access to
+  // the panel is unaffected (no forwarding header → gate skipped). This is a second
+  // factor in front of the existing panel token, not a replacement.
+  app.addHook("onRequest", async (req, reply) => {
+    if (!tunnelManager.basicAuthActive) return;
+    const forwarded = req.headers["x-forwarded-for"] || req.headers["x-forwarded-host"];
+    if (!forwarded) return; // direct loopback/LAN request, gate doesn't apply
+
+    // IMPORTANT: HTTP Basic Auth and the panel's Bearer token both live in the
+    // `Authorization` header, so they can't coexist on one request. The SPA sets
+    // `Authorization: Bearer <panel-token>` on every /api + /ws call, which means
+    // the browser can't also attach the cached Basic Auth creds there — the Basic
+    // gate would always fail on those paths and pop a looping native dialog while
+    // the cached shell renders behind it. So the Basic gate guards ONLY the document
+    // + static assets (the entry point a phone hits): the browser does the native
+    // login once for the navigation, then the loaded SPA authenticates /api + /ws
+    // with the Bearer token as usual. The token is the access control for the data
+    // and actions; Basic Auth is just a second factor in front of the entry page.
+    if (req.url.startsWith("/api") || req.url.startsWith("/ws")) return;
+
+    if (tunnelManager.verifyBasic(req.headers.authorization)) return;
+    await reply
+      .code(401)
+      .header("WWW-Authenticate", 'Basic realm="MyHQ Remote Access", charset="UTF-8"')
+      .header("cache-control", "no-store")
+      .send("Authentication required");
+  });
+
   // Auth: every /api and /ws request needs the shared token. Static SPA assets
   // are served freely (they hold no secrets; the token gates the data + actions).
   app.addHook("onRequest", async (req, reply) => {
     if (!req.url.startsWith("/api") && !req.url.startsWith("/ws")) return;
-    if (!tokenOk(req)) await reply.code(401).send({ error: "unauthorized" });
+    const ip = clientIp(req);
+    // Lock out a client that has failed repeatedly, so the long random token
+    // can't be brute-forced over the network.
+    if (isLockedOut(ip)) {
+      await reply.code(429).send({ error: "too many attempts, try again later" });
+      return;
+    }
+    if (!tokenOk(req)) {
+      noteAuthFailure(ip);
+      await reply.code(401).send({ error: "unauthorized" });
+      return;
+    }
+    noteAuthSuccess(ip);
   });
 
   registerApi(app, hub);
@@ -151,6 +200,7 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
     workers.stop();
     taskDelegator.stopAll();
     ptyManager.kill();
+    tunnelManager.kill();
     hub.stop();
     await app.close();
   };
@@ -161,8 +211,12 @@ function tokenOk(req: FastifyRequest): boolean {
   if (!expected) return false;
   const header = req.headers.authorization;
   const fromHeader = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
+  // The browser WebSocket API can't set an Authorization header, so the WS
+  // handshake (and only it) may carry the token in the query string. REST must
+  // use the header, so the token never lands in proxy/access logs or history.
+  const isWs = req.url.startsWith("/ws");
   const q = req.query as Record<string, unknown>;
-  const fromQuery = typeof q?.token === "string" ? q.token : undefined;
+  const fromQuery = isWs && typeof q?.token === "string" ? q.token : undefined;
   const provided = fromHeader ?? fromQuery;
   return provided !== undefined && safeEqual(provided, expected);
 }
@@ -172,6 +226,41 @@ function safeEqual(a: string, b: string): boolean {
   const bb = Buffer.from(b);
   if (ab.length !== bb.length) return false;
   return timingSafeEqual(ab, bb);
+}
+
+// --- Brute-force lockout -----------------------------------------------------
+// A panel token grants host access, so throttle repeated auth failures per
+// client IP. In-memory only (no dep): after MAX_FAILS failures the IP is locked
+// for LOCKOUT_MS; a success clears the counter. Cleared on restart.
+const MAX_FAILS = 10;
+const LOCKOUT_MS = 5 * 60_000;
+const authFailures = new Map<string, { count: number; lockedUntil: number }>();
+
+function clientIp(req: FastifyRequest): string {
+  return req.ip || "unknown";
+}
+
+function isLockedOut(ip: string): boolean {
+  const e = authFailures.get(ip);
+  if (!e) return false;
+  if (e.lockedUntil && e.lockedUntil > Date.now()) return true;
+  // Lockout window elapsed: reset so the client gets a fresh allowance.
+  if (e.lockedUntil && e.lockedUntil <= Date.now()) authFailures.delete(ip);
+  return false;
+}
+
+function noteAuthFailure(ip: string): void {
+  const e = authFailures.get(ip) ?? { count: 0, lockedUntil: 0 };
+  e.count += 1;
+  if (e.count >= MAX_FAILS) {
+    e.lockedUntil = Date.now() + LOCKOUT_MS;
+    log.warn("Panel auth lockout", { ip, count: e.count });
+  }
+  authFailures.set(ip, e);
+}
+
+function noteAuthSuccess(ip: string): void {
+  authFailures.delete(ip);
 }
 
 /** Panel view of a worker: registry fields + derived run state. */
@@ -808,7 +897,7 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
   });
 
   // --- model providers (local LM Studio/Ollama, proxies) ---
-  app.get("/api/providers", async () => ({ providers: listProviders() }));
+  app.get("/api/providers", async () => ({ providers: listProviderViews() }));
   // Fetch the model list for an unsaved endpoint (provider form).
   app.post("/api/providers/models", async (req, reply) => {
     const { baseUrl, authToken } = (req.body ?? {}) as { baseUrl?: string; authToken?: string };
@@ -816,7 +905,9 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     try {
       return { models: await fetchProviderModels(baseUrl, authToken) };
     } catch (err) {
-      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+      // A blocked URL (SSRF guard) is a bad request, not an upstream failure.
+      const code = err instanceof BlockedUrlError ? 400 : 502;
+      return reply.code(code).send({ error: err instanceof Error ? err.message : String(err) });
     }
   });
   // Fetch the model list for a saved provider (worker form).
@@ -826,14 +917,15 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     try {
       return { models: await fetchProviderModels(p.baseUrl, resolveSecret(p.authToken)) };
     } catch (err) {
-      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+      const code = err instanceof BlockedUrlError ? 400 : 502;
+      return reply.code(code).send({ error: err instanceof Error ? err.message : String(err) });
     }
   });
-  app.post("/api/providers", async (req) => createProvider(req.body as never));
+  app.post("/api/providers", async (req) => toProviderView(createProvider(req.body as never)));
   app.put("/api/providers/:id", async (req, reply) => {
     const updated = updateProvider((req.params as { id: string }).id, req.body as never);
     if (!updated) return reply.code(404).send({ error: "not found" });
-    return updated;
+    return toProviderView(updated);
   });
   app.delete("/api/providers/:id", async (req, reply) => {
     if (!deleteProvider((req.params as { id: string }).id))
@@ -862,17 +954,68 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
   // --- Terminal ---
   app.get("/api/terminal", async () => ({
     available: ptyManager.available,
+    // Why it's unavailable, so the UI can show the right hint: "disabled" (the
+    // PANEL_TERMINAL_ENABLED flag is off) vs "unsupported" (node-pty missing).
+    reason: !ptyManager.enabled ? "disabled" : ptyManager.available ? null : "unsupported",
     shell: ptyManager.currentShell,
   }));
-  app.post("/api/terminal/spawn", async (req) => {
+  app.post("/api/terminal/spawn", async (req, reply) => {
+    if (!ptyManager.enabled) return reply.code(403).send({ error: "terminal disabled" });
     const { cols, rows } = (req.body ?? {}) as { cols?: number; rows?: number };
     ptyManager.spawn(cols ?? 120, rows ?? 30);
     return { ok: true };
   });
-  app.post("/api/terminal/resize", async (req) => {
+  app.post("/api/terminal/resize", async (req, reply) => {
+    if (!ptyManager.enabled) return reply.code(403).send({ error: "terminal disabled" });
     const { cols, rows } = (req.body ?? {}) as { cols?: number; rows?: number };
     if (typeof cols === "number" && typeof rows === "number") ptyManager.resize(cols, rows);
     return { ok: true };
+  });
+
+  // --- Remote access (tunnel relay) ---
+  app.get("/api/tunnel", async () => tunnelManager.view());
+  app.put("/api/tunnel", async (req, reply) => {
+    if (!tunnelManager.enabled) return reply.code(403).send({ error: "remote access disabled" });
+    const { provider, authToken, domain, autoStart, basicAuth } = (req.body ?? {}) as {
+      provider?: "ngrok" | "cloudflare";
+      authToken?: string;
+      domain?: string;
+      autoStart?: boolean;
+      basicAuth?: boolean;
+    };
+    tunnelManager.setConfig({ provider, authToken, domain, autoStart, basicAuth });
+    // Turning the gate on generates the password immediately if none exists yet.
+    if (basicAuth === true) tunnelManager.ensurePassword();
+    return tunnelManager.view();
+  });
+  // Reveal / rotate / set the Basic Auth password. Username is fixed to `myhq`.
+  app.get("/api/tunnel/password", async (_req, reply) => {
+    if (!tunnelManager.enabled) return reply.code(403).send({ error: "remote access disabled" });
+    const password = tunnelManager.revealPassword();
+    return { user: BASIC_AUTH_USER, password: password ?? null };
+  });
+  app.post("/api/tunnel/password", async (req, reply) => {
+    if (!tunnelManager.enabled) return reply.code(403).send({ error: "remote access disabled" });
+    const { password } = (req.body ?? {}) as { password?: string };
+    if (typeof password === "string" && password.trim()) {
+      if (!tunnelManager.setPassword(password)) {
+        return reply.code(400).send({ error: "password must be at least 6 characters" });
+      }
+      return { user: BASIC_AUTH_USER, password: password.trim() };
+    }
+    // No password supplied → rotate to a fresh random one.
+    return { user: BASIC_AUTH_USER, password: tunnelManager.rotatePassword() };
+  });
+  app.post("/api/tunnel/start", async (_req, reply) => {
+    if (!tunnelManager.enabled) return reply.code(403).send({ error: "remote access disabled" });
+    const r = tunnelManager.start_relay();
+    if (!r.ok) return reply.code(409).send({ error: r.error });
+    return tunnelManager.view();
+  });
+  app.post("/api/tunnel/stop", async (_req, reply) => {
+    if (!tunnelManager.enabled) return reply.code(403).send({ error: "remote access disabled" });
+    tunnelManager.stop();
+    return tunnelManager.view();
   });
 }
 
@@ -888,8 +1031,9 @@ function registerWs(app: FastifyInstance, hub: PanelHub): void {
       } catch { /* client gone */ }
     }
 
-    // Relay terminal input from this client to the PTY.
+    // Relay terminal input from this client to the PTY (when the feature is on).
     socket.on("message", (raw) => {
+      if (!ptyManager.enabled) return;
       try {
         const msg = JSON.parse(raw.toString());
         if (msg?.type === "terminal" && msg.event === "input" && typeof msg.data === "string") {

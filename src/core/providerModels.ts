@@ -1,4 +1,5 @@
 import { log } from "../logger.js";
+import { assertSafeUrl, BlockedUrlError } from "./safeUrl.js";
 
 const TIMEOUT_MS = 6000;
 
@@ -31,10 +32,15 @@ async function getJson(url: string, headers: Record<string, string>): Promise<un
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
+    // SSRF guard: reject cloud-metadata / link-local targets before fetching.
+    await assertSafeUrl(url);
     const res = await fetch(url, { headers, signal: ctrl.signal });
     if (!res.ok) return undefined;
     return await res.json();
   } catch (err) {
+    // A blocked URL is a hard error the caller should see; a transient fetch
+    // failure just means "no models from this attempt".
+    if (err instanceof BlockedUrlError) throw err;
     log.debug("Model fetch failed", { url, error: err instanceof Error ? err.message : String(err) });
     return undefined;
   } finally {

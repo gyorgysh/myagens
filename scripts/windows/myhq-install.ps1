@@ -30,6 +30,7 @@
       MYHQ_PANEL        y | n  (enable the web dashboard)
       MYHQ_PANEL_PORT   Panel port number (default: 8787)
       MYHQ_PANEL_TOKEN  Panel access token (auto-generated if empty)
+      MYHQ_REMOTE       none | ngrok | cloudflare | both (phone access tunnel)
       MYHQ_YES          Set to 1 to accept all defaults without prompting
 #>
 
@@ -288,8 +289,12 @@ function Configure-Env {
             Warn "Port $panelPort also appears busy. You can change PANEL_PORT in .env later."
         }
 
-        # Token — auto-generate or manual.
-        if ($env:MYHQ_PANEL_TOKEN) {
+        # Token — auto-generate or manual. The panel rejects tokens shorter
+        # than 16 chars (SEC-3); replace a too-short env override with a strong one.
+        if ($env:MYHQ_PANEL_TOKEN -and $env:MYHQ_PANEL_TOKEN.Length -lt 16) {
+            Warn "MYHQ_PANEL_TOKEN is shorter than 16 chars — using an auto-generated token instead."
+            $panelToken = New-RandomToken
+        } elseif ($env:MYHQ_PANEL_TOKEN) {
             $panelToken = $env:MYHQ_PANEL_TOKEN
         } else {
             Write-Host ""
@@ -327,6 +332,69 @@ function Configure-Env {
         PANEL_ENABLED      = if ($panelEnabled) { "true" } else { "false" }
         PANEL_TOKEN        = $panelToken
         PANEL_PORT         = $panelPort
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Remote access (optional tunnel relay)
+# ---------------------------------------------------------------------------
+function Install-TunnelCli {
+    # $Name = ngrok | cloudflared. Returns $true on success.
+    param([string]$Name)
+    $wingetId = if ($Name -eq "ngrok") { "Ngrok.Ngrok" } else { "Cloudflare.cloudflared" }
+    if (Get-Command $Name -ErrorAction SilentlyContinue) { Ok "$Name found."; return $true }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Warn "winget not available — install $Name manually, then start the tunnel from the panel."
+        return $false
+    }
+    Say "Installing $Name via winget…"
+    try {
+        winget install --id $wingetId --silent --accept-package-agreements --accept-source-agreements 2>$null
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
+                    [System.Environment]::GetEnvironmentVariable("Path","User")
+    } catch { }
+    if (Get-Command $Name -ErrorAction SilentlyContinue) { Ok "$Name installed."; return $true }
+    Warn "$Name not on PATH yet — open a new terminal, or install it manually."
+    return $false
+}
+
+function Configure-RemoteAccess {
+    # Only meaningful when the panel is enabled.
+    if (-not $Script:PanelPortChosen) { return }
+
+    Title "Remote access"
+    Write-Host "  Reach the panel from your phone over a secure public tunnel (still behind your login)."
+    $choice = if ($env:MYHQ_REMOTE) { $env:MYHQ_REMOTE } else { "" }
+    if (-not $choice) {
+        Write-Host "  1) No, local only (default — most secure)"
+        Write-Host "  2) ngrok (needs a free authtoken from ngrok.com)"
+        Write-Host "  3) Cloudflare (free quick tunnel, no account needed)"
+        Write-Host "  4) Install both, decide later in the panel"
+        switch (Ask "Choose 1-4" "1") {
+            "2" { $choice = "ngrok" }
+            "3" { $choice = "cloudflare" }
+            "4" { $choice = "both" }
+            default { $choice = "none" }
+        }
+    }
+
+    if ($choice -eq "none") {
+        Ok "Remote access off. Enable it later in the panel's Remote Access view."
+        return
+    }
+
+    if ($choice -eq "ngrok" -or $choice -eq "both") { Install-TunnelCli "ngrok"      | Out-Null }
+    if ($choice -eq "cloudflare" -or $choice -eq "both") { Install-TunnelCli "cloudflared" | Out-Null }
+
+    # Flip the flag in the already-written .env.
+    $envPath = Join-Path $InstallDir ".env"
+    $lines = @(Get-Content $envPath | Where-Object { $_ -notmatch "^\s*#?\s*PANEL_TUNNEL_ENABLED=" })
+    $lines += "PANEL_TUNNEL_ENABLED=true"
+    $lines | Set-Content -Path $envPath -Encoding UTF8
+
+    Ok "Remote access unlocked. Open the panel's Remote Access view to add a token (if needed) and start the tunnel."
+    if ($choice -eq "ngrok" -or $choice -eq "both") {
+        Write-Host "  ngrok needs a free authtoken from https://dashboard.ngrok.com/get-started/your-authtoken — paste it in that view." -ForegroundColor Cyan
     }
 }
 
@@ -438,6 +506,7 @@ Ensure-ClaudeCLI
 Ensure-Ollama
 Build-App
 Configure-Env
+Configure-RemoteAccess
 Claude-Login
 Install-Service
 Write-UpdateScript

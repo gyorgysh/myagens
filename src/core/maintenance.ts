@@ -10,7 +10,22 @@ export interface MaintenanceStats {
   memoriesCompacted: number;
   memoriesDeleted: number;
   memoriesMerged: number;
+  /** Entries whose text the dedup pass rewrote into a clearer consolidated form. */
+  memoriesRewritten: number;
   skillsArchived: number;
+}
+
+/** Pull the first JSON array out of a model reply (tolerates ```json fences / prose). */
+function parseJsonArray<T>(raw: string): T[] | null {
+  const start = raw.indexOf("[");
+  const end = raw.lastIndexOf("]");
+  if (start === -1 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(raw.slice(start, end + 1));
+    return Array.isArray(parsed) ? (parsed as T[]) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Make a direct Anthropic API call for lightweight dedup analysis. */
@@ -44,6 +59,7 @@ class MaintenanceScheduler {
     memoriesCompacted: 0,
     memoriesDeleted: 0,
     memoriesMerged: 0,
+    memoriesRewritten: 0,
     skillsArchived: 0,
   };
   private timer?: ReturnType<typeof setInterval>;
@@ -73,6 +89,7 @@ class MaintenanceScheduler {
       memoriesCompacted: 0,
       memoriesDeleted: 0,
       memoriesMerged: 0,
+      memoriesRewritten: 0,
       skillsArchived: 0,
     };
     try {
@@ -132,35 +149,58 @@ class MaintenanceScheduler {
       run.memoriesDeleted += deleteIds.size;
     }
 
-    // Step 3: dedup warm entries in batches via haiku.
-    const warm = memory.allRaw().filter((e) => e.tier === "warm");
-    for (let i = 0; i < warm.length; i += BATCH_SIZE) {
-      const batch = warm.slice(i, i + BATCH_SIZE);
+    // Step 3: AI consolidation. Hot entries inject into every turn, so a few of
+    // them saying the same thing in different words is pure wasted context;
+    // collapse those first, then do the same for warm.
+    await this.consolidateTier("hot", run);
+    await this.consolidateTier("warm", run);
+  }
+
+  /**
+   * Use a small model as the "brain" of maintenance: scan one tier for entries
+   * that state the same fact (even worded differently or split across several
+   * entries), rewrite each such group into one clear consolidated entry, and
+   * drop the redundant ones. No-op when there is no API key or nothing to merge.
+   */
+  private async consolidateTier(tier: "hot" | "warm", run: MaintenanceStats): Promise<void> {
+    const entries = memory.allRaw().filter((e) => e.tier === tier);
+    for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+      const batch = entries.slice(i, i + BATCH_SIZE);
+      if (batch.length < 2) continue;
       const numbered = batch.map((e, idx) => `${idx + 1}. [${e.id}] ${e.text}`).join("\n");
       const prompt =
-        `Below are ${batch.length} memory entries. Which are duplicates or near-duplicates? ` +
-        `Return ONLY a JSON array of pairs to merge: [{"keep":"<id>","drop":"<id>"},...]. ` +
-        `If none, return []. Do not explain.\n\n${numbered}`;
+        `You are tidying an AI agent's long-term memory. Below are ${batch.length} "${tier}" memory ` +
+        `entries (id in square brackets). Find groups that state the SAME fact, even if worded ` +
+        `differently or spread across multiple entries. For each group, choose one id to keep, write a ` +
+        `single clear consolidated version that preserves EVERY distinct detail, and list the other ids ` +
+        `to drop. Leave genuinely distinct entries alone. Return ONLY a JSON array, no prose:\n` +
+        `[{"keep":"<id>","text":"<consolidated text>","drop":["<id>",...]}]\n` +
+        `If nothing should be merged, return [].\n\n${numbered}`;
       const raw = await callHaiku(prompt);
       if (!raw) continue;
-      let pairs: Array<{ keep: string; drop: string }>;
-      try {
-        pairs = JSON.parse(raw.trim()) as Array<{ keep: string; drop: string }>;
-      } catch {
-        continue;
-      }
-      if (!Array.isArray(pairs)) continue;
-      for (const pair of pairs) {
-        const keep = memory.get(pair.keep);
-        const drop = memory.get(pair.drop);
-        if (!keep || !drop) continue;
-        // Merge: append drop's tags to keep, then delete drop.
-        memory.update(pair.keep, {
-          tags: [...new Set([...keep.tags, ...drop.tags])],
-          salience: Math.max(keep.salience, drop.salience),
+      const groups = parseJsonArray<{ keep: string; text?: string; drop?: string[] }>(raw);
+      if (!groups) continue;
+      for (const g of groups) {
+        const keep = memory.get(g.keep);
+        if (!keep) continue;
+        const drops = (Array.isArray(g.drop) ? g.drop : [])
+          .map((id) => memory.get(id))
+          .filter((e): e is NonNullable<typeof e> => Boolean(e) && e!.id !== g.keep);
+        const newText = g.text?.trim() || keep.text;
+        const rewritten = newText !== keep.text;
+        if (drops.length === 0 && !rewritten) continue;
+        // Fold the dropped entries' tags + salience into the kept one, then
+        // rewrite its text to the consolidated version (which re-embeds it).
+        memory.update(g.keep, {
+          text: newText,
+          tags: [...new Set([...keep.tags, ...drops.flatMap((d) => d.tags)])],
+          salience: Math.max(keep.salience, ...drops.map((d) => d.salience)),
         });
-        memory.remove(pair.drop);
-        run.memoriesMerged++;
+        for (const d of drops) {
+          memory.remove(d.id);
+          run.memoriesMerged++;
+        }
+        if (rewritten) run.memoriesRewritten++;
       }
     }
   }

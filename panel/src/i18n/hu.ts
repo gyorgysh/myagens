@@ -444,6 +444,7 @@ export const hu: Translations = {
   health_maint_demoted: "Visszaminősítve",
   health_maint_deleted: "Törölve",
   health_maint_merged: "Egyesítve",
+  health_maint_rewritten: "Átírva",
   health_maint_archived: "Archivált készségek",
 
   // Limit-ablak címkék (Rendszer + Használat közös)

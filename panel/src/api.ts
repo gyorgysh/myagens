@@ -300,6 +300,7 @@ export interface MaintenanceStats {
   memoriesCompacted: number;
   memoriesDeleted: number;
   memoriesMerged: number;
+  memoriesRewritten: number;
   skillsArchived: number;
 }
 

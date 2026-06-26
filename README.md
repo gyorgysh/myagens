@@ -246,7 +246,7 @@ Everything the panel does is a REST call you can script. Auth is the same `PANEL
 | Plan and usage | `GET\|PUT /api/plan`, `POST /api/plan/report-test`, `GET /api/usage`, `GET /api/usage-probe`, `POST /api/usage-probe/run`, `GET /api/claude-usage` |
 | Monitoring | `GET /api/health`, `GET /api/status`, `GET /api/sessions`, `GET /api/audit`, `GET\|PUT /api/heartbeat`, `POST /api/heartbeat/run`, `GET /api/maintenance`, `POST /api/maintenance/run` |
 | Content and config | `GET\|PUT /api/prompt`, `GET /api/claude-files`, `GET\|PUT /api/claude-files/content`, `GET /api/languages`, `GET /api/connectors`, `PUT /api/connectors/:id` |
-| Logs | `GET /api/logs`, `GET /api/logs/dates` |
+| Logs | `GET /api/logs`, `GET /api/logs/dates`, `GET /api/logs/search`, `GET /api/logs/summary` |
 | Updates | `GET /api/update`, `POST /api/update/check\|run\|restore` |
 | Panel chat and terminal | `GET /api/chat`, `POST /api/chat/send\|stop\|clear\|approve`, `PUT /api/chat/settings`, `GET /api/terminal`, `POST /api/terminal/spawn\|resize` |
 | Realtime | `GET /ws` (worker, chat, task, health, and log frames) |

@@ -525,8 +525,17 @@ export const hu: Translations = {
   logs_no_lines: "Nincs naplósor.",
   logs_failed_load: "Betöltés sikertelen: {error}",
   logs_search_placeholder: "Keresés…",
+  logs_search_all_placeholder: "Keresés minden fájlban (72ó)…",
   logs_date_today: "Ma",
   logs_date_label: "Dátum",
+  logs_all_files: "Minden fájl (72ó)",
+  logs_insights: "Elemzés",
+  logs_insights_title: "Használati elemzés",
+  logs_insights_meta: "{calls} eszközhívás · utolsó {hours}ó · {files} fájl",
+  logs_insights_loading: "Betöltés…",
+  logs_refresh: "Frissítés",
+  logs_top_tools: "Leggyakoribb eszközök",
+  logs_top_commands: "Leggyakoribb parancsok",
 
   // Fő ügynök kártya
   agent_main_title: "Fő ügynök",

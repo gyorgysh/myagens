@@ -447,6 +447,8 @@ A few more endpoints exist, mostly mirroring panel views:
 - `GET /api/claude-usage`: historical activity from `~/.claude/stats-cache.json`.
 - `GET /api/claude-files`, `GET|PUT /api/claude-files/content`: browse and edit on-disk `.claude/*` and `CLAUDE.md` files under known working dirs.
 - `GET /api/logs`, `GET /api/logs/dates`: live ring buffer or a dated NDJSON log file (`?date=&q=&level=&limit=`).
+- `GET /api/logs/search`: cross-file event search over every retained file (`?q=&level=&hours=72&limit=`), merged into one oldest-first timeline.
+- `GET /api/logs/summary`: usage insights (`?hours=72`) — most-used tools and shell commands tallied from persisted "Tool use" entries.
 - `GET /api/update`, `POST /api/update/check|run|restore`: in-panel update check, apply, and rollback.
 - `GET /api/connectors`, `PUT /api/connectors/<id>`: the external-connector catalogue (placeholders for now).
 - `GET /api/chat`, `POST /api/chat/send|stop|clear|approve`, `PUT /api/chat/settings`: the panel's own Claude chat session.

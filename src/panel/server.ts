@@ -16,7 +16,16 @@ import {
   daysUntilReset,
 } from "../core/planSettings.js";
 import { AGENT_LANGUAGES } from "../core/languages.js";
-import { log, onLog, recentLogs, availableLogDates, readLogFile, type LogEntry } from "../logger.js";
+import {
+  log,
+  onLog,
+  recentLogs,
+  availableLogDates,
+  readLogFile,
+  searchAllLogs,
+  summarizeUsage,
+  type LogEntry,
+} from "../logger.js";
 import { getHealth } from "../core/health.js";
 import { listSessions, listSchedules, usageSummary } from "../core/snapshot.js";
 import { getPrompt, savePlaybook } from "../core/playbook.js";
@@ -355,6 +364,34 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     }
     if (limit) logs = logs.slice(-Number(limit));
     return { logs };
+  });
+
+  // GET /api/logs/search — smart search across ALL retained log files at once
+  //   &q=text   — case-insensitive substring search across msg + meta
+  //   &level=   — filter to a single level
+  //   &hours=72 — only entries from the last N hours (default 72 = full window)
+  //   &limit=N  — keep the most recent N matches (omit for all)
+  app.get("/api/logs/search", async (req) => {
+    const { q, level, hours, limit } = (req.query ?? {}) as Record<string, string | undefined>;
+    const h = hours ? Number(hours) : 72;
+    const sinceMs = Number.isFinite(h) && h > 0 ? Date.now() - h * 3_600_000 : undefined;
+    return {
+      logs: searchAllLogs({
+        q,
+        level: level as LogEntry["level"] | undefined,
+        sinceMs,
+        limit: limit ? Number(limit) : undefined,
+      }),
+    };
+  });
+
+  // GET /api/logs/summary — most-used tools and shell commands across all files
+  //   &hours=72 — window to summarise (default 72 = full retained window)
+  app.get("/api/logs/summary", async (req) => {
+    const { hours } = (req.query ?? {}) as Record<string, string | undefined>;
+    const h = hours ? Number(hours) : 72;
+    const sinceMs = Number.isFinite(h) && h > 0 ? Date.now() - h * 3_600_000 : undefined;
+    return summarizeUsage({ sinceMs });
   });
 
   // --- system prompt / playbook ---

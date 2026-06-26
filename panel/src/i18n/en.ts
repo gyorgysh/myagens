@@ -523,8 +523,17 @@ export const en = {
   logs_no_lines: "No log lines.",
   logs_failed_load: "Failed to load: {error}",
   logs_search_placeholder: "Search…",
+  logs_search_all_placeholder: "Search all files (72h)…",
   logs_date_today: "Today",
   logs_date_label: "Date",
+  logs_all_files: "All files (72h)",
+  logs_insights: "Insights",
+  logs_insights_title: "Usage insights",
+  logs_insights_meta: "{calls} tool calls · last {hours}h · {files} files",
+  logs_insights_loading: "Loading…",
+  logs_refresh: "Refresh",
+  logs_top_tools: "Most used tools",
+  logs_top_commands: "Most used commands",
 
   // Main Agent card
   agent_main_title: "Main Agent",

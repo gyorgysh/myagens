@@ -502,6 +502,14 @@ export interface LogEntry {
   meta?: Record<string, unknown>;
 }
 
+export interface LogUsageSummary {
+  windowHours: number;
+  filesScanned: number;
+  totalToolCalls: number;
+  tools: Array<{ name: string; count: number }>;
+  commands: Array<{ name: string; count: number }>;
+}
+
 export interface UpdateStatus {
   branch: string;
   current: string;
@@ -532,6 +540,17 @@ export const api = {
     return get<{ logs: LogEntry[] }>(`/api/logs${suffix}`);
   },
   logDates: () => get<{ dates: string[] }>("/api/logs/dates"),
+  logsSearch: (params?: { q?: string; level?: string; hours?: number; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.level) qs.set("level", params.level);
+    if (params?.hours) qs.set("hours", String(params.hours));
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return get<{ logs: LogEntry[] }>(`/api/logs/search${suffix}`);
+  },
+  logsSummary: (hours?: number) =>
+    get<LogUsageSummary>(`/api/logs/summary${hours ? `?hours=${hours}` : ""}`),
   schedules: () => get<{ schedules: ScheduleView[] }>("/api/schedules"),
   createSchedule: (s: { prompt: string; when: string; cwd?: string }) =>
     req<{ schedules: ScheduleView[] }>("POST", "/api/schedules", s),

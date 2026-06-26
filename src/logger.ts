@@ -173,6 +173,124 @@ export function readLogFile(
 }
 
 // ---------------------------------------------------------------------------
+// Smart cross-file helpers: search across every retained log file and
+// summarise tool/command usage. The retention window is already 72h, so an
+// all-files scan is naturally bounded. Both walk the same files; callers can
+// scope further with `sinceMs`.
+// ---------------------------------------------------------------------------
+
+/** Iterate every retained log file (newest date first), yielding parsed entries. */
+function forEachLogEntry(fn: (entry: LogEntry) => void): void {
+  for (const date of availableLogDates()) {
+    let raw: string;
+    try {
+      raw = readFileSync(join(LOG_DIR, `${date}.log`), "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of raw.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        fn(JSON.parse(line) as LogEntry);
+      } catch {
+        /* skip malformed lines */
+      }
+    }
+  }
+}
+
+/**
+ * Search across ALL retained log files at once (the whole 72h window by
+ * default). Filters by level, a case-insensitive substring on msg + meta, and
+ * an optional `sinceMs` cutoff. Results are returned oldest-first; an explicit
+ * positive `limit` keeps the most recent N matches.
+ */
+export function searchAllLogs(
+  opts: { level?: Level; q?: string; sinceMs?: number; limit?: number } = {},
+): LogEntry[] {
+  const { level, q, sinceMs, limit } = opts;
+  const needle = q?.toLowerCase();
+  const results: LogEntry[] = [];
+  forEachLogEntry((entry) => {
+    if (sinceMs && entry.ts < sinceMs) return;
+    if (level && entry.level !== level) return;
+    if (needle) {
+      const hay = entry.msg.toLowerCase() + (entry.meta ? JSON.stringify(entry.meta).toLowerCase() : "");
+      if (!hay.includes(needle)) return;
+    }
+    results.push(entry);
+  });
+  // Files are read newest-date-first but lines within a file are chronological;
+  // sort the merged set so the timeline is coherent across day boundaries.
+  results.sort((a, b) => a.ts - b.ts);
+  return limit && limit > 0 && results.length > limit ? results.slice(-limit) : results;
+}
+
+/** The leading program token of a shell command, e.g. "git" from "git push …". */
+function leadCommand(arg: string): string {
+  // Drop env-var prefixes like FOO=bar, then take the first bare word.
+  const tokens = arg.trim().split(/\s+/);
+  let i = 0;
+  while (i < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])) i++;
+  const head = tokens[i] ?? "";
+  // Strip a leading path so /usr/bin/node and node fold together.
+  const base = head.split("/").pop() ?? head;
+  return base;
+}
+
+export interface LogUsageSummary {
+  windowHours: number;
+  filesScanned: number;
+  totalToolCalls: number;
+  tools: Array<{ name: string; count: number }>;
+  commands: Array<{ name: string; count: number }>;
+}
+
+/**
+ * Summarise tool and command usage from the persisted "Tool use" log entries
+ * across all retained files (optionally scoped to a `sinceMs` window). For Bash
+ * tools the leading program token of the command is tallied separately, so you
+ * see both "which tools" and "which shell commands" the agent leans on.
+ */
+export function summarizeUsage(
+  opts: { sinceMs?: number; top?: number } = {},
+): LogUsageSummary {
+  const { sinceMs, top = 20 } = opts;
+  const tools = new Map<string, number>();
+  const commands = new Map<string, number>();
+  let totalToolCalls = 0;
+
+  forEachLogEntry((entry) => {
+    if (sinceMs && entry.ts < sinceMs) return;
+    if (entry.msg !== "Tool use" || !entry.meta) return;
+    const tool = typeof entry.meta.tool === "string" ? entry.meta.tool : undefined;
+    if (!tool) return;
+    totalToolCalls++;
+    tools.set(tool, (tools.get(tool) ?? 0) + 1);
+    if (tool === "Bash") {
+      const arg = typeof entry.meta.arg === "string" ? entry.meta.arg : "";
+      const cmd = leadCommand(arg);
+      if (cmd) commands.set(cmd, (commands.get(cmd) ?? 0) + 1);
+    }
+  });
+
+  const rank = (m: Map<string, number>) =>
+    [...m.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, top);
+
+  const windowHours = sinceMs ? Math.round((Date.now() - sinceMs) / 3_600_000) : 72;
+  return {
+    windowHours,
+    filesScanned: availableLogDates().length,
+    totalToolCalls,
+    tools: rank(tools),
+    commands: rank(commands),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Core emit
 // ---------------------------------------------------------------------------
 

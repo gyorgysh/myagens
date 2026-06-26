@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { api, AuthError, openHealthSocket, type LogEntry } from "../api.ts";
+import { api, AuthError, openHealthSocket, type LogEntry, type LogUsageSummary } from "../api.ts";
 import { Button, Empty } from "./ui.tsx";
 import { useI18n } from "../lib/useI18n.ts";
 
@@ -13,21 +13,29 @@ const LEVEL_COLOR: Record<Level, string> = {
 };
 
 const MAX = 2000;
+// Sentinel date value for the "search every retained file (72h)" mode.
+const ALL_FILES = "__all__";
 
 export function LogsView({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
 
   // Live ring-buffer logs (today, real-time).
   const [liveLogs, setLiveLogs] = useState<LogEntry[]>([]);
-  // Historical logs loaded from a file when a past date is selected.
+  // Historical logs loaded from a file (past date) or the cross-file search.
   const [histLogs, setHistLogs] = useState<LogEntry[] | null>(null);
 
   const [dates, setDates] = useState<string[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(""); // "" = today/live
+  const [selectedDate, setSelectedDate] = useState<string>(""); // "" = today/live, ALL_FILES = 72h
   const [search, setSearch] = useState("");
   const [hidden, setHidden] = useState<Set<Level>>(new Set());
   const [follow, setFollow] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Usage insights (most-used tools/commands over the 72h window).
+  const [insights, setInsights] = useState<LogUsageSummary | null>(null);
+  const [showInsights, setShowInsights] = useState(false);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+
+  const isAllFiles = selectedDate === ALL_FILES;
   const boxRef = useRef<HTMLDivElement>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
   const searchRef = useRef<ReturnType<typeof setTimeout>>();
@@ -82,7 +90,9 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
     };
   }, [selectedDate]);
 
-  // Load historical file when a past date is selected.
+  // Load historical logs when a past date — or the all-files (72h) mode — is
+  // selected. All-files uses the cross-file search endpoint; a single date
+  // reads that one file.
   const loadDate = useCallback(
     (date: string) => {
       if (!date) {
@@ -90,8 +100,9 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
         return;
       }
       setHistLogs(null);
-      api
-        .logs({ date })
+      const req =
+        date === ALL_FILES ? api.logsSearch({ hours: 72 }) : api.logs({ date });
+      req
         .then((r) => setHistLogs(r.logs))
         .catch((e) => (e instanceof AuthError ? onAuthError() : setError(String(e))));
     },
@@ -101,21 +112,39 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
   const handleDateChange = (date: string) => {
     setSelectedDate(date);
     loadDate(date);
-    setFollow(!date); // stop following when viewing past
+    setFollow(!date); // stop following when viewing past or all-files
   };
 
-  // Debounced search against historical file when a date is selected.
+  // Debounced search: against the single file for a date, or across every
+  // retained file (72h) in all-files mode.
   useEffect(() => {
     if (!selectedDate) return;
     clearTimeout(searchRef.current);
     searchRef.current = setTimeout(() => {
-      api
-        .logs({ date: selectedDate, q: search || undefined })
-        .then((r) => setHistLogs(r.logs))
-        .catch(() => {});
+      const req =
+        selectedDate === ALL_FILES
+          ? api.logsSearch({ q: search || undefined, hours: 72 })
+          : api.logs({ date: selectedDate, q: search || undefined });
+      req.then((r) => setHistLogs(r.logs)).catch(() => {});
     }, 300);
     return () => clearTimeout(searchRef.current);
   }, [search, selectedDate]);
+
+  // Load usage insights on demand (and refresh).
+  const loadInsights = useCallback(() => {
+    setLoadingInsights(true);
+    api
+      .logsSummary(72)
+      .then(setInsights)
+      .catch((e) => (e instanceof AuthError ? onAuthError() : setError(String(e))))
+      .finally(() => setLoadingInsights(false));
+  }, [onAuthError]);
+
+  const toggleInsights = () => {
+    const next = !showInsights;
+    setShowInsights(next);
+    if (next && !insights) loadInsights();
+  };
 
   // Autoscroll while following.
   useEffect(() => {
@@ -154,6 +183,7 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
           className="rounded border border-line bg-input px-2 py-1 text-xs text-fg"
         >
           <option value="">{t("logs_date_today")}</option>
+          <option value={ALL_FILES}>{t("logs_all_files")}</option>
           {dates.map((d) => (
             <option key={d} value={d}>
               {d}
@@ -164,10 +194,20 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={t("logs_search_placeholder")}
+          placeholder={isAllFiles ? t("logs_search_all_placeholder") : t("logs_search_placeholder")}
           className="min-w-0 flex-1 rounded border border-line bg-input px-2 py-1 text-xs text-fg placeholder:text-fg-faint"
         />
+        <Button onClick={toggleInsights}>{t("logs_insights")}</Button>
       </div>
+
+      {showInsights && (
+        <InsightsPanel
+          summary={insights}
+          loading={loadingInsights}
+          onRefresh={loadInsights}
+          t={t}
+        />
+      )}
 
       {/* Toolbar row 2: level toggles + follow + clear */}
       <div className="flex flex-wrap items-center gap-2">
@@ -220,6 +260,87 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+type TFn = (key: import("../i18n/en.ts").TranslationKey) => string;
+
+/** A ranked horizontal-bar list of {name, count} for the insights panel. */
+function RankList({
+  title,
+  items,
+  empty,
+}: {
+  title: string;
+  items: Array<{ name: string; count: number }>;
+  empty: string;
+}) {
+  const max = items.length ? items[0].count : 0;
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-fg-muted">{title}</div>
+      {items.length === 0 ? (
+        <div className="text-xs text-fg-faint">{empty}</div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {items.map((it) => (
+            <div key={it.name} className="flex items-center gap-2">
+              <div className="relative h-4 flex-1 overflow-hidden rounded bg-surface-2">
+                <div
+                  className="absolute inset-y-0 left-0 rounded bg-accent/30"
+                  style={{ width: `${max ? Math.max(4, (it.count / max) * 100) : 0}%` }}
+                />
+                <span className="absolute inset-y-0 left-2 flex items-center font-mono text-xs text-fg">
+                  {it.name}
+                </span>
+              </div>
+              <span className="tabular w-10 shrink-0 text-right font-mono text-xs text-fg-muted">
+                {it.count}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InsightsPanel({
+  summary,
+  loading,
+  onRefresh,
+  t,
+}: {
+  summary: LogUsageSummary | null;
+  loading: boolean;
+  onRefresh: () => void;
+  t: TFn;
+}) {
+  return (
+    <div className="rounded-xl border border-line bg-input p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-xs font-semibold text-fg">
+          {t("logs_insights_title")}
+          {summary ? (
+            <span className="ml-1 font-normal text-fg-faint">
+              {t("logs_insights_meta")
+                .replace("{calls}", String(summary.totalToolCalls))
+                .replace("{hours}", String(summary.windowHours))
+                .replace("{files}", String(summary.filesScanned))}
+            </span>
+          ) : null}
+        </span>
+        <Button onClick={onRefresh}>{loading ? t("logs_insights_loading") : t("logs_refresh")}</Button>
+      </div>
+      {summary ? (
+        <div className="flex flex-wrap gap-6">
+          <RankList title={t("logs_top_tools")} items={summary.tools} empty={t("logs_no_lines")} />
+          <RankList title={t("logs_top_commands")} items={summary.commands} empty={t("logs_no_lines")} />
+        </div>
+      ) : (
+        <div className="text-xs text-fg-faint">{loading ? t("logs_insights_loading") : t("logs_no_lines")}</div>
+      )}
     </div>
   );
 }

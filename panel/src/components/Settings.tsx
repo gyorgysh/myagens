@@ -51,15 +51,6 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const [fetched, setFetched] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [embeddings, setEmbeddings] = useState<EmbeddingConfig | null>(null);
-  const [embEnabled, setEmbEnabled] = useState(false);
-  const [embProvider, setEmbProvider] = useState<"ollama" | "openai">("ollama");
-  const [embBaseUrl, setEmbBaseUrl] = useState("");
-  const [embModel, setEmbModel] = useState("");
-  const [ollama, setOllama] = useState<OllamaStatus | null>(null);
-  const [lmStudio, setLmStudio] = useState<LmStudioStatus | null>(null);
-  const [preferred, setPreferred] = useState<PreferredBackend | null>(null);
-  const [active, setActive] = useState<PreferredBackend | null>(null);
 
   const load = () =>
     api
@@ -70,21 +61,11 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         setProviderId(a.providerId);
         setPersona(a.persona ?? "");
         setAutonomy(a.autonomy ?? "standard");
-        setEmbeddings(a.embeddings);
-        setEmbEnabled(a.embeddings.enabled);
-        setEmbProvider(a.embeddings.provider);
-        setEmbBaseUrl(a.embeddings.baseUrl);
-        setEmbModel(a.embeddings.model);
-        setPreferred(a.preferredBackend);
-        setActive(a.activeBackend);
       })
       .catch((e) => e instanceof AuthError && onAuthError());
 
   useEffect(() => {
     void load();
-    // Best-effort: probe for locally running model servers to offer one-click connect.
-    api.ollamaStatus().then(setOllama).catch(() => {});
-    api.lmStudioStatus().then(setLmStudio).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -133,89 +114,6 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
     try {
       const r = await api.resetAgent();
       flash(t("settings_reset_done").replace("{sessions}", String(r.sessions)).replace("{aborted}", String(r.aborted)));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const saveEmbeddingSettings = async () => {
-    setBusy("emb");
-    try {
-      const r = await api.saveEmbeddings({ enabled: embEnabled, provider: embProvider, baseUrl: embBaseUrl, model: embModel });
-      setEmbeddings(r.embeddings);
-      setActive(r.activeBackend);
-      flash(t("saved"));
-    } catch (e) {
-      if (e instanceof AuthError) return onAuthError();
-      flash(String(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  // One-click: register Ollama as a provider + enable embeddings against it.
-  const connectOllama = async () => {
-    setBusy("ollama");
-    try {
-      const r = await api.ollamaConnect();
-      setOllama(r.status);
-      if (r.embeddingsEnabled) {
-        setEmbEnabled(r.status.embeddingsOn);
-        setEmbProvider("ollama");
-        setEmbBaseUrl(r.status.baseUrl);
-        setEmbModel("nomic-embed-text");
-        await load();
-      }
-      flash(t("ollama_connected"));
-    } catch (e) {
-      if (e instanceof AuthError) return onAuthError();
-      flash(String(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  // One-click: register LM Studio as a provider + enable embeddings against it.
-  const connectLmStudio = async () => {
-    setBusy("lmstudio");
-    try {
-      const r = await api.lmStudioConnect();
-      setLmStudio(r.status);
-      if (r.embeddingsEnabled) {
-        setEmbEnabled(r.status.embeddingsOn);
-        setEmbProvider("openai");
-        setEmbBaseUrl(r.status.baseUrl);
-        if (r.status.embedModel) setEmbModel(r.status.embedModel);
-        await load();
-      }
-      flash(t("lmstudio_connected"));
-    } catch (e) {
-      if (e instanceof AuthError) return onAuthError();
-      flash(String(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  // Persist the preferred backend used by auto-detect when both servers run.
-  const choosePreferred = async (pref: PreferredBackend | null) => {
-    setPreferred(pref);
-    try {
-      await api.savePreferredBackend(pref);
-    } catch (e) {
-      if (e instanceof AuthError) return onAuthError();
-      flash(String(e));
-    }
-  };
-
-  // Re-probe local backends on demand (so the user doesn't have to reload).
-  const probeBackends = async () => {
-    setBusy("probe");
-    try {
-      await Promise.all([
-        api.ollamaStatus().then(setOllama).catch(() => {}),
-        api.lmStudioStatus().then(setLmStudio).catch(() => {}),
-      ]);
     } finally {
       setBusy(null);
     }
@@ -335,129 +233,6 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
           </div>
         </div>
 
-        {embeddings && (
-          <div className="border-t border-line pt-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Label>{t("settings_embeddings")}</Label>
-                {active && (
-                  <Badge tone="green">
-                    {t("emb_active_backend").replace("{backend}", active === "ollama" ? "Ollama" : "LM Studio")}
-                  </Badge>
-                )}
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={embEnabled}
-                onClick={() => setEmbEnabled((v) => !v)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${embEnabled ? "bg-accent" : "bg-line"}`}
-              >
-                <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${embEnabled ? "translate-x-4" : "translate-x-1"}`} />
-              </button>
-            </div>
-            <div className="mb-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-fg-dim">{t("emb_local_backends")}</p>
-                <button
-                  type="button"
-                  onClick={probeBackends}
-                  disabled={busy === "probe"}
-                  className="text-xs text-fg-dim hover:text-fg disabled:opacity-50"
-                >
-                  {busy === "probe" ? t("emb_refreshing") : t("emb_refresh")}
-                </button>
-              </div>
-              <LocalBackendRow
-                name="Ollama"
-                running={!!ollama?.running}
-                baseUrl={ollama?.baseUrl ?? "http://localhost:11434"}
-                models={ollama?.models ?? []}
-                hasEmbedModel={!!ollama?.hasEmbedModel}
-                connected={!!(ollama?.providerExists && ollama?.embeddingsOn)}
-                noEmbedHint={t("ollama_no_embed_model") + " ollama pull nomic-embed-text"}
-                connectLabel={t("ollama_connect")}
-                connectingLabel={t("ollama_connecting")}
-                connectedLabel={t("ollama_connected")}
-                busy={busy === "ollama"}
-                onConnect={connectOllama}
-              />
-              <LocalBackendRow
-                name="LM Studio"
-                running={!!lmStudio?.running}
-                baseUrl={lmStudio?.baseUrl ?? "http://localhost:1234"}
-                models={lmStudio?.models ?? []}
-                hasEmbedModel={!!lmStudio?.embedModel}
-                connected={!!(lmStudio?.providerExists && lmStudio?.embeddingsOn)}
-                noEmbedHint={t("lmstudio_no_embed_model")}
-                connectLabel={t("lmstudio_connect")}
-                connectingLabel={t("lmstudio_connecting")}
-                connectedLabel={t("lmstudio_connected")}
-                busy={busy === "lmstudio"}
-                onConnect={connectLmStudio}
-              />
-            </div>
-            {ollama?.running && lmStudio?.running && (
-              <div className="mb-3">
-                <Label>{t("emb_preferred_label")}</Label>
-                <p className="mb-1.5 text-xs text-fg-dim">{t("emb_preferred_hint")}</p>
-                <div className="flex flex-wrap gap-1">
-                  {([
-                    { value: "ollama" as const, label: "Ollama" },
-                    { value: "lmstudio" as const, label: "LM Studio" },
-                  ]).map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => choosePreferred(opt.value)}
-                      className={`rounded px-2.5 py-1 text-xs font-medium border transition-colors ${
-                        preferred === opt.value
-                          ? "bg-[var(--accent)] text-white border-transparent"
-                          : "border-line text-fg-dim hover:text-fg"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => choosePreferred(null)}
-                    className={`rounded px-2.5 py-1 text-xs font-medium border transition-colors ${
-                      !preferred ? "bg-[var(--accent)] text-white border-transparent" : "border-line text-fg-dim hover:text-fg"
-                    }`}
-                  >
-                    {t("emb_preferred_auto")}
-                  </button>
-                </div>
-              </div>
-            )}
-            {embEnabled && (
-              <div className="grid gap-2 sm:grid-cols-3">
-                <div>
-                  <Label>{t("settings_emb_provider")}</Label>
-                  <Select value={embProvider} onChange={(e) => setEmbProvider(e.target.value as "ollama" | "openai")}>
-                    <option value="ollama">Ollama</option>
-                    <option value="openai">OpenAI / LM Studio</option>
-                  </Select>
-                </div>
-                <div>
-                  <Label>{t("settings_emb_base_url")}</Label>
-                  <Input value={embBaseUrl} onChange={(e) => setEmbBaseUrl(e.target.value)} placeholder="http://localhost:11434" />
-                </div>
-                <div>
-                  <Label>{t("settings_emb_model")}</Label>
-                  <Input value={embModel} onChange={(e) => setEmbModel(e.target.value)} placeholder="nomic-embed-text" />
-                </div>
-              </div>
-            )}
-            <div className="mt-2">
-              <Button onClick={saveEmbeddingSettings} disabled={busy === "emb"}>
-                {busy === "emb" ? t("saving") : t("save")}
-              </Button>
-            </div>
-          </div>
-        )}
-
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <Button variant="primary" onClick={save} disabled={!dirty || busy === "save"}>
             {busy === "save" ? t("saving") : t("save")}
@@ -477,80 +252,6 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         </div>
       </div>
     </Card>
-  );
-}
-
-/**
- * Status-style row for a local embedding backend (Ollama / LM Studio): always
- * rendered, showing reachability, model count, model chips, and an inline
- * connect / active control. Mirrors the Status page so the two views feel unified.
- */
-function LocalBackendRow(props: {
-  name: string;
-  running: boolean;
-  baseUrl: string;
-  models: string[];
-  hasEmbedModel: boolean;
-  connected: boolean;
-  noEmbedHint: string;
-  connectLabel: string;
-  connectingLabel: string;
-  connectedLabel: string;
-  busy: boolean;
-  onConnect: () => void;
-}) {
-  const { t } = useI18n();
-  const state = !props.running ? "down" : props.connected ? "up" : "idle";
-  const dot = state === "down" ? "bg-red-500" : state === "up" ? "bg-emerald-500" : "bg-amber-500";
-  const pill =
-    state === "down"
-      ? "bg-red-500/15 text-red-400"
-      : state === "up"
-        ? "bg-emerald-500/15 text-emerald-400"
-        : "bg-amber-500/15 text-amber-400";
-  const pillLabel = state === "down" ? t("status_down") : state === "up" ? t("status_up") : t("emb_backend_idle");
-
-  return (
-    <div className="rounded-lg border border-line p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
-            <span className="font-medium text-fg">{props.name}</span>
-          </div>
-          <div className="mono mt-1 truncate text-xs text-fg-faint" title={props.baseUrl}>
-            {props.baseUrl}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2 text-xs text-fg-dim">
-          <span className="tabular">{t("status_models").replace("{n}", String(props.models.length))}</span>
-          <span className={`rounded px-1.5 py-0.5 font-medium ${pill}`}>{pillLabel}</span>
-        </div>
-      </div>
-      {props.running && props.models.length > 0 && (
-        <div className="mono mt-2 flex flex-wrap gap-1.5">
-          {props.models.map((m) => (
-            <span key={m} className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-fg-muted">
-              {m}
-            </span>
-          ))}
-        </div>
-      )}
-      {props.running && !props.hasEmbedModel && (
-        <p className="mt-2 text-xs text-fg-faint">{props.noEmbedHint}</p>
-      )}
-      {props.running && (
-        <div className="mt-2">
-          {props.connected ? (
-            <span className="text-xs font-medium text-accent">{props.connectedLabel}</span>
-          ) : (
-            <Button onClick={props.onConnect} disabled={props.busy || !props.hasEmbedModel}>
-              {props.busy ? props.connectingLabel : props.connectLabel}
-            </Button>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -989,12 +690,43 @@ const PROVIDER_PRESETS = [
   { name: "Ollama", baseUrl: "http://localhost:11434", authToken: "ollama" },
 ];
 
+/** Map a saved provider's base URL to a known local embedding backend. */
+function backendKind(baseUrl: string): PreferredBackend | null {
+  if (baseUrl.includes("11434")) return "ollama";
+  if (baseUrl.includes("1234")) return "lmstudio";
+  return null;
+}
+
+interface ProviderStatus {
+  kind: PreferredBackend | null;
+  /** undefined = not a known local backend (no live probe). */
+  running?: boolean;
+  models: string[];
+  embedCapable: boolean;
+  /** Wired up as the active embeddings backend. */
+  connected: boolean;
+}
+
 function ProvidersSettings({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [form, setForm] = useState(blankProvider);
   const [probe, setProbe] = useState<{ busy: boolean; models?: string[]; error?: string }>({ busy: false });
+  // Embeddings + live local-backend status, merged in from the agent card.
+  const [embeddings, setEmbeddings] = useState<EmbeddingConfig | null>(null);
+  const [embEnabled, setEmbEnabled] = useState(false);
+  const [embProvider, setEmbProvider] = useState<"ollama" | "openai">("ollama");
+  const [embBaseUrl, setEmbBaseUrl] = useState("");
+  const [embModel, setEmbModel] = useState("");
+  const [ollama, setOllama] = useState<OllamaStatus | null>(null);
+  const [lmStudio, setLmStudio] = useState<LmStudioStatus | null>(null);
+  const [preferred, setPreferred] = useState<PreferredBackend | null>(null);
+  const [active, setActive] = useState<PreferredBackend | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+
+  const note = (m: string) => { setFlash(m); setTimeout(() => setFlash(null), 2500); };
 
   const load = () =>
     api
@@ -1002,8 +734,36 @@ function ProvidersSettings({ onAuthError }: { onAuthError: () => void }) {
       .then((r) => setProviders(r.providers))
       .catch((e) => e instanceof AuthError && onAuthError());
 
+  const loadEmbeddings = () =>
+    api
+      .agent()
+      .then((a) => {
+        setEmbeddings(a.embeddings);
+        setEmbEnabled(a.embeddings.enabled);
+        setEmbProvider(a.embeddings.provider);
+        setEmbBaseUrl(a.embeddings.baseUrl);
+        setEmbModel(a.embeddings.model);
+        setPreferred(a.preferredBackend);
+        setActive(a.activeBackend);
+      })
+      .catch((e) => e instanceof AuthError && onAuthError());
+
+  const probeBackends = async () => {
+    setBusy("probe");
+    try {
+      await Promise.all([
+        api.ollamaStatus().then(setOllama).catch(() => {}),
+        api.lmStudioStatus().then(setLmStudio).catch(() => {}),
+      ]);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   useEffect(() => {
     void load();
+    void loadEmbeddings();
+    void probeBackends();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1024,6 +784,7 @@ function ProvidersSettings({ onAuthError }: { onAuthError: () => void }) {
       else if (editing) await api.updateProvider(editing, form);
       setEditing(null);
       await load();
+      await probeBackends();
     } catch (e) {
       if (e instanceof AuthError) onAuthError();
     }
@@ -1034,6 +795,93 @@ function ProvidersSettings({ onAuthError }: { onAuthError: () => void }) {
     await api.deleteProvider(id);
     await load();
   };
+
+  const saveEmbeddings = async () => {
+    setBusy("emb");
+    try {
+      const r = await api.saveEmbeddings({ enabled: embEnabled, provider: embProvider, baseUrl: embBaseUrl, model: embModel });
+      setEmbeddings(r.embeddings);
+      setActive(r.activeBackend);
+      note(t("saved"));
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      note(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // One-click: register a local backend as a provider + enable embeddings on it.
+  const connectOllama = async () => {
+    setBusy("ollama");
+    try {
+      const r = await api.ollamaConnect();
+      setOllama(r.status);
+      if (r.embeddingsEnabled) {
+        setEmbEnabled(r.status.embeddingsOn);
+        setEmbProvider("ollama");
+        setEmbBaseUrl(r.status.baseUrl);
+        setEmbModel("nomic-embed-text");
+      }
+      await load();
+      await loadEmbeddings();
+      note(t("ollama_connected"));
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      note(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const connectLmStudio = async () => {
+    setBusy("lmstudio");
+    try {
+      const r = await api.lmStudioConnect();
+      setLmStudio(r.status);
+      if (r.embeddingsEnabled) {
+        setEmbEnabled(r.status.embeddingsOn);
+        setEmbProvider("openai");
+        setEmbBaseUrl(r.status.baseUrl);
+        if (r.status.embedModel) setEmbModel(r.status.embedModel);
+      }
+      await load();
+      await loadEmbeddings();
+      note(t("lmstudio_connected"));
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      note(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const choosePreferred = async (pref: PreferredBackend | null) => {
+    setPreferred(pref);
+    try {
+      await api.savePreferredBackend(pref);
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      note(String(e));
+    }
+  };
+
+  const statusFor = (p: Provider): ProviderStatus => {
+    const kind = backendKind(p.baseUrl);
+    if (kind === "ollama" && ollama) {
+      return { kind, running: ollama.running, models: ollama.models, embedCapable: ollama.hasEmbedModel, connected: ollama.providerExists && ollama.embeddingsOn };
+    }
+    if (kind === "lmstudio" && lmStudio) {
+      return { kind, running: lmStudio.running, models: lmStudio.models, embedCapable: !!lmStudio.embedModel, connected: lmStudio.providerExists && lmStudio.embeddingsOn };
+    }
+    return { kind, models: [], embedCapable: false, connected: false };
+  };
+
+  // Topmost = the backend that's connected and embeddings-ready, then reachable, then name.
+  const rank = (s: ProviderStatus) => (s.connected ? 2 : s.running ? 1 : 0);
+  const ordered = [...providers].sort((a, b) => rank(statusFor(b)) - rank(statusFor(a)) || a.name.localeCompare(b.name));
+
+  const bothRunning = !!ollama?.running && !!lmStudio?.running;
 
   return (
     <Card
@@ -1047,6 +895,39 @@ function ProvidersSettings({ onAuthError }: { onAuthError: () => void }) {
       }
     >
       <p className="mb-3 text-sm text-fg-dim">{t("settings_providers_desc")}</p>
+
+      {/* Embeddings header: enable + active backend + refresh */}
+      {embeddings && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Label>{t("settings_embeddings")}</Label>
+            {active && (
+              <Badge tone="green">
+                {t("emb_active_backend").replace("{backend}", active === "ollama" ? "Ollama" : "LM Studio")}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={probeBackends}
+              disabled={busy === "probe"}
+              className="text-xs text-fg-dim hover:text-fg disabled:opacity-50"
+            >
+              {busy === "probe" ? t("emb_refreshing") : t("emb_refresh")}
+            </button>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={embEnabled}
+              onClick={() => setEmbEnabled((v) => !v)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${embEnabled ? "bg-accent" : "bg-line"}`}
+            >
+              <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${embEnabled ? "translate-x-4" : "translate-x-1"}`} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div className="mb-4 space-y-3 rounded-lg border border-line bg-input p-3">
@@ -1096,23 +977,183 @@ function ProvidersSettings({ onAuthError }: { onAuthError: () => void }) {
         </p>
       ) : (
         <div className="space-y-2">
-          {providers.map((p) => (
-            <div key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-line p-2.5">
-              <div className="min-w-0">
-                <span className="font-medium text-fg">{p.name}</span>
-                <span className="ml-2 font-mono text-xs text-fg-faint">{p.baseUrl}</span>
-              </div>
-              <div className="flex shrink-0 gap-1.5">
-                <Button onClick={() => { setForm({ name: p.name, baseUrl: p.baseUrl, authToken: p.authToken }); setEditing(p.id); }}>
-                  {t("edit")}
-                </Button>
-                <Button variant="danger" onClick={() => del(p.id)}>{t("delete")}</Button>
-              </div>
-            </div>
+          {ordered.map((p) => (
+            <ProviderRow
+              key={p.id}
+              provider={p}
+              status={statusFor(p)}
+              busy={busy}
+              onConnect={() => (backendKind(p.baseUrl) === "ollama" ? connectOllama() : connectLmStudio())}
+              onEdit={() => { setForm({ name: p.name, baseUrl: p.baseUrl, authToken: p.authToken }); setEditing(p.id); }}
+              onDelete={() => del(p.id)}
+            />
           ))}
         </div>
       )}
+
+      {/* Preferred backend — only relevant when both local servers are live */}
+      {bothRunning && (
+        <div className="mt-4">
+          <Label>{t("emb_preferred_label")}</Label>
+          <p className="mb-1.5 text-xs text-fg-dim">{t("emb_preferred_hint")}</p>
+          <div className="flex flex-wrap gap-1">
+            {([
+              { value: "ollama" as const, label: "Ollama" },
+              { value: "lmstudio" as const, label: "LM Studio" },
+            ]).map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => choosePreferred(opt.value)}
+                className={`rounded px-2.5 py-1 text-xs font-medium border transition-colors ${
+                  preferred === opt.value
+                    ? "bg-[var(--accent)] text-white border-transparent"
+                    : "border-line text-fg-dim hover:text-fg"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => choosePreferred(null)}
+              className={`rounded px-2.5 py-1 text-xs font-medium border transition-colors ${
+                !preferred ? "bg-[var(--accent)] text-white border-transparent" : "border-line text-fg-dim hover:text-fg"
+              }`}
+            >
+              {t("emb_preferred_auto")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Manual embeddings endpoint (for custom / non-detected servers) */}
+      {embeddings && embEnabled && (
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div>
+            <Label>{t("settings_emb_provider")}</Label>
+            <Select value={embProvider} onChange={(e) => setEmbProvider(e.target.value as "ollama" | "openai")}>
+              <option value="ollama">Ollama</option>
+              <option value="openai">OpenAI / LM Studio</option>
+            </Select>
+          </div>
+          <div>
+            <Label>{t("settings_emb_base_url")}</Label>
+            <Input value={embBaseUrl} onChange={(e) => setEmbBaseUrl(e.target.value)} placeholder="http://localhost:11434" />
+          </div>
+          <div>
+            <Label>{t("settings_emb_model")}</Label>
+            <Input value={embModel} onChange={(e) => setEmbModel(e.target.value)} placeholder="nomic-embed-text" />
+          </div>
+        </div>
+      )}
+
+      {embeddings && (
+        <div className="mt-3 flex items-center gap-2">
+          <Button onClick={saveEmbeddings} disabled={busy === "emb"}>
+            {busy === "emb" ? t("saving") : t("save")}
+          </Button>
+          {flash && <span className="text-xs text-fg-dim">{flash}</span>}
+        </div>
+      )}
     </Card>
+  );
+}
+
+/**
+ * One provider entry: name, base URL, live status (up/down/ready + model count),
+ * available-model chips, an embeddings connect/connected control for local
+ * backends, and Edit/Delete. Mirrors the Status page so the views feel unified.
+ */
+function ProviderRow({
+  provider,
+  status,
+  busy,
+  onConnect,
+  onEdit,
+  onDelete,
+}: {
+  provider: Provider;
+  status: ProviderStatus;
+  busy: string | null;
+  onConnect: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useI18n();
+  const probed = status.running !== undefined; // known local backend with a live probe
+  const state = !probed ? "unknown" : !status.running ? "down" : status.connected ? "up" : "idle";
+  const dot =
+    state === "down" ? "bg-red-500" : state === "up" ? "bg-emerald-500" : state === "idle" ? "bg-amber-500" : "bg-fg-faint";
+  const pill =
+    state === "down"
+      ? "bg-red-500/15 text-red-400"
+      : state === "up"
+        ? "bg-emerald-500/15 text-emerald-400"
+        : state === "idle"
+          ? "bg-amber-500/15 text-amber-400"
+          : "bg-surface-2 text-fg-faint";
+  const pillLabel = state === "down" ? t("status_down") : state === "up" ? t("status_up") : state === "idle" ? t("emb_backend_idle") : "—";
+  const connectBusy = busy === status.kind;
+
+  return (
+    <div className="rounded-lg border border-line p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+            <span className="font-medium text-fg">{provider.name}</span>
+          </div>
+          <div className="mono mt-1 truncate text-xs text-fg-faint" title={provider.baseUrl}>
+            {provider.baseUrl}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {probed && (
+            <span className="tabular text-xs text-fg-dim">{t("status_models").replace("{n}", String(status.models.length))}</span>
+          )}
+          <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${pill}`}>{pillLabel}</span>
+        </div>
+      </div>
+
+      {status.models.length > 0 && (
+        <div className="mono mt-2 flex flex-wrap gap-1.5">
+          {status.models.map((m) => (
+            <span key={m} className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-fg-muted">
+              {m}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {status.kind && status.running && !status.embedCapable && (
+        <p className="mt-2 text-xs text-fg-faint">
+          {status.kind === "ollama" ? t("ollama_no_embed_model") + " ollama pull nomic-embed-text" : t("lmstudio_no_embed_model")}
+        </p>
+      )}
+
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <div>
+          {status.kind && status.running && (
+            status.connected ? (
+              <span className="text-xs font-medium text-accent">
+                {status.kind === "ollama" ? t("ollama_connected") : t("lmstudio_connected")}
+              </span>
+            ) : (
+              <Button onClick={onConnect} disabled={connectBusy || !status.embedCapable}>
+                {connectBusy
+                  ? status.kind === "ollama" ? t("ollama_connecting") : t("lmstudio_connecting")
+                  : status.kind === "ollama" ? t("ollama_connect") : t("lmstudio_connect")}
+              </Button>
+            )
+          )}
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <Button onClick={onEdit}>{t("edit")}</Button>
+          <Button variant="danger" onClick={onDelete}>{t("delete")}</Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

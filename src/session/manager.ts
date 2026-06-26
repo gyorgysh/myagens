@@ -8,10 +8,24 @@ import {
   type Usage,
 } from "./store.js";
 
-export type Autonomy = "supervised" | "standard" | "full";
+export type Autonomy = "supervised" | "standard" | "full" | "auto_until_error";
 
 /** @deprecated Use Autonomy. Kept for any external callers. */
 export type PermissionMode = Autonomy;
+
+/** Tools auto-approved by `auto_until_error` on top of the read-only safe set. */
+export const AUTO_UNTIL_ERROR_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit"] as const;
+
+/** How many subsequent tool calls are forced through supervised approval after
+ *  an `auto_until_error` tool errors, before auto-approval resumes. */
+export const AUTO_UNTIL_ERROR_COOLDOWN = 3;
+
+/** Transient (not persisted) escalation state for the `auto_until_error` mode.
+ *  Lives only for the process; reset on each new turn via `resetEscalation`. */
+export interface Escalation {
+  /** Calls still forced through supervised approval after a recent error. */
+  cooldown: number;
+}
 
 export interface Session {
   /** Telegram chat id this session belongs to. */
@@ -31,11 +45,15 @@ export interface Session {
   /** Saved working directories for quick switching via /projects. */
   projects: string[];
   /**
-   * supervised = all tools prompt the user (strictest).
-   * standard   = read-only/safe tools auto-allowed, risky tools prompt (default).
-   * full       = bypass all permissions (no prompts, autonomous).
+   * supervised       = all tools prompt the user (strictest).
+   * standard         = read-only/safe tools auto-allowed, risky tools prompt (default).
+   * full             = bypass all permissions (no prompts, autonomous).
+   * auto_until_error = auto-allow a trusted tool set until one errors, then
+   *                    drop to supervised for the next few calls (then resume).
    */
   autonomy: Autonomy;
+  /** Transient escalation state for `auto_until_error` (not persisted). */
+  escalation?: Escalation;
   /** BCP 47 language code the agent responds in (undefined = server default). */
   language?: string;
   /** Accumulated cost/duration/turn counters (lifetime + per day). */
@@ -115,6 +133,20 @@ export class SessionManager {
   /** All live sessions (for shutdown / broadcast). */
   all(): Session[] {
     return [...this.sessions.values()];
+  }
+
+  /** Clear the transient `auto_until_error` escalation (e.g. at turn start). */
+  resetEscalation(chatId: number): void {
+    const s = this.sessions.get(chatId);
+    if (s) s.escalation = undefined;
+  }
+
+  /** Record that a tool returned an error this turn: in `auto_until_error` mode
+   *  this opens a supervised cooldown so the next few calls prompt the user. */
+  noteToolError(chatId: number): void {
+    const s = this.sessions.get(chatId);
+    if (!s || s.autonomy !== "auto_until_error") return;
+    s.escalation = { cooldown: AUTO_UNTIL_ERROR_COOLDOWN };
   }
 
   /** Reset conversation context but keep cwd, autonomy and allow-list. */

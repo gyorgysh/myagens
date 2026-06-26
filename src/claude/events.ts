@@ -9,6 +9,10 @@ export interface ContentBlock {
   text?: string;
   name?: string;
   input?: unknown;
+  /** Present on tool_result blocks: true when the tool reported an error. */
+  is_error?: boolean;
+  /** tool_result links back to the tool_use it answers. */
+  tool_use_id?: string;
 }
 
 export interface SdkSystemMessage {
@@ -20,6 +24,12 @@ export interface SdkSystemMessage {
 export interface SdkAssistantMessage {
   type: "assistant";
   message: { content: ContentBlock[] };
+  session_id?: string;
+}
+
+export interface SdkUserMessage {
+  type: "user";
+  message: { content: ContentBlock[] | string };
   session_id?: string;
 }
 
@@ -46,6 +56,7 @@ export interface SdkResultMessage {
 export type SdkMessage =
   | SdkSystemMessage
   | SdkAssistantMessage
+  | SdkUserMessage
   | SdkStreamEvent
   | SdkResultMessage
   | { type: string };
@@ -55,6 +66,16 @@ export function isSystemInit(m: SdkMessage): m is SdkSystemMessage {
 }
 export function isAssistant(m: SdkMessage): m is SdkAssistantMessage {
   return m.type === "assistant";
+}
+export function isUser(m: SdkMessage): m is SdkUserMessage {
+  return m.type === "user";
+}
+
+/** True if a user message carries at least one tool_result block flagged is_error. */
+export function hasToolError(m: SdkUserMessage): boolean {
+  const content = m.message?.content;
+  if (!Array.isArray(content)) return false;
+  return content.some((b) => b.type === "tool_result" && b.is_error === true);
 }
 export function isStreamEvent(m: SdkMessage): m is SdkStreamEvent {
   return m.type === "stream_event";

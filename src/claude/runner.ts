@@ -9,6 +9,8 @@ import {
   isResult,
   isStreamEvent,
   isSystemInit,
+  isUser,
+  hasToolError,
   textDelta,
   type SdkMessage,
 } from "./events.js";
@@ -84,6 +86,9 @@ export interface RunOptions {
   onText: (delta: string) => void;
   onToolUse: (name: string, input: unknown) => void;
   onSessionId: (id: string) => void;
+  /** Fired when a tool result comes back; `isError` flags a failed tool call.
+   *  Used by `auto_until_error` autonomy to escalate after a failure. */
+  onToolResult?: (isError: boolean) => void;
 }
 
 export interface RunResult {
@@ -161,6 +166,10 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
             toolCalls.push({ name: block.name, input: block.input });
           }
         }
+      } else if (isUser(msg)) {
+        // Tool results come back as user messages; surface error state so the
+        // caller (auto_until_error autonomy) can escalate after a failure.
+        if (opts.onToolResult) opts.onToolResult(hasToolError(msg));
       } else if (isResult(msg)) {
         result = {
           isError: Boolean(msg.is_error),

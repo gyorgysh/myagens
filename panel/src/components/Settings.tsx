@@ -19,6 +19,7 @@ const AUTONOMY_OPTIONS: Array<{ value: Autonomy; labelKey: TranslationKey; descK
   { value: "supervised", labelKey: "supervised", descKey: "settings_autonomy_supervised_desc" },
   { value: "standard", labelKey: "standard", descKey: "settings_autonomy_standard_desc" },
   { value: "full", labelKey: "full", descKey: "settings_autonomy_full_desc" },
+  { value: "auto_until_error", labelKey: "auto_until_error", descKey: "settings_autonomy_auto_until_error_desc" },
 ];
 
 export function SettingsView({ onAuthError }: { onAuthError: () => void }) {

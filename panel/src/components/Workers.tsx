@@ -52,6 +52,7 @@ const AUTONOMY_KEY: Record<Autonomy, TranslationKey> = {
   supervised: "supervised",
   standard: "standard",
   full: "full",
+  auto_until_error: "auto_until_error",
 };
 
 export function WorkersView({ onAuthError }: { onAuthError: () => void }) {

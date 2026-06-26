@@ -89,7 +89,12 @@ function normalize(s: PersistedSession & { mode?: string }): PersistedSession {
   if (!s.autonomy && legacyMode) {
     autonomy = legacyMode === "auto" ? "full" : "standard";
   }
-  if (autonomy !== "supervised" && autonomy !== "standard" && autonomy !== "full") {
+  if (
+    autonomy !== "supervised" &&
+    autonomy !== "standard" &&
+    autonomy !== "full" &&
+    autonomy !== "auto_until_error"
+  ) {
     autonomy = "standard";
   }
   return {

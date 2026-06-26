@@ -159,7 +159,7 @@ function buildHelp(): string {
 /commit &lt;message&gt;: stage all changes and commit
 
 <b>Autonomy</b>
-/mode supervised|standard|full: approval level for this chat
+/mode supervised|standard|full|auto_until_error: approval level for this chat
 /model: switch the AI model (Claude, local, providers)
 /allow &lt;Tool&gt; · /allowed · /disallow &lt;Tool|all&gt;: persistent tool allow-rules
 
@@ -560,15 +560,26 @@ export function registerCommands(bot: Telegraf): void {
 
   bot.command("mode", async (ctx) => {
     const s = sessions.get(ctx.chat.id);
-    const arg = ctx.message.text.split(/\s+/)[1]?.toLowerCase();
-    if (arg === "supervised" || arg === "standard" || arg === "full") {
+    const raw = ctx.message.text.split(/\s+/)[1]?.toLowerCase();
+    // Accept a few friendly aliases for the auto-until-error mode.
+    const arg =
+      raw === "autoerror" || raw === "auto-error" || raw === "until-error" ? "auto_until_error" : raw;
+    if (
+      arg === "supervised" ||
+      arg === "standard" ||
+      arg === "full" ||
+      arg === "auto_until_error"
+    ) {
       s.autonomy = arg;
+      s.escalation = undefined; // clear any stale escalation when switching modes
       sessions.save();
       log.info("Command /mode", { chatId: ctx.chat.id, autonomy: arg });
       const msg: Record<string, string> = {
         supervised: "🔒 Supervised: all tools require approval, no auto-allow.",
         standard: "⚖️ Standard: safe tools auto-allowed, risky tools prompt.",
         full: "⚠️ Full: all tools run without approval (autonomous).",
+        auto_until_error:
+          "🚦 Auto-until-error: Bash/Write/Edit auto-run until one fails, then the next few calls prompt before resuming.",
       };
       await ctx.reply(msg[arg]);
     } else if (arg === "safe") {
@@ -581,7 +592,7 @@ export function registerCommands(bot: Telegraf): void {
       await ctx.reply("⚠️ Full mode (was: auto). Tools run without approval.");
     } else {
       await ctx.reply(
-        `Current autonomy: ${s.autonomy}. Usage: /mode supervised|standard|full`,
+        `Current autonomy: ${s.autonomy}. Usage: /mode supervised|standard|full|auto_until_error`,
       );
     }
   });

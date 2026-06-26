@@ -254,7 +254,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       model,
       providerId,
       persona,
-      autonomy: autonomy as "supervised" | "standard" | "full" | undefined,
+      autonomy: autonomy as "supervised" | "standard" | "full" | "auto_until_error" | undefined,
       defaultLanguage,
     });
     return mainSettingsView();

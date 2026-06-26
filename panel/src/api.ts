@@ -422,7 +422,7 @@ export interface ChatView {
   approvalsInTelegram?: boolean;
 }
 
-export type Autonomy = "supervised" | "standard" | "full";
+export type Autonomy = "supervised" | "standard" | "full" | "auto_until_error";
 
 export interface EmbeddingConfig {
   enabled: boolean;

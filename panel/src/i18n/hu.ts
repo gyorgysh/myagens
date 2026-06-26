@@ -55,6 +55,7 @@ export const hu: Translations = {
   supervised: "Felügyelt",
   standard: "Normál",
   full: "Teljes",
+  auto_until_error: "Auto hibáig",
   // Memória nézet
   memory_title: "Memória",
   memory_desc: "Az ügynök által tárolt tartós tények. A 'forró' bejegyzések minden fordulóban szerepelnek; a 'meleg' bejegyzések kulcsszó alapján kerülnek elő; a 'hideg' bejegyzések csak a panelen láthatók.",
@@ -328,6 +329,7 @@ export const hu: Translations = {
   settings_autonomy_supervised_desc: "Minden eszköz jóváhagyást kér",
   settings_autonomy_standard_desc: "Biztonságos eszközök automatikusak, kockázatosak rákérdeznek",
   settings_autonomy_full_desc: "Minden eszköz átugorja a jóváhagyást",
+  settings_autonomy_auto_until_error_desc: "Bash/Write/Edit automatikusan fut, amíg hiba nem történik, utána néhány hívás jóváhagyást kér",
   settings_new_context: "Új kontextus",
   settings_restart_service: "Szolgáltatás újraindítása",
   settings_no_service: "Nincs észlelt szolgáltatáskezelő",

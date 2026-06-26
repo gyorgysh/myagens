@@ -53,6 +53,7 @@ export const en = {
   supervised: "Supervised",
   standard: "Standard",
   full: "Full",
+  auto_until_error: "Auto until error",
   // Memory view
   memory_title: "Memory",
   memory_desc: "Durable facts the agent recalls across conversations. Hot entries are injected every turn; warm entries are keyword-recalled; cold entries are panel-only.",
@@ -326,6 +327,7 @@ export const en = {
   settings_autonomy_supervised_desc: "All tools prompt for approval",
   settings_autonomy_standard_desc: "Safe tools auto-allowed, risky tools prompt",
   settings_autonomy_full_desc: "All tools bypass approval",
+  settings_autonomy_auto_until_error_desc: "Bash/Write/Edit auto-run until one errors, then prompt for a few calls",
   settings_new_context: "New context",
   settings_restart_service: "Restart service",
   settings_no_service: "No service manager detected",

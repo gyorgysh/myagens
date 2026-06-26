@@ -27,7 +27,7 @@ export function SessionsView({ onAuthError }: { onAuthError: () => void }) {
         <Card key={s.chatId}>
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-sm text-fg">{t("sessions_chat")} {s.chatId}</span>
-            <Badge tone={s.autonomy === "full" ? "amber" : s.autonomy === "supervised" ? "blue" : "zinc"}>{t(s.autonomy as "full" | "supervised" | "standard")}</Badge>
+            <Badge tone={s.autonomy === "full" ? "amber" : s.autonomy === "auto_until_error" ? "amber" : s.autonomy === "supervised" ? "blue" : "zinc"}>{t(s.autonomy as "full" | "supervised" | "standard" | "auto_until_error")}</Badge>
             {s.busy && <Badge tone="blue">{t("sessions_busy")}</Badge>}
             {s.hasContext ? (
               <Badge tone="green">{t("sessions_context")}</Badge>

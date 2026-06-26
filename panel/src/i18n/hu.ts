@@ -124,6 +124,8 @@ export const hu: Translations = {
   health_maintenance_desc: "Napi memória tömörítés és készség archiválás.",
   health_maintenance_last: "Utolsó futás",
   health_maintenance_never: "soha",
+  health_maintenance_next: "Következő futás",
+  health_maint_unscheduled: "nincs ütemezve",
   health_maintenance_run: "Futtatás most",
   health_maintenance_running: "Fut…",
   // Nyelv választó

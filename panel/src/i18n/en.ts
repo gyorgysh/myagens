@@ -122,6 +122,8 @@ export const en = {
   health_maintenance_desc: "Daily memory compaction and skill pruning.",
   health_maintenance_last: "Last run",
   health_maintenance_never: "never",
+  health_maintenance_next: "Next run",
+  health_maint_unscheduled: "not scheduled",
   health_maintenance_run: "Run now",
   health_maintenance_running: "Running…",
   // Language selector

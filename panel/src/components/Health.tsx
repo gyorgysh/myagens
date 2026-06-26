@@ -337,6 +337,7 @@ function MaintenanceCard() {
       {stats ? (
         <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-3">
           <div><span className="text-fg-faint">{t("health_maintenance_last")}</span><p className="font-medium text-fg">{stats.lastRunAt ? relTime(stats.lastRunAt) : t("health_maintenance_never")}</p></div>
+          <div><span className="text-fg-faint">{t("health_maintenance_next")}</span><p className="font-medium text-fg">{stats.nextRunAt ? relTime(stats.nextRunAt) : t("health_maint_unscheduled")}</p></div>
           <div><span className="text-fg-faint">{t("health_maint_demoted")}</span><p className="font-medium text-fg">{stats.memoriesCompacted}</p></div>
           <div><span className="text-fg-faint">{t("health_maint_deleted")}</span><p className="font-medium text-fg">{stats.memoriesDeleted}</p></div>
           <div><span className="text-fg-faint">{t("health_maint_merged")}</span><p className="font-medium text-fg">{stats.memoriesMerged}</p></div>

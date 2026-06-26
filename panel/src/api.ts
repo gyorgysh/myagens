@@ -297,6 +297,7 @@ export interface PlanView extends PlanSettings {
 
 export interface MaintenanceStats {
   lastRunAt?: number;
+  nextRunAt?: number;
   memoriesCompacted: number;
   memoriesDeleted: number;
   memoriesMerged: number;

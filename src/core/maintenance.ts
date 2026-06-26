@@ -1,12 +1,19 @@
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../config.js";
 import { memory } from "./memory.js";
 import { listSkills, updateSkill } from "./skills.js";
+import { isResult, type SdkMessage } from "../claude/events.js";
+import { loadJson, saveJson } from "./jsonStore.js";
+import { parseWhen, nextRun } from "../schedule/manager.js";
 import { log } from "../logger.js";
 
 const BATCH_SIZE = 20;
+const STORE_FILE = "maintenance.json";
 
 export interface MaintenanceStats {
   lastRunAt?: number;
+  /** When the next scheduled run is due (from MAINTENANCE_CRON); computed, not persisted. */
+  nextRunAt?: number;
   memoriesCompacted: number;
   memoriesDeleted: number;
   memoriesMerged: number;
@@ -28,40 +35,43 @@ function parseJsonArray<T>(raw: string): T[] | null {
   }
 }
 
-/** Make a direct Anthropic API call for lightweight dedup analysis. */
+/**
+ * Run a lightweight Haiku prompt for dedup analysis through the Agent SDK, so it
+ * uses the same Claude connection as the rest of the bot (a CLI subscription
+ * login or `ANTHROPIC_API_KEY`, whichever is configured) instead of needing a
+ * separate API key. No tools, no project context: just a one-shot text reply.
+ */
 async function callHaiku(prompt: string): Promise<string | null> {
-  const apiKey = config.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
+    const response = query({
+      prompt,
+      options: {
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 600,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-    return data.content?.find((b) => b.type === "text")?.text ?? null;
-  } catch {
+        systemPrompt: "You tidy an AI agent's long-term memory. Reply with ONLY the requested JSON array, no prose.",
+        maxTurns: 1,
+        permissionMode: "bypassPermissions",
+      },
+    }) as unknown as AsyncIterable<SdkMessage>;
+    let out: string | null = null;
+    for await (const msg of response) {
+      if (isResult(msg) && msg.result) out = msg.result;
+    }
+    return out;
+  } catch (err) {
+    log.debug("Maintenance model call failed", { error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }
 
 class MaintenanceScheduler {
-  private stats: MaintenanceStats = {
+  // Loaded from disk so "last run" survives restarts; persisted after each run.
+  private stats: MaintenanceStats = loadJson<MaintenanceStats>(STORE_FILE, {
     memoriesCompacted: 0,
     memoriesDeleted: 0,
     memoriesMerged: 0,
     memoriesRewritten: 0,
     skillsArchived: 0,
-  };
+  });
   private timer?: ReturnType<typeof setInterval>;
   private running = false;
 
@@ -77,8 +87,15 @@ class MaintenanceScheduler {
     this.timer = undefined;
   }
 
+  /** Next due time from MAINTENANCE_CRON ("HH:MM" daily), or undefined if unset. */
+  private computeNextRun(): number | undefined {
+    if (!config.MAINTENANCE_CRON) return undefined;
+    const spec = parseWhen(config.MAINTENANCE_CRON);
+    return spec ? nextRun(spec, Date.now()) : undefined;
+  }
+
   view(): MaintenanceStats {
-    return { ...this.stats };
+    return { ...this.stats, nextRunAt: this.computeNextRun() };
   }
 
   async runOnce(): Promise<MaintenanceStats> {
@@ -97,6 +114,7 @@ class MaintenanceScheduler {
       this.pruneSkills(run);
       run.lastRunAt = Date.now();
       this.stats = run;
+      saveJson(STORE_FILE, run); // cache last-run time + counts across restarts
       log.info("Maintenance run complete", run as unknown as Record<string, unknown>);
     } catch (err) {
       log.error("Maintenance run failed", { error: err instanceof Error ? err.message : String(err) });

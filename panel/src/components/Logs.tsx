@@ -16,8 +16,12 @@ const MAX = 2000;
 // Sentinel date value for the "search every retained file (72h)" mode.
 const ALL_FILES = "__all__";
 
+type Tab = "activity" | "logs" | "analytics";
+type TFn = (key: import("../i18n/en.ts").TranslationKey) => string;
+
 export function LogsView({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
+  const [tab, setTab] = useState<Tab>("activity");
 
   // Live ring-buffer logs (today, real-time).
   const [liveLogs, setLiveLogs] = useState<LogEntry[]>([]);
@@ -32,11 +36,9 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
   const [error, setError] = useState<string | null>(null);
   // Usage insights (most-used tools/commands over the 72h window).
   const [insights, setInsights] = useState<LogUsageSummary | null>(null);
-  const [showInsights, setShowInsights] = useState(false);
   const [loadingInsights, setLoadingInsights] = useState(false);
 
   const isAllFiles = selectedDate === ALL_FILES;
-  const boxRef = useRef<HTMLDivElement>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
   const searchRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -130,7 +132,8 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
     return () => clearTimeout(searchRef.current);
   }, [search, selectedDate]);
 
-  // Load usage insights on demand (and refresh).
+  // Load usage insights on demand (when the Analytics tab is first opened, and
+  // on manual refresh).
   const loadInsights = useCallback(() => {
     setLoadingInsights(true);
     api
@@ -140,16 +143,9 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
       .finally(() => setLoadingInsights(false));
   }, [onAuthError]);
 
-  const toggleInsights = () => {
-    const next = !showInsights;
-    setShowInsights(next);
-    if (next && !insights) loadInsights();
-  };
-
-  // Autoscroll while following.
   useEffect(() => {
-    if (follow && boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
-  }, [liveLogs, histLogs, follow]);
+    if (tab === "analytics" && !insights && !loadingInsights) loadInsights();
+  }, [tab, insights, loadingInsights, loadInsights]);
 
   const toggle = (l: Level) =>
     setHidden((h) => {
@@ -160,8 +156,262 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
 
   if (error) return <Empty>{t("logs_failed_load").replace("{error}", error)}</Empty>;
 
-  // Merge + filter
   const source = histLogs ?? liveLogs;
+
+  return (
+    <div className="flex h-[70vh] flex-col gap-3">
+      {/* Top-level tabs */}
+      <div className="flex items-center gap-1 rounded-lg border border-line bg-surface p-1 self-start">
+        <TabButton active={tab === "activity"} onClick={() => setTab("activity")}>
+          {t("logs_tab_activity")}
+        </TabButton>
+        <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>
+          {t("logs_tab_logs")}
+        </TabButton>
+        <TabButton active={tab === "analytics"} onClick={() => setTab("analytics")}>
+          {t("logs_tab_analytics")}
+        </TabButton>
+      </div>
+
+      {tab === "activity" && (
+        <ActivityFeed source={source} follow={follow} setFollow={setFollow} t={t} />
+      )}
+
+      {tab === "logs" && (
+        <RawLogs
+          source={source}
+          selectedDate={selectedDate}
+          isAllFiles={isAllFiles}
+          dates={dates}
+          search={search}
+          setSearch={setSearch}
+          handleDateChange={handleDateChange}
+          hidden={hidden}
+          toggle={toggle}
+          follow={follow}
+          setFollow={setFollow}
+          clear={() => {
+            setLiveLogs([]);
+            setHistLogs(null);
+          }}
+          t={t}
+        />
+      )}
+
+      {tab === "analytics" && (
+        <AnalyticsTab
+          summary={insights}
+          loading={loadingInsights}
+          onRefresh={loadInsights}
+          t={t}
+        />
+      )}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+        active ? "bg-accent text-accent-fg" : "text-fg-muted hover:bg-surface-2"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Activity feed — human-readable view of what the agent is doing
+// ---------------------------------------------------------------------------
+
+interface Activity {
+  key: string;
+  ts: number;
+  icon: string;
+  verb: string;
+  target: string;
+  tone: "normal" | "error";
+}
+
+/** Map a tool name to a friendly icon and verb. */
+function describeTool(tool: string, t: TFn): { icon: string; verb: string } {
+  // Strip the mcp__ns__name wrapper down to the leaf tool name.
+  const leaf = tool.replace(/^mcp__[^_]+__/, "");
+  switch (leaf) {
+    case "Read":
+      return { icon: "📖", verb: t("logs_act_reading") };
+    case "Write":
+      return { icon: "✏️", verb: t("logs_act_writing") };
+    case "Edit":
+    case "NotebookEdit":
+      return { icon: "📝", verb: t("logs_act_editing") };
+    case "Bash":
+      return { icon: "⚡", verb: t("logs_act_running") };
+    case "Grep":
+      return { icon: "🔍", verb: t("logs_act_searching") };
+    case "Glob":
+      return { icon: "📂", verb: t("logs_act_finding") };
+    case "WebFetch":
+      return { icon: "🌐", verb: t("logs_act_fetching") };
+    case "WebSearch":
+      return { icon: "🌐", verb: t("logs_act_browsing") };
+    case "Task":
+    case "crew_delegate":
+      return { icon: "🤝", verb: t("logs_act_task") };
+    case "TodoWrite":
+      return { icon: "✅", verb: t("logs_act_todo") };
+    case "send_file":
+      return { icon: "📎", verb: t("logs_act_sending") };
+    default:
+      if (leaf.startsWith("memory_")) return { icon: "🧠", verb: t("logs_act_memory") };
+      if (leaf.startsWith("skill_")) return { icon: "🛠️", verb: t("logs_act_using") };
+      if (leaf.startsWith("task_")) return { icon: "📋", verb: t("logs_act_using") };
+      return { icon: "🔧", verb: `${t("logs_act_using")} ${leaf}` };
+  }
+}
+
+/** Derive the activity feed from "Tool use" log entries (which carry
+ *  meta.tool + meta.arg), newest at the bottom so it reads like a live stream. */
+function toActivities(source: LogEntry[], t: TFn): Activity[] {
+  const out: Activity[] = [];
+  for (const l of source) {
+    if (l.msg !== "Tool use" || !l.meta) continue;
+    const tool = typeof l.meta.tool === "string" ? l.meta.tool : "";
+    if (!tool) continue;
+    const arg = typeof l.meta.arg === "string" ? l.meta.arg : "";
+    const { icon, verb } = describeTool(tool, t);
+    out.push({
+      key: `${l.seq}-${l.ts}`,
+      ts: l.ts,
+      icon,
+      verb,
+      target: arg,
+      tone: l.level === "error" ? "error" : "normal",
+    });
+  }
+  return out;
+}
+
+function ActivityFeed({
+  source,
+  follow,
+  setFollow,
+  t,
+}: {
+  source: LogEntry[];
+  follow: boolean;
+  setFollow: (v: boolean) => void;
+  t: TFn;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const activities = toActivities(source, t);
+
+  useEffect(() => {
+    if (follow && boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+  }, [activities.length, follow]);
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-fg-faint">{t("logs_activity_hint")}</span>
+        <span className="tabular ml-auto text-xs text-fg-faint">
+          {t("logs_lines").replace("{n}", String(activities.length))}
+        </span>
+        <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+          <input
+            type="checkbox"
+            checked={follow}
+            onChange={(e) => setFollow(e.target.checked)}
+            className="h-3.5 w-3.5 accent-[var(--accent)]"
+          />
+          {t("logs_follow")}
+        </label>
+      </div>
+      <div
+        ref={boxRef}
+        onWheel={() => setFollow(false)}
+        className="flex-1 overflow-auto rounded-xl border border-line bg-input p-2"
+      >
+        {activities.length === 0 ? (
+          <Empty>{t("logs_activity_empty")}</Empty>
+        ) : (
+          <div className="flex flex-col">
+            {activities.map((a) => (
+              <div
+                key={a.key}
+                className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-2"
+              >
+                <span className="shrink-0 text-base leading-none">{a.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <span
+                    className={`text-sm font-medium ${
+                      a.tone === "error" ? "text-red-400" : "text-fg"
+                    }`}
+                  >
+                    {a.verb}
+                  </span>
+                  {a.target && (
+                    <span className="ml-2 truncate font-mono text-xs text-fg-dim">{a.target}</span>
+                  )}
+                </div>
+                <span className="tabular shrink-0 text-xs text-fg-faint">
+                  {new Date(a.ts).toLocaleTimeString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Raw logs — the original text log view
+// ---------------------------------------------------------------------------
+
+function RawLogs({
+  source,
+  selectedDate,
+  isAllFiles,
+  dates,
+  search,
+  setSearch,
+  handleDateChange,
+  hidden,
+  toggle,
+  follow,
+  setFollow,
+  clear,
+  t,
+}: {
+  source: LogEntry[];
+  selectedDate: string;
+  isAllFiles: boolean;
+  dates: string[];
+  search: string;
+  setSearch: (v: string) => void;
+  handleDateChange: (d: string) => void;
+  hidden: Set<Level>;
+  toggle: (l: Level) => void;
+  follow: boolean;
+  setFollow: (v: boolean) => void;
+  clear: () => void;
+  t: TFn;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+
   let visible = source.filter((l) => !hidden.has(l.level));
   // Client-side search on live logs (hist logs are server-filtered).
   if (!selectedDate && search) {
@@ -173,8 +423,12 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
     );
   }
 
+  useEffect(() => {
+    if (follow && boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+  }, [visible.length, follow]);
+
   return (
-    <div className="flex h-[70vh] flex-col gap-2">
+    <>
       {/* Toolbar row 1: date + search */}
       <div className="flex flex-wrap items-center gap-2">
         <select
@@ -197,17 +451,7 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
           placeholder={isAllFiles ? t("logs_search_all_placeholder") : t("logs_search_placeholder")}
           className="min-w-0 flex-1 rounded border border-line bg-input px-2 py-1 text-xs text-fg placeholder:text-fg-faint"
         />
-        <Button onClick={toggleInsights}>{t("logs_insights")}</Button>
       </div>
-
-      {showInsights && (
-        <InsightsPanel
-          summary={insights}
-          loading={loadingInsights}
-          onRefresh={loadInsights}
-          t={t}
-        />
-      )}
 
       {/* Toolbar row 2: level toggles + follow + clear */}
       <div className="flex flex-wrap items-center gap-2">
@@ -234,7 +478,7 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
           />
           {t("logs_follow")}
         </label>
-        <Button onClick={() => { setLiveLogs([]); setHistLogs(null); }}>{t("logs_clear")}</Button>
+        <Button onClick={clear}>{t("logs_clear")}</Button>
       </div>
 
       {/* Log output */}
@@ -260,13 +504,15 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
           ))
         )}
       </div>
-    </div>
+    </>
   );
 }
 
-type TFn = (key: import("../i18n/en.ts").TranslationKey) => string;
+// ---------------------------------------------------------------------------
+// Analytics — usage insights, now a full-height tab (no longer squeezes logs)
+// ---------------------------------------------------------------------------
 
-/** A ranked horizontal-bar list of {name, count} for the insights panel. */
+/** A ranked horizontal-bar list of {name, count}. */
 function RankList({
   title,
   items,
@@ -279,14 +525,14 @@ function RankList({
   const max = items.length ? items[0].count : 0;
   return (
     <div className="flex-1 min-w-0">
-      <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-fg-muted">{title}</div>
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">{title}</div>
       {items.length === 0 ? (
         <div className="text-xs text-fg-faint">{empty}</div>
       ) : (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           {items.map((it) => (
             <div key={it.name} className="flex items-center gap-2">
-              <div className="relative h-4 flex-1 overflow-hidden rounded bg-surface-2">
+              <div className="relative h-5 flex-1 overflow-hidden rounded bg-surface-2">
                 <div
                   className="absolute inset-y-0 left-0 rounded bg-accent/30"
                   style={{ width: `${max ? Math.max(4, (it.count / max) * 100) : 0}%` }}
@@ -306,7 +552,7 @@ function RankList({
   );
 }
 
-function InsightsPanel({
+function AnalyticsTab({
   summary,
   loading,
   onRefresh,
@@ -318,12 +564,12 @@ function InsightsPanel({
   t: TFn;
 }) {
   return (
-    <div className="rounded-xl border border-line bg-input p-3">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-xs font-semibold text-fg">
+    <div className="flex-1 overflow-auto rounded-xl border border-line bg-input p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <span className="text-sm font-semibold text-fg">
           {t("logs_insights_title")}
           {summary ? (
-            <span className="ml-1 font-normal text-fg-faint">
+            <span className="ml-2 font-normal text-fg-faint">
               {t("logs_insights_meta")
                 .replace("{calls}", String(summary.totalToolCalls))
                 .replace("{hours}", String(summary.windowHours))
@@ -331,15 +577,23 @@ function InsightsPanel({
             </span>
           ) : null}
         </span>
-        <Button onClick={onRefresh}>{loading ? t("logs_insights_loading") : t("logs_refresh")}</Button>
+        <Button onClick={onRefresh} className="ml-auto">
+          {loading ? t("logs_insights_loading") : t("logs_refresh")}
+        </Button>
       </div>
       {summary ? (
-        <div className="flex flex-wrap gap-6">
+        <div className="flex flex-wrap gap-8">
           <RankList title={t("logs_top_tools")} items={summary.tools} empty={t("logs_no_lines")} />
-          <RankList title={t("logs_top_commands")} items={summary.commands} empty={t("logs_no_lines")} />
+          <RankList
+            title={t("logs_top_commands")}
+            items={summary.commands}
+            empty={t("logs_no_lines")}
+          />
         </div>
       ) : (
-        <div className="text-xs text-fg-faint">{loading ? t("logs_insights_loading") : t("logs_no_lines")}</div>
+        <div className="text-xs text-fg-faint">
+          {loading ? t("logs_insights_loading") : t("logs_no_lines")}
+        </div>
       )}
     </div>
   );

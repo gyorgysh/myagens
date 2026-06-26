@@ -137,10 +137,24 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
     if (!tunnelManager.basicAuthActive) return;
     const forwarded = req.headers["x-forwarded-for"] || req.headers["x-forwarded-host"];
     if (!forwarded) return; // direct loopback/LAN request, gate doesn't apply
+
+    // IMPORTANT: HTTP Basic Auth and the panel's Bearer token both live in the
+    // `Authorization` header, so they can't coexist on one request. The SPA sets
+    // `Authorization: Bearer <panel-token>` on every /api + /ws call, which means
+    // the browser can't also attach the cached Basic Auth creds there — the Basic
+    // gate would always fail on those paths and pop a looping native dialog while
+    // the cached shell renders behind it. So the Basic gate guards ONLY the document
+    // + static assets (the entry point a phone hits): the browser does the native
+    // login once for the navigation, then the loaded SPA authenticates /api + /ws
+    // with the Bearer token as usual. The token is the access control for the data
+    // and actions; Basic Auth is just a second factor in front of the entry page.
+    if (req.url.startsWith("/api") || req.url.startsWith("/ws")) return;
+
     if (tunnelManager.verifyBasic(req.headers.authorization)) return;
     await reply
       .code(401)
       .header("WWW-Authenticate", 'Basic realm="MyHQ Remote Access", charset="UTF-8"')
+      .header("cache-control", "no-store")
       .send("Authentication required");
   });
 

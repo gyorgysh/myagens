@@ -1,4 +1,4 @@
-import { config, allowedUserIds } from "./config.js";
+import { config, allowedUserIds, regeneratedPanelToken } from "./config.js";
 import { buildBot } from "./bot.js";
 import { sessions } from "./session/manager.js";
 import { schedules } from "./schedule/manager.js";
@@ -134,6 +134,27 @@ async function main(): Promise<void> {
 
   process.once("SIGINT", () => shutdown("SIGINT"));
   process.once("SIGTERM", () => shutdown("SIGTERM"));
+
+  // If the panel token was auto-healed at startup (missing or shorter than the
+  // 16-char minimum), DM the new secret to every allowed user so they can log
+  // back into the panel — the old one no longer works.
+  if (regeneratedPanelToken) {
+    const text =
+      "🔐 *Panel security update*\n\n" +
+      "Your `PANEL_TOKEN` was missing or too short (the panel now requires at " +
+      "least 16 characters), so I generated a new strong one and saved it to " +
+      "`.env`.\n\nUse this to sign in to the panel from now on:\n\n" +
+      `\`${regeneratedPanelToken}\`\n\n` +
+      "The previous token no longer works. Keep this secret.";
+    for (const id of allowedUserIds) {
+      try {
+        await bot.telegram.sendMessage(id, text, { parse_mode: "Markdown" });
+      } catch (err) {
+        log.warn("Failed to DM regenerated panel token", { id, error: errText(err) });
+      }
+    }
+    log.warn("Regenerated PANEL_TOKEN and notified allowed users");
+  }
 
   log.info("Bot starting (long polling)…");
   // launch() resolves only once polling stops; log just before it begins.

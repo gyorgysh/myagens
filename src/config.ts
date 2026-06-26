@@ -1,5 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { config as loadEnv } from "dotenv";
 import { z } from "zod";
 
@@ -158,7 +160,67 @@ const refined = schema.superRefine((cfg, ctx) => {
   }
 });
 
+/**
+ * When the panel auto-heals a missing/weak PANEL_TOKEN at startup, the freshly
+ * generated value lands here so `index.ts` can DM it to the user once the bot
+ * connects. Null when no regeneration happened.
+ */
+export let regeneratedPanelToken: string | null = null;
+
+/** Cryptographically strong, URL/.env-safe token (no quoting needed). */
+function generatePanelToken(): string {
+  // 24 bytes -> 32 base64url chars, comfortably above the 16-char minimum.
+  return randomBytes(24).toString("base64url");
+}
+
+/**
+ * Self-heal a missing or too-short PANEL_TOKEN before validation, so an existing
+ * install with a weak/blank token (which the SEC-3 16-char minimum would now
+ * reject at startup) keeps booting instead of crash-looping after an update.
+ *
+ * Generates a strong token, rewrites the PANEL_TOKEN line in `.env` in place
+ * (or appends one), mutates `process.env` so this run uses it, and records it in
+ * `regeneratedPanelToken` so the user is notified over Telegram with the new
+ * value. Only runs when the panel is enabled. Best-effort: if `.env` can't be
+ * written, the token still applies to the live process and the user is notified.
+ */
+function healPanelToken(): void {
+  const enabled = process.env.PANEL_ENABLED === "true";
+  if (!enabled) return;
+  const current = process.env.PANEL_TOKEN ?? "";
+  if (current.length >= 16) return;
+
+  const token = generatePanelToken();
+  process.env.PANEL_TOKEN = token;
+  regeneratedPanelToken = token;
+
+  const envPath = join(repoRoot, ".env");
+  try {
+    let body = existsSync(envPath) ? readFileSync(envPath, "utf8") : "";
+    const line = `PANEL_TOKEN=${token}`;
+    if (/^PANEL_TOKEN=.*$/m.test(body)) {
+      body = body.replace(/^PANEL_TOKEN=.*$/m, line);
+    } else {
+      if (body.length && !body.endsWith("\n")) body += "\n";
+      body += `${line}\n`;
+    }
+    writeFileSync(envPath, body, { mode: 0o600 });
+    // eslint-disable-next-line no-console
+    console.warn(
+      "PANEL_TOKEN was missing or shorter than 16 chars; generated a new strong token and wrote it to .env.",
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `PANEL_TOKEN was weak; generated a new one for this run but could not persist it to .env (${
+        err instanceof Error ? err.message : String(err)
+      }). It will change again on the next restart until .env is writable.`,
+    );
+  }
+}
+
 function parseConfig() {
+  healPanelToken();
   const parsed = refined.safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues

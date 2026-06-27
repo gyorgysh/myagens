@@ -186,6 +186,11 @@ export class TaskDelegator {
     let output = "";
     // Full uncapped transcript on disk for the panel's "View full log".
     const transcript = new RunLogWriter(runId, { kind: "task", ownerId: id, ownerName: title });
+    // Compact label for the Logs activity feed: a delegated card's full title can
+    // be huge (especially "Run as one task" merges that glue many titles with
+    // "; "), so the feed shows a short "Task"/"Bulk task" badge, the full title
+    // rides along in `taskTitle` for the tooltip.
+    const taskLabel = title.includes("; ") ? "Bulk task" : "Task";
     // Abort the run if it overruns the configured timeout (0 = no limit), so a
     // delegated card can't run indefinitely and burn tokens.
     const { timeoutMs } = getTaskRunConfig();
@@ -236,7 +241,7 @@ export class TaskDelegator {
         onToolUse: (name, input) => {
           const diff = toolDiffMeta(name, input);
           const arg = preview(typeof input === "string" ? input : JSON.stringify(input), 300);
-          log.info("Tool use", { chatId: 0, tool: name, arg, task: title, taskId: id, lead: lead?.name, runId, ...(diff ?? {}) });
+          log.info("Tool use", { chatId: 0, tool: name, arg, task: taskLabel, taskTitle: title, taskId: id, lead: lead?.name, runId, ...(diff ?? {}) });
           transcript.event({ ts: Date.now(), kind: "tool", tool: name, arg });
           this.broadcast({ type: "task", event: "tool", taskId: id, runId, tool: name });
         },

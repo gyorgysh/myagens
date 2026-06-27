@@ -105,7 +105,7 @@ export const hu: Translations = {
   crew_atlas_sub: "Főkoordinátor",
   crew_leads: "Vezetők",
   crew_listening: "Elérhető Telegramon",
-  crew_no_token: "Nincs token, Telegramon nem elérhető",
+  crew_no_token: "Telegram bot nincs beállítva (opcionális)",
   // Crew "hogyan működik" infókártya
   crew_how_title: "Hogyan működik a csapat",
   crew_how_intro:
@@ -135,6 +135,9 @@ export const hu: Translations = {
   crew_council_placeholder: "Írd le a javaslatot, amiről a tanács szavazzon…",
   crew_council_call: "Tanács összehívása",
   crew_council_voting: "Szavazás…",
+  crew_council_voting_title: "{n} tag szavazatának lekérése…",
+  crew_council_voting_hint: "Minden Lead és Atlas mérlegel; ez akár egy percig is eltarthat.",
+  crew_council_voting_elapsed: "({s} mp telt el)",
   crew_council_lead_count: "{n} tag szavaz (Atlas + Leadek)",
   crew_council_no_leads: "Engedélyezz legalább egy Leadet — Atlas + 1 Lead = minimális kvórum",
   crew_council_no_quorum: "Nincs kvórum",

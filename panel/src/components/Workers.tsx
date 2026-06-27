@@ -272,7 +272,7 @@ function WorkerRow({
             <Badge tone="green">{t("crew_listening")}</Badge>
           ))}
         {worker.role === "lead" && worker.enabled && !worker.telegramToken && (
-          <Badge tone="amber">⚠ {t("crew_no_token")}</Badge>
+          <Badge tone="zinc">{t("crew_no_token")}</Badge>
         )}
         {running && <Badge tone="green">{t("running")}</Badge>}
         <span className="ml-auto flex gap-1.5">

@@ -243,6 +243,8 @@ interface Activity {
   target: string;
   tone: "normal" | "error";
   agentLabel?: string;
+  /** Full title behind a compacted agent label (e.g. the full task title). */
+  agentTitle?: string;
   diffLines?: string;
   diffSnippet?: string;
 }
@@ -364,6 +366,12 @@ function toActivities(source: LogEntry[], t: TFn): Activity[] {
       const arg = typeof l.meta.arg === "string" ? l.meta.arg : "";
       const { icon, verb } = describeTool(tool, t);
       const agentLabel = agentLabelFromMeta(l.meta);
+      // A compacted task label ("Task"/"Bulk task") carries the full title in
+      // meta.taskTitle for the tooltip; only surface it when the label is the task one.
+      const agentTitle =
+        agentLabel === l.meta.task && typeof l.meta.taskTitle === "string"
+          ? l.meta.taskTitle
+          : undefined;
       const diffLines = typeof l.meta.diffLines === "string" ? l.meta.diffLines : undefined;
       const diffSnippet = typeof l.meta.diffSnippet === "string" ? l.meta.diffSnippet : undefined;
       out.push({
@@ -374,6 +382,7 @@ function toActivities(source: LogEntry[], t: TFn): Activity[] {
         target: arg,
         tone: l.level === "error" ? "error" : "normal",
         agentLabel,
+        agentTitle,
         diffLines,
         diffSnippet,
       });
@@ -572,7 +581,10 @@ function ActivityFeed({
                   <span className="shrink-0 text-sm leading-none w-5 text-center">{a.icon}</span>
                   <div className="min-w-0 flex-1 flex flex-wrap items-center gap-1.5">
                     {a.agentLabel && (
-                      <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 tracking-wide">
+                      <span
+                        title={a.agentTitle}
+                        className="shrink-0 max-w-[12rem] truncate rounded-full px-2 py-0.5 text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 tracking-wide"
+                      >
                         {a.agentLabel}
                       </span>
                     )}

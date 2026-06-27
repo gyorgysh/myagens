@@ -32,6 +32,7 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
   const [council, setCouncil] = useState<CouncilSession[]>([]);
   const [proposal, setProposal] = useState("");
   const [voting, setVoting] = useState(false);
+  const [voteElapsed, setVoteElapsed] = useState(0);
   const [voteError, setVoteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +56,17 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
   useEffect(() => {
     if (error === "AuthError: unauthorized") onAuthError();
   }, [error, onAuthError]);
+
+  // While a vote is in flight the request blocks until every Lead + Atlas has
+  // answered (each is a one-shot model call), so tick an elapsed counter to make
+  // it obvious work is happening and the panel hasn't frozen.
+  useEffect(() => {
+    if (!voting) return;
+    const started = Date.now();
+    setVoteElapsed(0);
+    const timer = setInterval(() => setVoteElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [voting]);
 
   if (error) return <Empty>Failed to load: {error}</Empty>;
 
@@ -232,11 +244,32 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
             <button
               onClick={runVote}
               disabled={voting || !proposal.trim() || enabledLeads === 0}
-              className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             >
+              {voting && (
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              )}
               {voting ? t("crew_council_voting") : t("crew_council_call")}
             </button>
           </div>
+          {voting && (
+            <div className="mt-3 flex items-start gap-3 rounded-md border border-accent/30 bg-accent/10 p-3">
+              <span className="mt-0.5 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-fg">
+                  {t("crew_council_voting_title").replace("{n}", String(enabledLeads + 1))}
+                </p>
+                <p className="mt-0.5 text-xs text-fg-dim">
+                  {t("crew_council_voting_hint")}
+                  {voteElapsed > 0 && (
+                    <span className="ml-1 tabular-nums text-fg-faint">
+                      {t("crew_council_voting_elapsed").replace("{s}", String(voteElapsed))}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
           {voteError && (
             <p className="mt-2 text-xs text-red-400">{voteError}</p>
           )}
@@ -507,7 +540,7 @@ function CrewNode({
             ) : (
               <Badge tone="green">{extra}</Badge>
             ))}
-          {warn && <Badge tone="amber">⚠ {warn}</Badge>}
+          {warn && <Badge tone="zinc">{warn}</Badge>}
         </div>
         <div className="text-xs text-fg-dim">{subtitle}</div>
       </div>

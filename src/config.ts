@@ -69,9 +69,16 @@ const schema = z.object({
   // Memory compaction thresholds.
   MEMORY_MAX_ENTRIES: z.coerce.number().int().positive().default(500),
   COLD_MAX: z.coerce.number().int().positive().default(200),
-  // Maintenance rewrites any memory entry longer than this many chars into a
-  // terse one-liner (meaning preserved) to keep recall context small. 0 = off.
+  // Maintenance rewrites verbose memory entries into a terse one-liner (meaning
+  // preserved) to keep recall context small. 0 = off. Hot entries inject into
+  // EVERY turn, so they're the priority: shorten them past the (lower) hot
+  // threshold. Warm entries only cost context when recalled, so they're left
+  // alone unless they're genuinely bloated (the higher warm threshold). Cold
+  // entries are panel-only and never shortened.
   MEMORY_SHORTEN_CHARS: z.coerce.number().int().nonnegative().default(220),
+  // Hot-tier shorten threshold (chars). Lower than the warm one because hot
+  // entries are paid for on every single turn. 0 = fall back to the warm value.
+  MEMORY_SHORTEN_CHARS_HOT: z.coerce.number().int().nonnegative().default(160),
   // --- Semantic memory (Phase 2): local embeddings for similarity recall ---
   // Tri-state, default "auto": probe Ollama then LM Studio at startup and enable
   // embeddings against whichever is live (the panel can override this). "on" pins

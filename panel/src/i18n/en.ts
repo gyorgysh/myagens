@@ -103,7 +103,7 @@ export const en = {
   crew_atlas_sub: "Chief coordinator",
   crew_leads: "Leads",
   crew_listening: "Available on Telegram",
-  crew_no_token: "No token, not reachable on Telegram",
+  crew_no_token: "Telegram bot not set up (optional)",
   // Crew "how it works" info card
   crew_how_title: "How the crew works",
   crew_how_intro:
@@ -133,6 +133,9 @@ export const en = {
   crew_council_placeholder: "Describe a proposal to put to the council vote…",
   crew_council_call: "Call the council",
   crew_council_voting: "Voting…",
+  crew_council_voting_title: "Polling {n} members for their vote…",
+  crew_council_voting_hint: "Each Lead and Atlas is deliberating; this can take up to a minute.",
+  crew_council_voting_elapsed: "({s}s elapsed)",
   crew_council_lead_count: "{n} member(s) will vote (Atlas + Leads)",
   crew_council_no_leads: "Enable at least one Lead — Atlas + 1 Lead = minimum quorum",
   crew_council_no_quorum: "No quorum",

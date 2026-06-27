@@ -203,6 +203,8 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
       column: "backlog" as Column,
     });
     await api.delegateTask(combined.id).catch(() => {});
+    // Archive the original selected cards now that they are merged into the combined run.
+    await Promise.all(ids.map((id) => api.updateTask(id, { column: "archive" as Column }).catch(() => {})));
     exitSelectMode();
     void load();
   };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, AuthError, type HeartbeatConfig, type HeartbeatMode, type HeartbeatView } from "../api.ts";
+import { api, AuthError, type HeartbeatConfig, type HeartbeatMode, type HeartbeatSignalKey, type HeartbeatView } from "../api.ts";
 import { Badge, Button, Card, Empty, InfoCard, Label } from "./ui.tsx";
 import { relTime } from "../lib/format.ts";
 import { useI18n } from "../lib/useI18n.ts";
@@ -113,20 +113,43 @@ export function HeartbeatView_({ onAuthError }: { onAuthError: () => void }) {
           ))}
         </div>
 
-        <label className="mt-4 flex cursor-pointer items-center gap-3">
-          <input
-            type="checkbox"
-            checked={c.spendAlertEnabled}
-            onChange={(e) => save({ spendAlertEnabled: e.target.checked })}
-            className="h-4 w-4 rounded accent-accent"
-          />
-          <span className="text-sm text-fg">
-            {t("hb_spend_alert")}{" "}
-            <span className="text-xs text-fg-faint">
-              {t("hb_spend_alert_note")}
-            </span>
-          </span>
-        </label>
+        <div className="mt-4 space-y-2">
+          <Label>{t("hb_signal_alerts")}</Label>
+          <p className="text-xs text-fg-faint">{t("hb_signal_alerts_hint")}</p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {(
+              [
+                { key: "cpu" as HeartbeatSignalKey, label: "hb_cpu" as TranslationKey },
+                { key: "mem" as HeartbeatSignalKey, label: "hb_memory" as TranslationKey },
+                { key: "swap" as HeartbeatSignalKey, label: "hb_swap" as TranslationKey },
+                { key: "disk" as HeartbeatSignalKey, label: "hb_disk" as TranslationKey },
+                { key: "stale" as HeartbeatSignalKey, label: "hb_stale_card" as TranslationKey },
+              ] satisfies Array<{ key: HeartbeatSignalKey; label: TranslationKey }>
+            ).map(({ key, label }) => {
+              const muted = (c.mutedSignals ?? []).includes(key);
+              const toggle = () => {
+                const next = muted
+                  ? (c.mutedSignals ?? []).filter((s) => s !== key)
+                  : [...(c.mutedSignals ?? []), key];
+                void save({ mutedSignals: next });
+              };
+              return (
+                <label key={key} className="flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={!muted}
+                    onChange={toggle}
+                    className="h-4 w-4 accent-accent"
+                  />
+                  <span className={`text-sm ${muted ? "text-fg-faint line-through" : "text-fg"}`}>
+                    {t(label)}
+                  </span>
+                  {muted && <Badge tone="zinc">{t("hb_muted")}</Badge>}
+                </label>
+              );
+            })}
+          </div>
+        </div>
 
         <p className="mt-3 text-xs text-fg-faint">
           {t("hb_last_checked").replace("{time}", view.lastTickAt ? relTime(view.lastTickAt) : t("hb_never"))}

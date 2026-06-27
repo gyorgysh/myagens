@@ -159,7 +159,7 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
   const source = histLogs ?? liveLogs;
 
   return (
-    <div className="flex h-[70vh] flex-col gap-3">
+    <div className="flex h-[calc(100dvh-9rem)] flex-col gap-3 pb-safe md:h-[calc(100vh-6rem)] md:pb-0">
       {/* Top-level tabs */}
       <div className="flex items-center gap-1 rounded-lg border border-line bg-surface p-1 self-start">
         <TabButton active={tab === "activity"} onClick={() => setTab("activity")}>
@@ -242,6 +242,11 @@ interface Activity {
   verb: string;
   target: string;
   tone: "normal" | "error";
+  agentLabel?: string;
+  /** Full title behind a compacted agent label (e.g. the full task title). */
+  agentTitle?: string;
+  diffLines?: string;
+  diffSnippet?: string;
 }
 
 /** Map a tool name to a friendly icon and verb. */
@@ -268,7 +273,13 @@ function describeTool(tool: string, t: TFn): { icon: string; verb: string } {
       return { icon: "🌐", verb: t("logs_act_browsing") };
     case "Task":
     case "crew_delegate":
-      return { icon: "🤝", verb: t("logs_act_task") };
+      return { icon: "🤝", verb: t("logs_act_delegating") };
+    case "crew_ask_president":
+      return { icon: "❓", verb: t("logs_act_asking") };
+    case "crew_report":
+      return { icon: "📣", verb: t("logs_act_reporting") };
+    case "crew_suggest":
+      return { icon: "💡", verb: t("logs_act_suggesting") };
     case "TodoWrite":
       return { icon: "✅", verb: t("logs_act_todo") };
     case "send_file":
@@ -332,6 +343,16 @@ function describeLifecycle(
   }
 }
 
+/** Derive a human-readable agent label from tool-use log meta. */
+function agentLabelFromMeta(meta: Record<string, unknown>): string | undefined {
+  if (typeof meta.worker === "string" && meta.worker) return meta.worker;
+  if (typeof meta.lead === "string" && meta.lead) return meta.lead;
+  if (typeof meta.task === "string" && meta.task) return meta.task;
+  const chatId = meta.chatId;
+  if (typeof chatId === "number" && chatId > 0) return "Atlas";
+  return undefined;
+}
+
 /** Derive the activity feed from log entries: "Tool use" rows (which carry
  *  meta.tool + meta.arg) plus high-level lifecycle events (scheduler/heartbeat/
  *  update checks, incoming messages, etc.) so it reads like a live, friendly
@@ -344,6 +365,15 @@ function toActivities(source: LogEntry[], t: TFn): Activity[] {
       if (!tool) continue;
       const arg = typeof l.meta.arg === "string" ? l.meta.arg : "";
       const { icon, verb } = describeTool(tool, t);
+      const agentLabel = agentLabelFromMeta(l.meta);
+      // A compacted task label ("Task"/"Bulk task") carries the full title in
+      // meta.taskTitle for the tooltip; only surface it when the label is the task one.
+      const agentTitle =
+        agentLabel === l.meta.task && typeof l.meta.taskTitle === "string"
+          ? l.meta.taskTitle
+          : undefined;
+      const diffLines = typeof l.meta.diffLines === "string" ? l.meta.diffLines : undefined;
+      const diffSnippet = typeof l.meta.diffSnippet === "string" ? l.meta.diffSnippet : undefined;
       out.push({
         key: `${l.seq}-${l.ts}`,
         ts: l.ts,
@@ -351,6 +381,10 @@ function toActivities(source: LogEntry[], t: TFn): Activity[] {
         verb,
         target: arg,
         tone: l.level === "error" ? "error" : "normal",
+        agentLabel,
+        agentTitle,
+        diffLines,
+        diffSnippet,
       });
       continue;
     }
@@ -369,6 +403,27 @@ function toActivities(source: LogEntry[], t: TFn): Activity[] {
   return out;
 }
 
+/** Sentinel agent-filter key for activities with no detectable agent label. */
+const UNKNOWN_AGENT = "__unknown__";
+
+/** Trigger a client-side download of `text` as a file (no server round-trip). */
+function downloadText(text: string, filename: string, type = "text/plain"): void {
+  const blob = new Blob([text], { type: `${type};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Timestamp suffix for export filenames, e.g. 2026-06-27T14-32-05. */
+function stamp(): string {
+  return new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+}
+
 function ActivityFeed({
   source,
   follow,
@@ -381,19 +436,73 @@ function ActivityFeed({
   t: TFn;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
-  const activities = toActivities(source, t);
+  const all = toActivities(source, t);
+
+  // Per-item diff override: flips whichever default `collapseDiffs` sets.
+  const [toggled, setToggled] = useState<Set<string>>(new Set());
+  // When checked, diffs are collapsed by default (opt-out of the expanded view).
+  const [collapseDiffs, setCollapseDiffs] = useState(false);
+  // Agent labels the user has hidden (empty = show all).
+  const [hiddenAgents, setHiddenAgents] = useState<Set<string>>(new Set());
+
+  // Distinct agent labels present in the feed, for the filter buttons.
+  const agentKeys: string[] = [];
+  let hasUnknown = false;
+  for (const a of all) {
+    if (a.agentLabel) {
+      if (!agentKeys.includes(a.agentLabel)) agentKeys.push(a.agentLabel);
+    } else {
+      hasUnknown = true;
+    }
+  }
+  agentKeys.sort((x, y) => x.localeCompare(y));
+
+  const activities = all.filter((a) =>
+    !hiddenAgents.has(a.agentLabel ?? UNKNOWN_AGENT),
+  );
+
+  const isDiffOpen = (key: string) =>
+    collapseDiffs ? toggled.has(key) : !toggled.has(key);
+
+  const toggleDiff = (key: string) =>
+    setToggled((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+
+  const toggleAgent = (key: string) =>
+    setHiddenAgents((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
 
   useEffect(() => {
     if (follow && boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
   }, [activities.length, follow]);
 
+  const showAgentFilters = agentKeys.length + (hasUnknown ? 1 : 0) > 1;
+
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-fg-faint">{t("logs_activity_hint")}</span>
         <span className="tabular ml-auto text-xs text-fg-faint">
           {t("logs_lines").replace("{n}", String(activities.length))}
         </span>
+        <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+          <input
+            type="checkbox"
+            checked={collapseDiffs}
+            onChange={(e) => {
+              setCollapseDiffs(e.target.checked);
+              setToggled(new Set()); // reset per-item overrides to the new default
+            }}
+            className="h-3.5 w-3.5 accent-[var(--accent)]"
+          />
+          {t("logs_collapse_diffs")}
+        </label>
         <label className="flex items-center gap-1.5 text-xs text-fg-muted">
           <input
             type="checkbox"
@@ -403,37 +512,130 @@ function ActivityFeed({
           />
           {t("logs_follow")}
         </label>
+        <button
+          type="button"
+          disabled={activities.length === 0}
+          onClick={() => {
+            const text = activities
+              .map((a) => {
+                const ts = new Date(a.ts).toISOString();
+                const who = a.agentLabel ? ` [${a.agentLabel}]` : "";
+                return `${ts}${who} ${a.verb}${a.target ? ` — ${a.target}` : ""}`;
+              })
+              .join("\n");
+            downloadText(text, `activity-${stamp()}.txt`);
+          }}
+          aria-label={t("logs_download")}
+          className="rounded border border-line px-2 py-1 text-xs text-fg-muted hover:bg-surface-2 disabled:opacity-40"
+        >
+          {t("logs_download")}
+        </button>
       </div>
+
+      {/* Per-agent filter buttons */}
+      {showAgentFilters && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-fg-faint">
+            {t("logs_filter_agent")}
+          </span>
+          {agentKeys.map((key) => (
+            <button
+              key={key}
+              onClick={() => toggleAgent(key)}
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                hiddenAgents.has(key)
+                  ? "border-line text-fg-faint opacity-50"
+                  : "border-accent/30 bg-accent/10 text-accent"
+              }`}
+            >
+              {key}
+            </button>
+          ))}
+          {hasUnknown && (
+            <button
+              onClick={() => toggleAgent(UNKNOWN_AGENT)}
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                hiddenAgents.has(UNKNOWN_AGENT)
+                  ? "border-line text-fg-faint opacity-50"
+                  : "border-line bg-surface-2 text-fg-muted"
+              }`}
+            >
+              {t("logs_filter_system")}
+            </button>
+          )}
+        </div>
+      )}
+
       <div
         ref={boxRef}
         onWheel={() => setFollow(false)}
-        className="flex-1 overflow-auto rounded-xl border border-line bg-input p-2"
+        className="flex-1 overflow-auto rounded-xl border border-line bg-surface p-3"
       >
         {activities.length === 0 ? (
           <Empty>{t("logs_activity_empty")}</Empty>
         ) : (
-          <div className="flex flex-col">
+          <div className="flex flex-col divide-y divide-line/50">
             {activities.map((a) => (
-              <div
-                key={a.key}
-                className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-2"
-              >
-                <span className="shrink-0 text-base leading-none">{a.icon}</span>
-                <div className="min-w-0 flex-1">
-                  <span
-                    className={`text-sm font-medium ${
-                      a.tone === "error" ? "text-red-400" : "text-fg"
-                    }`}
-                  >
-                    {a.verb}
+              <div key={a.key} className="group px-2 py-2 hover:bg-surface-2/60 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="shrink-0 text-sm leading-none w-5 text-center">{a.icon}</span>
+                  <div className="min-w-0 flex-1 flex flex-wrap items-center gap-1.5">
+                    {a.agentLabel && (
+                      <span
+                        title={a.agentTitle}
+                        className="shrink-0 max-w-[12rem] truncate rounded-full px-2 py-0.5 text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 tracking-wide"
+                      >
+                        {a.agentLabel}
+                      </span>
+                    )}
+                    <span
+                      className={`text-sm font-medium ${
+                        a.tone === "error" ? "text-red-500 dark:text-red-400" : "text-fg"
+                      }`}
+                    >
+                      {a.verb}
+                    </span>
+                    {a.target && (
+                      <span
+                        title={a.target}
+                        className="min-w-0 flex-1 truncate font-mono text-[11px] text-fg-dim leading-snug"
+                      >
+                        {a.target}
+                      </span>
+                    )}
+                    {a.diffLines && (
+                      <span className="shrink-0 font-mono text-[10px] text-fg-faint bg-surface-2 rounded px-1.5 py-0.5">{a.diffLines}</span>
+                    )}
+                    {a.diffSnippet && (
+                      <button
+                        type="button"
+                        onClick={() => toggleDiff(a.key)}
+                        className="shrink-0 text-[10px] font-medium text-accent hover:text-accent/80 underline-offset-2 hover:underline"
+                      >
+                        {isDiffOpen(a.key) ? t("logs_act_diff_collapse") : t("logs_act_diff_expand")}
+                      </button>
+                    )}
+                  </div>
+                  <span className="tabular shrink-0 text-[10px] text-fg-faint font-mono">
+                    {new Date(a.ts).toLocaleTimeString()}
                   </span>
-                  {a.target && (
-                    <span className="ml-2 truncate font-mono text-xs text-fg-dim">{a.target}</span>
-                  )}
                 </div>
-                <span className="tabular shrink-0 text-xs text-fg-faint">
-                  {new Date(a.ts).toLocaleTimeString()}
-                </span>
+                {a.diffSnippet && isDiffOpen(a.key) && (
+                  <pre className="mt-1 ml-8 overflow-x-auto rounded border border-line bg-surface px-2 py-1 text-[11px] leading-snug">
+                    {a.diffSnippet.split("\n").map((line, i) => (
+                      <div
+                        key={i}
+                        className={
+                          line.startsWith("+ ") ? "text-emerald-600 dark:text-emerald-400" :
+                          line.startsWith("- ") ? "text-red-600 dark:text-red-400" :
+                          "text-fg-dim"
+                        }
+                      >
+                        {line}
+                      </div>
+                    ))}
+                  </pre>
+                )}
               </div>
             ))}
           </div>
@@ -544,6 +746,18 @@ function RawLogs({
           />
           {t("logs_follow")}
         </label>
+        <button
+          type="button"
+          disabled={visible.length === 0}
+          onClick={() => {
+            const ndjson = visible.map((l) => JSON.stringify(l)).join("\n");
+            downloadText(ndjson, `logs-${selectedDate || "today"}-${stamp()}.ndjson`, "application/x-ndjson");
+          }}
+          aria-label={t("logs_download")}
+          className="rounded border border-line px-2 py-1 text-xs text-fg-muted hover:bg-surface-2 disabled:opacity-40"
+        >
+          {t("logs_download")}
+        </button>
         <Button onClick={clear}>{t("logs_clear")}</Button>
       </div>
 
@@ -551,23 +765,25 @@ function RawLogs({
       <div
         ref={boxRef}
         onWheel={() => setFollow(false)}
-        className="flex-1 overflow-auto rounded-xl border border-line bg-input p-3 font-mono text-xs leading-relaxed"
+        className="flex-1 overflow-auto rounded-xl border border-line bg-surface p-3 font-mono text-xs leading-relaxed"
       >
         {visible.length === 0 ? (
           <Empty>{t("logs_no_lines")}</Empty>
         ) : (
-          visible.map((l) => (
-            <div key={`${l.seq}-${l.ts}`} className="whitespace-pre-wrap break-words">
-              <span className="text-fg-faint">{new Date(l.ts).toLocaleTimeString()} </span>
-              <span className={`${LEVEL_COLOR[l.level]} font-semibold`}>
-                {l.level.toUpperCase().padEnd(5)}{" "}
-              </span>
-              <span className="text-fg">{l.msg}</span>
-              {l.meta && Object.keys(l.meta).length > 0 && (
-                <span className="text-fg-dim"> {JSON.stringify(l.meta)}</span>
-              )}
-            </div>
-          ))
+          <div className="flex flex-col divide-y divide-line/30">
+            {visible.map((l) => (
+              <div key={`${l.seq}-${l.ts}`} className="py-0.5 whitespace-pre-wrap break-words hover:bg-surface-2/40">
+                <span className="text-fg-faint">{new Date(l.ts).toLocaleTimeString()} </span>
+                <span className={`${LEVEL_COLOR[l.level]} font-semibold`}>
+                  {l.level.toUpperCase().padEnd(5)}{" "}
+                </span>
+                <span className="text-fg">{l.msg}</span>
+                {l.meta && Object.keys(l.meta).length > 0 && (
+                  <span className="text-fg-dim"> {JSON.stringify(l.meta)}</span>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </>
@@ -630,7 +846,7 @@ function AnalyticsTab({
   t: TFn;
 }) {
   return (
-    <div className="flex-1 overflow-auto rounded-xl border border-line bg-input p-4">
+    <div className="flex-1 overflow-auto rounded-xl border border-line bg-surface p-4">
       <div className="mb-4 flex items-center gap-2">
         <span className="text-sm font-semibold text-fg">
           {t("logs_insights_title")}

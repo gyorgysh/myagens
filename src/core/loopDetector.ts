@@ -38,7 +38,7 @@ export class LoopDetector {
       // Circular / non-serializable input: fall back to a coarse string form.
       serialized = String(input);
     }
-    return createHash("sha1").update(`${toolName}\u0000${serialized}`).digest("hex");
+    return createHash("sha256").update(`${toolName}\u0000${serialized}`).digest("hex");
   }
 
   /**

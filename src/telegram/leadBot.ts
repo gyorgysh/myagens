@@ -1,11 +1,14 @@
 import { Telegraf } from "telegraf";
+import type { Telegram } from "telegraf";
 import type { Worker } from "../core/workers.js";
 import { workers } from "../core/workers.js";
 import { runTurn } from "../claude/runner.js";
+import type { ImageInput } from "../claude/runner.js";
 import { memoryMcp } from "../mcp/memory.js";
 import { createTasksMcp } from "../mcp/tasks.js";
 import { skillsMcp } from "../mcp/skills.js";
 import { createCrewMcp } from "../mcp/crew.js";
+import { buildConnectorMcps } from "../mcp/connectorsMcp.js";
 import { hasPendingAsk, resolveAsk } from "../core/crewAsk.js";
 import { SessionManager } from "../session/manager.js";
 import { isAuthorized } from "../auth.js";
@@ -14,9 +17,11 @@ import { getProvider } from "../core/providers.js";
 import { TelegramStreamer } from "./streamer.js";
 import { AskQuestionManager } from "./askQuestion.js";
 import { sendExpandableQuote, sendFormattedMarkdown } from "./send.js";
-import { normalizeAgentText, summarizeInput } from "./formatting.js";
+import { normalizeAgentText, summarizeArg, summarizeInput, toolDiffMeta } from "./formatting.js";
+import { downloadIncomingFile, isViewableImage, readImageInput } from "./files.js";
 import { getLeadProtocol } from "../prompt.js";
 import { log } from "../logger.js";
+import { config } from "../config.js";
 
 /**
  * A standalone Telegram bot for a single Lead worker. It reuses the same
@@ -42,6 +47,113 @@ export class LeadBot {
     this.sessions = new SessionManager(`lead-${lead.id}-state.json`);
     // Renders AskUserQuestion tool calls as inline buttons in this Lead's chat.
     this.asks = new AskQuestionManager(this.bot.telegram);
+  }
+
+  /** Core turn-runner shared by text, photo, and document handlers. */
+  private async runPrompt(
+    chatId: number,
+    tg: Telegram,
+    sessions: SessionManager,
+    prompt: string,
+    images?: ImageInput[],
+  ): Promise<void> {
+    const { lead, asks } = this;
+    const s = sessions.get(chatId);
+    if (s.busy) {
+      await tg.sendMessage(chatId, "Already working on something. /stop to cancel.").catch(() => {});
+      return;
+    }
+    s.busy = true;
+    s.abort = new AbortController();
+    const placeholder = await tg.sendMessage(chatId, "💭 Working on it…");
+    const streamer = new TelegramStreamer(tg, chatId, placeholder.message_id);
+
+    await tg.sendChatAction(chatId, "typing").catch(() => {});
+    const typing = setInterval(() => {
+      if (hasPendingAsk(chatId) || asks.hasPending(chatId)) return;
+      void tg.sendChatAction(chatId, "typing").catch(() => {});
+    }, 4000);
+    try {
+      const protocol = getLeadProtocol(lead.name, lead.portfolio);
+      const append = [protocol, lead.systemPrompt].filter(Boolean).join("\n\n");
+
+      const provider = lead.providerId ? getProvider(lead.providerId) : undefined;
+      const env = provider
+        ? {
+            ANTHROPIC_BASE_URL: provider.baseUrl,
+            ANTHROPIC_AUTH_TOKEN: resolveSecret(provider.authToken),
+            ANTHROPIC_API_KEY: undefined,
+          }
+        : undefined;
+
+      const crewMcp = createCrewMcp({
+        notify: async (text) => {
+          await tg.sendMessage(chatId, text).catch(() => {});
+        },
+        primaryChatId: chatId,
+        fromAgentId: lead.id,
+      });
+
+      log.info("Lead turn starting", { lead: lead.name, leadId: lead.id, chatId, model: lead.model ?? config.CLAUDE_MODEL });
+      const res = await runTurn({
+        prompt,
+        images,
+        cwd: s.cwd,
+        resume: s.sessionId,
+        model: lead.model,
+        env,
+        systemPromptAppend: append,
+        permissionMode: s.autonomy === "full" ? "bypassPermissions" : "default",
+        abortController: s.abort,
+        mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead.id }), skills: skillsMcp, crew: crewMcp, ...buildConnectorMcps() },
+        canUseTool: async (name, input) => {
+          if (name === "AskUserQuestion") {
+            log.info("AskUserQuestion intercepted (lead)", { leadId: lead.id, chatId });
+            const answer = await asks.ask(chatId, input);
+            return { behavior: "deny", message: answer };
+          }
+          return { behavior: "allow", updatedInput: input };
+        },
+        onText: (delta) => {
+          streamer.appendText(normalizeAgentText(delta));
+        },
+        onToolUse: (name, input) => {
+          const diff = toolDiffMeta(name, input);
+          log.info("Tool use", { chatId, tool: name, arg: summarizeArg(input).slice(0, 300), lead: lead.name, leadId: lead.id, ...(diff ?? {}) });
+          streamer.setStatus(`🔧 <i>${name}</i> ${summarizeInput(input)}`);
+        },
+        onSessionId: (id) => {
+          s.sessionId = id;
+          sessions.save();
+        },
+      });
+
+      await streamer.finalize();
+
+      // Same finish UX as the main bot: split on \n---\n to post the closing
+      // sentence as a clean message and collapse the work log.
+      if (!res.isError && res.text) {
+        const splitIdx = res.text.lastIndexOf("\n---\n");
+        if (splitIdx !== -1) {
+          const bulk = res.text.slice(0, splitIdx).trim();
+          const reply = res.text.slice(splitIdx + 5).trim();
+          if (bulk && reply) {
+            for (const id of streamer.persistedMessageIds()) {
+              await tg.deleteMessage(chatId, id).catch(() => {});
+            }
+            await sendExpandableQuote(tg, chatId, bulk).catch(() => {});
+            await sendFormattedMarkdown(tg, chatId, reply).catch(() => {});
+          }
+        }
+      }
+    } catch (err) {
+      log.error("LeadBot turn error", { leadId: lead.id, error: String(err) });
+      await tg.sendMessage(chatId, `Error: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
+    } finally {
+      clearInterval(typing);
+      s.busy = false;
+      s.abort = undefined;
+    }
   }
 
   async start(): Promise<void> {
@@ -130,6 +242,60 @@ export class LeadBot {
       );
     });
 
+    // Document/photo uploads — download, then run as a prompt with optional vision.
+    bot.on("message", async (ctx, next) => {
+      // Only handle document and photo messages here; pass everything else through.
+      const msg = ctx.message as unknown as Record<string, unknown>;
+      const isDoc = "document" in msg;
+      const isPhoto = "photo" in msg;
+      if (!isDoc && !isPhoto) return next();
+
+      const s = sessions.get(ctx.chat.id);
+      try {
+        let filePath: string;
+        let images: ImageInput[] | undefined;
+        const caption = (msg.caption as string | undefined)?.trim();
+
+        if (isPhoto) {
+          const photos = msg.photo as Array<{ file_id: string; file_unique_id: string }>;
+          const largest = photos[photos.length - 1];
+          filePath = await downloadIncomingFile(
+            ctx.telegram,
+            largest.file_id,
+            `photo_${largest.file_unique_id}.jpg`,
+            s.cwd,
+          );
+          log.info("Photo received (lead)", { lead: lead.name, chatId: ctx.chat.id, path: filePath });
+          const img = await readImageInput(filePath).catch(() => undefined);
+          if (img) images = [img];
+        } else {
+          const doc = msg.document as { file_id: string; file_unique_id: string; file_name?: string };
+          filePath = await downloadIncomingFile(
+            ctx.telegram,
+            doc.file_id,
+            doc.file_name ?? `file_${doc.file_unique_id}`,
+            s.cwd,
+          );
+          log.info("File received (lead)", { lead: lead.name, chatId: ctx.chat.id, name: doc.file_name, path: filePath });
+          if (isViewableImage(filePath)) {
+            const img = await readImageInput(filePath).catch(() => undefined);
+            if (img) images = [img];
+          }
+        }
+
+        const prompt = caption
+          ? `${caption}\n\n(${isPhoto ? "The user sent an image" : "The user uploaded a file"}, also saved at: ${filePath})`
+          : isPhoto
+            ? `The user sent this image (also saved at: ${filePath}).`
+            : `The user uploaded a file, saved at: ${filePath}. Take a look.`;
+
+        await this.runPrompt(ctx.chat.id, ctx.telegram, sessions, prompt, images);
+      } catch (err) {
+        log.error("Lead file/photo download failed", { leadId: lead.id, error: String(err) });
+        await ctx.reply(`⚠️ Could not download: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
+      }
+    });
+
     // Text messages → runTurn
     bot.on("text", async (ctx) => {
       // If this Lead is blocked inside crew_ask_president waiting on the
@@ -146,116 +312,7 @@ export class LeadBot {
         log.info("AskUserQuestion resolved by text (lead)", { leadId: lead.id, chatId: ctx.chat.id });
         return;
       }
-      const s = sessions.get(ctx.chat.id);
-      if (s.busy) {
-        await ctx.reply("Already working on something. /stop to cancel.");
-        return;
-      }
-      s.busy = true;
-      s.abort = new AbortController();
-      const placeholder = await ctx.reply("💭 Working on it…");
-      const streamer = new TelegramStreamer(ctx.telegram, ctx.chat.id, placeholder.message_id);
-
-      // Typing heartbeat, like the main bot. Suppressed while parked inside
-      // crew_ask_president so the input area isn't stuck spinning.
-      await ctx.telegram.sendChatAction(ctx.chat.id, "typing").catch(() => {});
-      const typing = setInterval(() => {
-        // Suppress while parked on crew_ask_president or an AskUserQuestion
-        // prompt, so the input area isn't stuck spinning (and a typed "Other"
-        // reply isn't masked).
-        if (hasPendingAsk(ctx.chat.id) || asks.hasPending(ctx.chat.id)) return;
-        void ctx.telegram.sendChatAction(ctx.chat.id, "typing").catch(() => {});
-      }, 4000);
-      try {
-        const protocol = getLeadProtocol(lead.name, lead.portfolio);
-        const append = [protocol, lead.systemPrompt].filter(Boolean).join("\n\n");
-
-        // Point the run at a local model / proxy if a provider is set.
-        const provider = lead.providerId ? getProvider(lead.providerId) : undefined;
-        const env = provider
-          ? {
-              ANTHROPIC_BASE_URL: provider.baseUrl,
-              ANTHROPIC_AUTH_TOKEN: resolveSecret(provider.authToken),
-              ANTHROPIC_API_KEY: undefined,
-            }
-          : undefined;
-
-        // Crew tools so a Lead can ask its president (this chat) or report back.
-        const crewMcp = createCrewMcp({
-          notify: async (text) => {
-            await ctx.telegram
-              .sendMessage(ctx.chat.id, text)
-              .catch(() => {});
-          },
-          primaryChatId: ctx.chat.id,
-          fromAgentId: lead.id,
-        });
-
-        const res = await runTurn({
-          prompt: ctx.message.text,
-          cwd: s.cwd,
-          resume: s.sessionId,
-          model: lead.model,
-          env,
-          systemPromptAppend: append,
-          permissionMode: s.autonomy === "full" ? "bypassPermissions" : "default",
-          abortController: s.abort,
-          mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead.id }), skills: skillsMcp, crew: crewMcp },
-          canUseTool: async (name, input) => {
-            // AskUserQuestion has no Telegram-native picker, so render it as
-            // inline buttons (with a free-text fallback) and hand the collected
-            // answers back to the model as the tool result via a deny message —
-            // same interception the main bot does. Everything else is allowed
-            // (Leads run autonomously).
-            if (name === "AskUserQuestion") {
-              log.info("AskUserQuestion intercepted (lead)", { leadId: lead.id, chatId: ctx.chat.id });
-              const answer = await asks.ask(ctx.chat.id, input);
-              return { behavior: "deny", message: answer };
-            }
-            return { behavior: "allow", updatedInput: input };
-          },
-          onText: (delta) => {
-            streamer.appendText(normalizeAgentText(delta));
-          },
-          onToolUse: (name, input) => {
-            streamer.setStatus(`🔧 <i>${name}</i> ${summarizeInput(input)}`);
-          },
-          onSessionId: (id) => {
-            s.sessionId = id;
-            sessions.save();
-          },
-        });
-
-        await streamer.finalize();
-
-        // Same finish UX as the main bot: if the reply ends with a \n---\n
-        // delimiter, replace the streamed message(s) with a collapsed expandable
-        // blockquote (the full transcript as a log) and post the short closing
-        // line as a separate clean message, so the president can tell the Lead
-        // has finished writing.
-        if (!res.isError && res.text) {
-          const splitIdx = res.text.lastIndexOf("\n---\n");
-          if (splitIdx !== -1) {
-            const bulk = res.text.slice(0, splitIdx).trim();
-            const reply = res.text.slice(splitIdx + 5).trim();
-            if (bulk && reply) {
-              for (const id of streamer.persistedMessageIds()) {
-                await ctx.telegram.deleteMessage(ctx.chat.id, id).catch(() => {});
-              }
-              await sendExpandableQuote(ctx.telegram, ctx.chat.id, bulk).catch(() => {});
-              await sendFormattedMarkdown(ctx.telegram, ctx.chat.id, reply).catch(() => {});
-            }
-          }
-        }
-      } catch (err) {
-        log.error("LeadBot turn error", { leadId: lead.id, error: String(err) });
-        // The streamer owns the placeholder; send the error as a fresh message.
-        await ctx.reply(`Error: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
-      } finally {
-        clearInterval(typing);
-        s.busy = false;
-        s.abort = undefined;
-      }
+      await this.runPrompt(ctx.chat.id, ctx.telegram, sessions, ctx.message.text);
     });
 
     await bot.telegram.setMyCommands([

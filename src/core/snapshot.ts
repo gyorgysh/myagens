@@ -29,6 +29,7 @@ export interface ScheduleView {
   lastRunAt?: number;
   createdAt: number;
   enabled: boolean;
+  webhookUrl?: string;
 }
 
 function today(): string {
@@ -64,6 +65,7 @@ export function listSchedules(): ScheduleView[] {
     lastRunAt: s.lastRunAt,
     createdAt: s.createdAt,
     enabled: s.enabled !== false,
+    webhookUrl: s.webhookUrl,
   }));
 }
 

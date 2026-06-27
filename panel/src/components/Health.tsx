@@ -13,6 +13,8 @@ import { Bar, Card, Button, Empty, Metric } from "./ui.tsx";
 import { bytes, bytesPerSec, duration, relTime, friendlyProbeError } from "../lib/format.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import type { TranslationKey } from "../i18n/en.ts";
+import { GettingStarted } from "./onboarding.tsx";
+import type { Tab } from "./Sidebar.tsx";
 
 type ConnStatus = "connecting" | "live" | "down";
 
@@ -27,7 +29,7 @@ function limitLabel(label: string, t: (k: TranslationKey) => string): string {
 // Root view
 // ---------------------------------------------------------------------------
 
-export function HealthView() {
+export function HealthView({ onGoto }: { onGoto?: (t: Tab) => void }) {
   const { t } = useI18n();
   const [health, setHealth] = useState<Health | null>(null);
   const [status, setStatus] = useState<ConnStatus>("connecting");
@@ -66,6 +68,9 @@ export function HealthView() {
 
   return (
     <div className="space-y-4">
+      {/* First-run getting-started checklist (self-dismisses once configured) */}
+      {onGoto && <GettingStarted onGoto={onGoto} />}
+
       {/* Host info bar */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
         <span className="font-medium text-fg">{health.host}</span>

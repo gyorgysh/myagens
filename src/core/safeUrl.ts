@@ -43,10 +43,19 @@ function isBlockedV4(ip: string): boolean {
 }
 
 function isBlockedV6(ip: string): boolean {
-  const lower = ip.toLowerCase();
-  // fe80::/10 link-local.
-  if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb"))
-    return true;
+  let lower = ip.toLowerCase();
+  // Strip a zone id (e.g. fe80::1%eth0) before range checks.
+  const pct = lower.indexOf("%");
+  if (pct >= 0) lower = lower.slice(0, pct);
+  // fe80::/10 link-local. The /10 prefix means the first 10 bits are fixed:
+  // 1111 1110 10xx xxxx, so the first hextet is 0xfe80..0xfebf. Match on the
+  // numeric value of the first hextet rather than a string prefix, so short
+  // forms like `fe80::1` (and any spacing/leading-zero variant) are caught.
+  const firstHextet = lower.split(":")[0];
+  if (firstHextet) {
+    const n = parseInt(firstHextet, 16);
+    if (!Number.isNaN(n) && n >= 0xfe80 && n <= 0xfebf) return true;
+  }
   // IPv4-mapped/embedded form of the metadata address (::ffff:169.254.169.254).
   if (lower.includes("169.254.169.254")) return true;
   if (lower.includes("a9fe")) return true; // 0xa9fe == 169.254 (compressed hex form)
@@ -87,4 +96,62 @@ export async function assertSafeUrl(raw: string): Promise<URL> {
     if (isBlockedIp(address)) throw new BlockedUrlError(`blocked address: ${host} -> ${address}`);
   }
   return url;
+}
+
+/**
+ * SSRF-safe `fetch`. Every server-side outbound request built from a
+ * user-supplied URL must go through this rather than calling `fetch` directly.
+ *
+ * `assertSafeUrl()` resolves DNS once at validation time, but an attacker who
+ * controls the name's DNS can flip the answer between that check and the actual
+ * socket connect (DNS rebinding / TOCTOU), reaching a blocked IP such as the
+ * 169.254.169.254 metadata service. To shrink that window to nothing, this
+ * **re-resolves the host and re-validates every returned address immediately
+ * before issuing the fetch**, then pins the connection to a just-validated IP
+ * by rewriting the URL to that IP literal while preserving the original
+ * hostname in the `Host` header — so the kernel connects to an address we
+ * actually checked, not a fresh (possibly rebound) one.
+ *
+ * Pinning is only applied to **http** targets (where a Host header is enough);
+ * for **https** the IP swap would break SNI/cert validation, so there we re-
+ * resolve+re-validate (closing all but a sub-millisecond window) and connect by
+ * name. IP-literal targets (and loopback/private LAN local model servers) are
+ * already exact, so they skip the pin.
+ */
+export async function safeFetch(raw: string, init?: RequestInit): Promise<Response> {
+  const url = await assertSafeUrl(raw);
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+
+  // IP literal: nothing to rebind, assertSafeUrl already checked the address.
+  if (isIP(host)) return fetch(url, init);
+
+  // Re-resolve right before connecting and re-validate every address.
+  let addrs: Array<{ address: string; family: number }>;
+  try {
+    addrs = await lookup(host, { all: true });
+  } catch {
+    // DNS failed now; let fetch surface the real error (no rebinding possible).
+    return fetch(url, init);
+  }
+  let pinned: { address: string; family: number } | undefined;
+  for (const a of addrs) {
+    if (isBlockedIp(a.address)) throw new BlockedUrlError(`blocked address: ${host} -> ${a.address}`);
+    // Prefer IPv4 over IPv6 when both are available: local model servers
+    // (Ollama, LM Studio) typically bind only to 127.0.0.1, and pinning to
+    // ::1 would cause ECONNREFUSED even though the service is running.
+    if (!pinned || (pinned.family === 6 && a.family === 4)) pinned = a;
+  }
+  if (!pinned) return fetch(url, init);
+
+  // For plain http, pin by connecting to the validated IP literal and keeping
+  // the real hostname in the Host header. For https we can't swap the host
+  // without breaking SNI/cert checks, so connect by name (re-validated above).
+  if (url.protocol === "http:") {
+    const pinnedUrl = new URL(url);
+    pinnedUrl.hostname = pinned.family === 6 ? `[${pinned.address}]` : pinned.address;
+    const headers = new Headers(init?.headers);
+    if (!headers.has("host")) headers.set("host", url.host);
+    return fetch(pinnedUrl, { ...init, headers });
+  }
+  return fetch(url, init);
 }

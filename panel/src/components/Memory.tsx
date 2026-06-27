@@ -3,6 +3,7 @@ import { api, AuthError, type MemoryEntry, type MemoryStats, type MemoryTier } f
 import { useI18n } from "../lib/useI18n.ts";
 import { relTime } from "../lib/format.ts";
 import { Badge, Button, Callout, Card, Empty, InfoCard, Input, Label, TextArea } from "./ui.tsx";
+import { MemoryArt } from "./onboarding.tsx";
 
 const blank = { text: "", tags: "", salience: 0.5, tier: "warm" as MemoryTier };
 
@@ -128,6 +129,12 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
         </Callout>
       </div>
 
+      {stats && stats.total > 0 && (
+        <div className="mb-4">
+          <TierBar stats={stats} />
+        </div>
+      )}
+
       {stats && (
         <div className="mb-4 overflow-hidden rounded-lg border border-line bg-line">
           <div className="grid grid-cols-2 gap-px sm:grid-cols-4">
@@ -173,15 +180,20 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
             </div>
             <div>
               <Label>{t("memory_salience")}: {form.salience.toFixed(2)}</Label>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={form.salience}
-                onChange={(e) => setForm({ ...form, salience: Number(e.target.value) })}
-                className="mt-2 w-full accent-[var(--accent)]"
-              />
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-fg-faint">{t("memory_salience_low")}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={form.salience}
+                  onChange={(e) => setForm({ ...form, salience: Number(e.target.value) })}
+                  className="flex-1 accent-[var(--accent)]"
+                />
+                <span className="text-xs text-fg-faint">{t("memory_salience_high")}</span>
+              </div>
+              <p className="mt-1 text-xs text-fg-faint">{t("memory_salience_hint")}</p>
             </div>
           </div>
           <div>
@@ -242,7 +254,11 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
       </div>
 
       {entries.length === 0 && !editing ? (
-        <Empty>{query ? t("memory_empty_query") : t("memory_empty")}</Empty>
+        query ? (
+          <Empty>{t("memory_empty_query")}</Empty>
+        ) : (
+          <Empty icon={<MemoryArt />}>{t("memory_empty")}</Empty>
+        )
       ) : (
         <div className="space-y-2">
           {entries.map((m) => (
@@ -262,16 +278,18 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
                   <span className="tabular">{t("memory_salience").toLowerCase()} {m.salience.toFixed(2)}</span>
                   {m.useCount > 0 && <span className="tabular">· {t("memory_recalled")} {m.useCount}×</span>}
                 </div>
-                <div className="mt-1.5 flex gap-1">
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-fg-faint">{t("memory_move_to")}</span>
                   {(["hot", "warm", "cold"] as MemoryTier[])
                     .filter((tier) => tier !== m.tier)
                     .map((tier) => (
                       <button
                         key={tier}
                         onClick={() => setTier(m.id, tier)}
-                        className="rounded px-1.5 py-0.5 text-xs border border-line text-fg-faint hover:text-fg transition-colors"
+                        aria-label={t("memory_move_to_tier").replace("{tier}", t(TIER_KEY[tier]))}
+                        className="rounded-full border border-line px-2 py-0.5 text-xs font-medium text-fg-dim hover:border-accent/40 hover:bg-accent/5 hover:text-accent transition-colors"
                       >
-                        → {t(TIER_KEY[tier])}
+                        {t(TIER_KEY[tier])}
                       </button>
                     ))}
                 </div>
@@ -295,6 +313,42 @@ function Stat({ label, value }: { label: string; value: number | string }) {
     <div className="flex flex-col gap-1 bg-input px-3 py-2.5">
       <span className="text-lg font-semibold leading-none text-fg tabular">{value}</span>
       <span className="truncate text-[11px] uppercase tracking-wide text-fg-faint">{label}</span>
+    </div>
+  );
+}
+
+/** Compact stacked bar showing the hot/warm/cold tier distribution. */
+function TierBar({ stats }: { stats: MemoryStats }) {
+  const { t } = useI18n();
+  const total = stats.total || 1;
+  const segs: Array<{ tier: MemoryTier; count: number; cls: string }> = [
+    { tier: "hot", count: stats.byTier.hot, cls: "bg-amber-500" },
+    { tier: "warm", count: stats.byTier.warm, cls: "bg-blue-500" },
+    { tier: "cold", count: stats.byTier.cold, cls: "bg-zinc-500" },
+  ];
+  return (
+    <div>
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-line">
+        {segs.map((s) =>
+          s.count > 0 ? (
+            <div
+              key={s.tier}
+              className={s.cls}
+              style={{ width: `${(s.count / total) * 100}%` }}
+              title={`${t(TIER_KEY[s.tier])}: ${s.count}`}
+            />
+          ) : null,
+        )}
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-fg-faint">
+        {segs.map((s) => (
+          <span key={s.tier} className="flex items-center gap-1.5">
+            <span className={`h-2 w-2 rounded-full ${s.cls}`} />
+            {t(TIER_KEY[s.tier])}
+            <span className="tabular text-fg-dim">{s.count}</span>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

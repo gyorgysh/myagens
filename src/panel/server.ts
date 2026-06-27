@@ -28,6 +28,7 @@ import {
 } from "../logger.js";
 import { getHealth } from "../core/health.js";
 import { listSessions, listSchedules, usageSummary } from "../core/snapshot.js";
+import { isValidWebhookUrl } from "../core/webhook.js";
 import { getPrompt, savePlaybook } from "../core/playbook.js";
 import { listSkills, createSkill, updateSkill, deleteSkill } from "../core/skills.js";
 import { listClaudeFiles, readClaudeFile, writeClaudeFile } from "../core/claudeFiles.js";
@@ -39,6 +40,8 @@ import {
   deleteTask,
   getWip,
   setWip,
+  getTaskRunConfig,
+  setTaskRunConfig,
   pruneArchive,
   autoArchive,
 } from "../core/tasks.js";
@@ -51,13 +54,14 @@ import {
 } from "../core/columnConfig.js";
 import { taskDelegator } from "../core/taskRunner.js";
 import { workers, describeWorkerSchedule, type Worker } from "../core/workers.js";
+import { readRunLog } from "../core/runLog.js";
 import { chat } from "../core/chat.js";
 import { memory, type MemoryEntry } from "../core/memory.js";
 import { suggestions } from "../core/suggestions.js";
 import { getStatus } from "../core/status.js";
 import { heartbeat } from "../core/heartbeat.js";
 import { listConnectors, setConnector } from "../core/connectors.js";
-import { vault, importProviderSecrets, resolveSecret } from "../core/vault.js";
+import { vault, importProviderSecrets, resolveSecret, vaultUsages } from "../core/vault.js";
 import {
   listProviders,
   listProviderViews,
@@ -82,7 +86,7 @@ import { ptyManager } from "../core/ptyManager.js";
 import { tunnelManager, BASIC_AUTH_USER } from "../core/tunnelManager.js";
 import { PanelHub } from "./hub.js";
 import { runTurn } from "../claude/runner.js";
-import { runCouncil } from "../core/council.js";
+import { runCouncil, deleteCouncilSession } from "../core/council.js";
 
 const STATIC_DIR = join(repoRoot, "panel", "dist");
 
@@ -173,6 +177,19 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
       await reply.code(429).send({ error: "too many attempts, try again later" });
       return;
     }
+    // SEC-9 (CSRF): mutating requests must prove they are not a forged
+    // cross-site request. The panel token is a Bearer header (which a browser
+    // cannot attach to a cross-origin request without a CORS preflight the
+    // server never grants), so the header itself is the primary defence. As an
+    // explicit, defence-in-depth check we reject any non-GET/HEAD request that
+    // both (a) carries no Authorization header and (b) declares a cross-origin
+    // Origin/Referer. A same-origin SPA fetch always sends the Bearer header, so
+    // this never affects legitimate use. The WS handshake (GET) is exempt by
+    // method; its read-only ?token= query is handled in tokenOk.
+    if (isCsrfRisk(req)) {
+      await reply.code(403).send({ error: "cross-site request blocked" });
+      return;
+    }
     if (!tokenOk(req)) {
       noteAuthFailure(ip);
       await reply.code(401).send({ error: "unauthorized" });
@@ -225,6 +242,44 @@ function tokenOk(req: FastifyRequest): boolean {
   return provided !== undefined && safeEqual(provided, expected);
 }
 
+/**
+ * SEC-9 CSRF guard. Returns true when a request looks like a forged cross-site
+ * write and must be rejected before token validation. A request is a risk when
+ * its method is state-changing (anything but GET/HEAD/OPTIONS) AND it carries no
+ * Authorization header AND it declares an Origin/Referer whose host differs from
+ * the panel's own host. Legitimate SPA calls always carry the Bearer header, so
+ * they short-circuit here; a classic CSRF (auto-submitted form / img / fetch
+ * without credentials) carries no Authorization header and trips the check.
+ */
+function isCsrfRisk(req: FastifyRequest): boolean {
+  const method = req.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false;
+  const hasAuth = typeof req.headers.authorization === "string" && req.headers.authorization.length > 0;
+  if (hasAuth) return false; // header-authenticated calls are CSRF-safe by spec
+  const origin = (req.headers.origin as string | undefined) ?? referrerOrigin(req);
+  if (!origin) return false; // no Origin/Referer (e.g. server-to-server) → not a browser CSRF
+  const host = (req.headers.host as string | undefined) ?? "";
+  return !originMatchesHost(origin, host);
+}
+
+function referrerOrigin(req: FastifyRequest): string | undefined {
+  const ref = req.headers.referer as string | undefined;
+  if (!ref) return undefined;
+  try {
+    return new URL(ref).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function originMatchesHost(origin: string, host: string): boolean {
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
   const bb = Buffer.from(b);
@@ -240,8 +295,19 @@ const MAX_FAILS = 10;
 const LOCKOUT_MS = 5 * 60_000;
 const authFailures = new Map<string, { count: number; lockedUntil: number }>();
 
+let warnedUnknownIp = false;
+
 function clientIp(req: FastifyRequest): string {
-  return req.ip || "unknown";
+  const ip = req.ip || req.socket.remoteAddress;
+  if (ip) return ip;
+  if (!warnedUnknownIp) {
+    warnedUnknownIp = true;
+    log.warn(
+      "panel: request has no resolvable client IP (req.ip and socket.remoteAddress both empty); " +
+        "brute-force lockout will bucket all such clients together — check your reverse-proxy / network setup",
+    );
+  }
+  return "unknown";
 }
 
 function isLockedOut(ip: string): boolean {
@@ -308,6 +374,7 @@ function workerView(w: Worker) {
     persona: w.persona ?? "",
     autonomy: w.autonomy ?? "full",
     language: w.language ?? "",
+    webhookUrl: w.webhookUrl ?? "",
     // True when this Lead has a live Telegram bot listening (role lead + token
     // + enabled). The panel warns when a Lead is enabled but has no token.
     listening: w.role === "lead" && !!w.telegramToken && w.enabled,
@@ -323,6 +390,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     atlasName: config.ATLAS_NAME,
     brandName: config.BRAND_NAME,
     defaultLanguage: config.DEFAULT_LANGUAGE,
+    defaultWorkdir: config.WORKDIR,
     languages: AGENT_LANGUAGES,
   }));
 
@@ -392,23 +460,34 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   app.get("/api/sessions", async () => ({ sessions: listSessions() }));
   app.get("/api/schedules", async () => ({ schedules: listSchedules() }));
   app.post("/api/schedules", async (req, reply) => {
-    const { prompt, when, cwd, chatId } = (req.body ?? {}) as {
+    const { prompt, when, cwd, chatId, webhookUrl } = (req.body ?? {}) as {
       prompt?: string;
       when?: string;
       cwd?: string;
       chatId?: number;
+      webhookUrl?: string;
     };
     if (!prompt?.trim()) return reply.code(400).send({ error: "prompt required" });
     const spec = parseWhen(when ?? "");
     if (!spec) return reply.code(400).send({ error: "invalid schedule (use 30m, 2h, 1d, or HH:MM)" });
+    if (webhookUrl?.trim() && !(await isValidWebhookUrl(webhookUrl)))
+      return reply.code(400).send({ error: "invalid or blocked webhook URL" });
     const target = chatId ?? [...allowedUserIds][0];
     if (target === undefined) return reply.code(400).send({ error: "no allowed user to own the schedule" });
-    schedules.add(target, cwd?.trim() || config.WORKDIR, prompt.trim(), spec);
+    schedules.add(target, cwd?.trim() || config.WORKDIR, prompt.trim(), spec, webhookUrl);
     return { schedules: listSchedules() };
   });
   app.put("/api/schedules/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const patch = (req.body ?? {}) as { prompt?: string; when?: string; cwd?: string; chatId?: number };
+    const patch = (req.body ?? {}) as {
+      prompt?: string;
+      when?: string;
+      cwd?: string;
+      chatId?: number;
+      webhookUrl?: string;
+    };
+    if (patch.webhookUrl?.trim() && !(await isValidWebhookUrl(patch.webhookUrl)))
+      return reply.code(400).send({ error: "invalid or blocked webhook URL" });
     const updated = schedules.updateById(id, patch);
     if (!updated) return reply.code(404).send({ error: "not found" });
     return { schedules: listSchedules() };
@@ -621,7 +700,11 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   });
 
   // --- secret vault ---
-  app.get("/api/vault", async () => ({ secrets: vault.list() }));
+  app.get("/api/vault", async () => ({
+    secrets: vault.list(),
+    usages: vaultUsages(),
+    keyRotatedAt: vault.lastRotatedAt(),
+  }));
   app.post("/api/vault", async (req) => vault.create(req.body as never));
   app.put("/api/vault/:id", async (req, reply) => {
     const updated = vault.update((req.params as { id: string }).id, req.body as never);
@@ -639,6 +722,30 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     return { value };
   });
   app.post("/api/vault/import", async () => importProviderSecrets());
+  app.post("/api/vault/rotate", async (_req, reply) => {
+    try {
+      return vault.rotateKey();
+    } catch (err) {
+      return reply.code(500).send({ error: err instanceof Error ? err.message : "rotation failed" });
+    }
+  });
+  app.post("/api/vault/export", async (req, reply) => {
+    const passphrase = (req.body as { passphrase?: string })?.passphrase ?? "";
+    try {
+      return { blob: vault.exportBackup(passphrase) };
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : "export failed" });
+    }
+  });
+  app.post("/api/vault/import-backup", async (req, reply) => {
+    const { blob, passphrase } = (req.body as { blob?: string; passphrase?: string }) ?? {};
+    if (!blob || !passphrase) return reply.code(400).send({ error: "blob and passphrase required" });
+    try {
+      return vault.importBackup(blob, passphrase);
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : "import failed" });
+    }
+  });
 
   // --- on-disk .claude files ---
   app.get("/api/claude-files", async () => ({ roots: listClaudeFiles() }));
@@ -666,7 +773,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       ...t,
       createdByName: t.createdBy ? creatorName(t.createdBy) : undefined,
     }));
-    return { tasks, columns: listColumns(), wip: getWip() };
+    return { tasks, columns: listColumns(), wip: getWip(), config: getTaskRunConfig() };
   });
   // Column config CRUD
   app.get("/api/tasks/columns", async () => ({ columns: listColumns() }));
@@ -697,6 +804,12 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     const { column, limit } = (req.body ?? {}) as { column?: string; limit?: number | null };
     return { wip: setWip(column ?? "", limit ?? null) };
   });
+  // Global delegation timeout + concurrency limit.
+  app.get("/api/tasks/config", async () => ({ config: getTaskRunConfig() }));
+  app.put("/api/tasks/config", async (req) => {
+    const { timeoutMs, maxConcurrent } = (req.body ?? {}) as { timeoutMs?: number; maxConcurrent?: number };
+    return { config: setTaskRunConfig({ timeoutMs, maxConcurrent }) };
+  });
   app.post("/api/tasks/:id/delegate", async (req, reply) => {
     const r = taskDelegator.delegate((req.params as { id: string }).id);
     if (!r.ok) return reply.code(409).send({ error: r.error });
@@ -705,6 +818,13 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   app.post("/api/tasks/:id/stop", async (req) => ({
     ok: taskDelegator.stop((req.params as { id: string }).id),
   }));
+  // Retry a failed card: reset to backlog (clear error, bump retryCount) and
+  // re-delegate in one click.
+  app.post("/api/tasks/:id/retry", async (req, reply) => {
+    const r = taskDelegator.retry((req.params as { id: string }).id);
+    if (!r.ok) return reply.code(409).send({ error: r.error });
+    return { ok: true, retryCount: r.retryCount };
+  });
   app.post("/api/tasks", async (req) => {
     const body = (req.body ?? {}) as Parameters<typeof createTask>[0];
     // Cards made through the panel/REST are attributed to "panel" unless the
@@ -732,8 +852,16 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     skills: listSkills().map((s) => ({ id: s.id, name: s.name })),
     providers: listProviders().map((p) => ({ id: p.id, name: p.name })),
   }));
-  app.post("/api/workers", async (req) => workerView(workers.create(req.body as never)));
+  app.post("/api/workers", async (req, reply) => {
+    const hook = (req.body as { webhookUrl?: string })?.webhookUrl;
+    if (hook?.trim() && !(await isValidWebhookUrl(hook)))
+      return reply.code(400).send({ error: "invalid or blocked webhook URL" });
+    return workerView(workers.create(req.body as never));
+  });
   app.put("/api/workers/:id", async (req, reply) => {
+    const hook = (req.body as { webhookUrl?: string })?.webhookUrl;
+    if (hook?.trim() && !(await isValidWebhookUrl(hook)))
+      return reply.code(400).send({ error: "invalid or blocked webhook URL" });
     const updated = workers.update((req.params as { id: string }).id, req.body as never);
     if (!updated) return reply.code(404).send({ error: "not found" });
     return workerView(updated);
@@ -755,6 +883,12 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     runs: workers.history((req.params as { id: string }).id),
   }));
   app.get("/api/runs", async () => ({ runs: workers.history() }));
+
+  // Full uncapped transcript for one run (worker or delegated task), read from
+  // the runs/YYYY-MM-DD/<runId>.ndjson files. Returns [] when absent/expired.
+  app.get("/api/runs/:runId/log", async (req) => ({
+    events: readRunLog((req.params as { runId: string }).runId),
+  }));
 
   // --- worker wizard: generate pre-filled worker config(s) from user intent ---
   app.post("/api/workers/wizard", async (req, reply) => {
@@ -943,6 +1077,14 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
       log.error("Panel council vote failed", { error: message });
       return reply.code(500).send({ error: message });
     }
+  });
+
+  // Delete a single council session from the history
+  app.delete("/api/council/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const ok = deleteCouncilSession(id);
+    if (!ok) return reply.code(404).send({ error: "Session not found" });
+    return { ok: true };
   });
 
   // --- delegation log (inter-agent crew communication) ---

@@ -22,6 +22,7 @@ export const memoryMcp = createSdkMcpServer({
       {
         text: z
           .string()
+          .max(500, "Memory text must be 500 characters or fewer — keep it to one terse sentence.")
           .describe(
             "The fact, as one short sentence. Drop filler, long file lists, and " +
               "play-by-play detail; record bulky detail in a commit or file, not here.",
@@ -47,8 +48,17 @@ export const memoryMcp = createSdkMcpServer({
           ),
       },
       async (args) => {
-        const e = memory.create({ text: args.text, tags: args.tags, salience: args.salience, tier: args.tier });
-        return { content: [{ type: "text", text: `Remembered (id ${e.id}).` }] };
+        const TIMEOUT_MS = 5_000;
+        const timer = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("memory_write timed out after 5s")), TIMEOUT_MS),
+        );
+        return Promise.race([
+          (async () => {
+            const e = memory.create({ text: args.text, tags: args.tags, salience: args.salience, tier: args.tier });
+            return { content: [{ type: "text", text: `Remembered (id ${e.id}).` }] };
+          })(),
+          timer,
+        ]);
       },
     ),
     tool(

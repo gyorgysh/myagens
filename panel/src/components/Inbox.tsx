@@ -5,6 +5,7 @@ import type { TranslationKey } from "../i18n/en.ts";
 import { relTime } from "../lib/format.ts";
 import { useSuggestionEvents } from "../lib/useSuggestionEvents.ts";
 import { Badge, Button, Card, Empty, InfoCard } from "./ui.tsx";
+import { InboxArt } from "./onboarding.tsx";
 
 type Filter = "pending" | "accepted" | "dismissed";
 
@@ -136,7 +137,7 @@ export function InboxView({ onAuthError }: { onAuthError: () => void }) {
 
       {filter === "pending" && pendingCount === 0 ? (
         <Card>
-          <Empty>{t("inbox_empty_pending")}</Empty>
+          <Empty icon={<InboxArt />} title={t("inbox_empty_pending")} />
         </Card>
       ) : items.length === 0 ? (
         <Card>

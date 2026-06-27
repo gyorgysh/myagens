@@ -3,6 +3,7 @@ import { Markup, type Telegram } from "telegraf";
 import { config } from "../config.js";
 import { escapeHtml } from "./formatting.js";
 import { log } from "../logger.js";
+import { isHexId, CALLBACK_MAX_BYTES } from "./callback.js";
 
 /** One option of an AskUserQuestion question. */
 interface AskOption {
@@ -141,7 +142,11 @@ export class AskQuestionManager {
 
   /** Resolve (or progress) a pending question from a callback_query; returns a toast. */
   async resolve(data: string): Promise<string> {
-    const [, id, kind, idxStr] = data.split(":");
+    if (Buffer.byteLength(data, "utf8") > CALLBACK_MAX_BYTES) return "This question has expired.";
+    const segs = data.split(":");
+    if (segs.length < 3 || segs.length > 4) return "This question has expired.";
+    const [, id, kind, idxStr] = segs;
+    if (!isHexId(id)) return "This question has expired.";
     const entry = this.pending.get(id);
     if (!entry) return "This question has expired.";
     const { question } = entry;

@@ -1,6 +1,7 @@
 import { listProviders, type Provider } from "./providers.js";
-import { fetchProviderModels } from "./providerModels.js";
+import { probeProviderModels } from "./providerModels.js";
 import { resolveSecret } from "./vault.js";
+import { BlockedUrlError } from "./safeUrl.js";
 
 const TIMEOUT_MS = 6000;
 
@@ -76,11 +77,16 @@ async function checkProvider(p: Provider): Promise<BackendStatus> {
     models: [],
   };
   try {
-    out.models = await fetchProviderModels(p.baseUrl, resolveSecret(p.authToken));
-    out.reachable = true;
-    out.authOk = true;
+    const probe = await probeProviderModels(p.baseUrl, resolveSecret(p.authToken));
+    out.models = probe.models;
+    out.reachable = probe.reachable;
+    out.authOk = probe.authOk;
+    // Surface the diagnostic even when the endpoint is reachable (e.g. auth
+    // failed, or it answered with no recognisable model list).
+    if (probe.error) out.error = probe.error;
   } catch (err) {
-    out.error = err instanceof Error ? err.message : String(err);
+    // probeProviderModels only throws on an SSRF-blocked URL or empty base URL.
+    out.error = err instanceof BlockedUrlError ? `blocked URL: ${err.message}` : err instanceof Error ? err.message : String(err);
   }
   return out;
 }
@@ -88,8 +94,20 @@ async function checkProvider(p: Provider): Promise<BackendStatus> {
 /** Probe a default local endpoint; resolves null unless it actually answered. */
 async function probeLocal(name: string, baseUrl: string): Promise<BackendStatus | null> {
   try {
-    const models = await fetchProviderModels(baseUrl, undefined);
-    return { id: `local:${baseUrl}`, name, kind: "local", baseUrl, reachable: true, authOk: true, models };
+    const probe = await probeProviderModels(baseUrl, undefined);
+    // Only surface a local backend that actually answered; a default endpoint
+    // that's simply not running should stay hidden rather than show as "down".
+    if (!probe.reachable) return null;
+    return {
+      id: `local:${baseUrl}`,
+      name,
+      kind: "local",
+      baseUrl,
+      reachable: true,
+      authOk: probe.authOk,
+      models: probe.models,
+      ...(probe.error ? { error: probe.error } : {}),
+    };
   } catch {
     return null;
   }

@@ -53,14 +53,20 @@ export function createCrewMcp(opts: CrewMcpOptions) {
         "Hand off a task to a Lead worker by id and receive its output. " +
           "Use this to leverage a specialist instead of doing the work yourself.",
         {
-          leadId: z.string().describe("The id of the Lead worker to delegate to."),
+          leadId: z.string().describe("The id or name of the Lead worker to delegate to."),
           task: z.string().describe("Clear description of the task for the Lead to perform."),
           context: z.string().optional().describe("Optional extra context to pass to the Lead."),
         },
         async (args) => {
-          const lead = workers.get(args.leadId);
+          const all = workers.list();
+          const lead =
+            workers.get(args.leadId) ??
+            all.find((w) => w.name.toLowerCase() === args.leadId.toLowerCase());
           if (!lead) {
-            return { content: [{ type: "text", text: `No worker found with id ${args.leadId}.` }] };
+            const available = all.length
+              ? `${all.length} worker(s) exist — use crew_delegate with an exact name or id.`
+              : "no workers are configured.";
+            return { content: [{ type: "text", text: `No worker found matching "${args.leadId}". ${available}` }] };
           }
           const skill = lead.skillId ? getSkill(lead.skillId) : undefined;
           const protocol = lead.role === "lead" ? getLeadProtocol(lead.name, lead.portfolio) : undefined;

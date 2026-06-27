@@ -11,6 +11,7 @@ import { skillsMcp } from "./mcp/skills.js";
 import { selfUpdateMcp } from "./mcp/selfUpdate.js";
 import { selfUpdate } from "./core/selfUpdate.js";
 import { createCrewMcp } from "./mcp/crew.js";
+import { buildConnectorMcps } from "./mcp/connectorsMcp.js";
 import { TelegramStreamer, type Streamer } from "./telegram/streamer.js";
 import { DraftStreamer } from "./telegram/draftStreamer.js";
 import { RichDraftStreamer } from "./telegram/richDraftStreamer.js";
@@ -21,6 +22,7 @@ import { AskQuestionManager } from "./telegram/askQuestion.js";
 import { LoopDetector } from "./core/loopDetector.js";
 import { downloadIncomingFile, isViewableImage, readImageInput } from "./telegram/files.js";
 import { isGitCallback, resolveGitCallback } from "./telegram/gitFlow.js";
+import { isTaskCallback, resolveTaskCallback, retryKeyboard } from "./telegram/taskFlow.js";
 import { isProjectCallback, resolveProjectCallback } from "./telegram/projects.js";
 import { isInboxCallback, resolveInboxCallback } from "./telegram/inboxFlow.js";
 import { isModelCallback, resolveModelCallback } from "./commands.js";
@@ -33,7 +35,9 @@ import { transcribeAudio, voiceEnabled, voiceSetupHint } from "./telegram/voice.
 import { schedules, type ScheduleRunner } from "./schedule/manager.js";
 import { heartbeat } from "./core/heartbeat.js";
 import { taskDelegator } from "./core/taskRunner.js";
+import { fireWebhook, type WebhookSource } from "./core/webhook.js";
 import { resolveMainRun } from "./core/mainSettings.js";
+import { TokenBucketLimiter } from "./core/rateLimiter.js";
 import { workers } from "./core/workers.js";
 import { suggestions } from "./core/suggestions.js";
 import {
@@ -41,6 +45,7 @@ import {
   normalizeAgentText,
   summarizeArg,
   summarizeInput,
+  toolDiffMeta,
 } from "./telegram/formatting.js";
 import { resolveAsk, hasPendingAsk } from "./core/crewAsk.js";
 import { reflectOnTurn } from "./core/reflect.js";
@@ -90,6 +95,11 @@ export function buildBot(): Telegraf {
       log.debug("Git button pressed", { chatId: ctx.chat.id, data });
       const messageId = ctx.callbackQuery.message?.message_id;
       const toast = await resolveGitCallback(ctx.telegram, ctx.chat.id, data, messageId);
+      await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
+    } else if (data && isTaskCallback(data) && ctx.chat) {
+      log.debug("Task button pressed", { chatId: ctx.chat.id, data });
+      const messageId = ctx.callbackQuery.message?.message_id;
+      const toast = await resolveTaskCallback(ctx.telegram, ctx.chat.id, data, messageId);
       await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
     } else if (data && isProjectCallback(data) && ctx.chat) {
       log.debug("Project button pressed", { chatId: ctx.chat.id, data });
@@ -246,6 +256,9 @@ export function buildBot(): Telegraf {
     runUserPrompt(permissions, loops, asks, s.chatId, s.prompt, bot.telegram, {
       autonomous: true,
       cwd: s.cwd,
+      webhook: s.webhookUrl
+        ? { url: s.webhookUrl, source: "schedule", title: s.prompt.slice(0, 120), id: s.id }
+        : undefined,
     });
     return true;
   };
@@ -293,8 +306,13 @@ export function buildBot(): Telegraf {
       r.status === "stopped"
         ? `⏹ Task stopped — ${r.title}${by}`
         : `⚠️ Task failed — ${r.title}${by}${r.error ? `: ${r.error}` : ""}`;
+    // On a genuine failure (not a manual stop), offer a one-tap Retry button
+    // that resets the card to backlog and re-delegates.
     await bot.telegram
-      .sendMessage(chatId, `<i>${escapeHtml(notice)}</i>`, { parse_mode: "HTML" })
+      .sendMessage(chatId, `<i>${escapeHtml(notice)}</i>`, {
+        parse_mode: "HTML",
+        ...(r.status === "error" ? { reply_markup: retryKeyboard(r.taskId) } : {}),
+      })
       .catch(() => {});
   });
 
@@ -315,6 +333,15 @@ export function buildBot(): Telegraf {
   return bot;
 }
 
+// Per-chat turn rate limit (SEC): cap how many new user-initiated turns a single
+// chat can start in a rolling window, so an allow-listed user can't spawn many
+// concurrent runTurn calls by messaging faster than one finishes. Disabled when
+// TURN_RATE_LIMIT is 0. Autonomous turns (schedules/heartbeat) bypass it.
+const turnLimiter =
+  config.TURN_RATE_LIMIT > 0
+    ? new TokenBucketLimiter(config.TURN_RATE_LIMIT, config.TURN_RATE_WINDOW_MS)
+    : undefined;
+
 interface TurnOptions {
   /** Images to include inline (vision). */
   images?: ImageInput[];
@@ -322,6 +349,8 @@ interface TurnOptions {
   autonomous?: boolean;
   /** Run in this directory for this turn only (does not change session cwd). */
   cwd?: string;
+  /** When set, POST a JSON outcome to this webhook once the turn completes. */
+  webhook?: { url: string; source: WebhookSource; title: string; id?: string };
 }
 
 function runUserPrompt(
@@ -352,7 +381,7 @@ async function handleUserPrompt(
   tg: Telegraf["telegram"],
   opts: TurnOptions = {},
 ): Promise<void> {
-  const { images, autonomous = false } = opts;
+  const { images, autonomous = false, webhook } = opts;
   const session = sessions.get(chatId);
   // An autonomous turn (scheduled/heartbeat) that resumes the persisted context
   // counts as "using" it, so the user's next message shouldn't re-offer a resume.
@@ -360,6 +389,17 @@ async function handleUserPrompt(
   if (session.busy) {
     log.info("Prompt rejected — chat busy", { chatId });
     await tg.sendMessage(chatId, "⏳ Still working on the previous request. Send /stop to cancel.");
+    return;
+  }
+  // Per-chat turn rate limit (SEC): an allow-listed user mustn't be able to spawn
+  // unbounded concurrent turns by messaging faster than one finishes. Autonomous
+  // turns (schedules/heartbeat) are exempt.
+  if (!autonomous && turnLimiter && !turnLimiter.tryConsume(chatId)) {
+    const waitS = Math.ceil(turnLimiter.retryAfterMs(chatId) / 1000);
+    log.info("Prompt rejected — rate limited", { chatId, retryAfterS: waitS });
+    await tg
+      .sendMessage(chatId, `🐢 Slow down — I'm still catching up. Try again in ~${waitS}s.`)
+      .catch(() => {});
     return;
   }
   const cwd = opts.cwd ?? session.cwd;
@@ -587,6 +627,7 @@ async function handleUserPrompt(
         skills: skillsMcp,
         self_update: selfUpdateMcp,
         crew: crewMcp,
+        ...buildConnectorMcps(),
       },
       canUseTool,
       onText: (delta) => {
@@ -597,7 +638,8 @@ async function handleUserPrompt(
         }
       },
       onToolUse: (name, input) => {
-        log.info("Tool use", { chatId, tool: name, arg: preview(summarizeArg(input), 80) });
+        const diff = toolDiffMeta(name, input);
+        log.info("Tool use", { chatId, tool: name, arg: preview(summarizeArg(input), 300), ...(diff ?? {}) });
         streamer.setStatus(`🔧 <i>${name}</i> ${summarizeInput(input)}`);
         if (mirror) chatBridge.mirrorTool(mirrorMsgId, name, preview(summarizeArg(input), 120));
 
@@ -691,6 +733,21 @@ async function handleUserPrompt(
     if (!res.isError && res.toolCalls?.length) {
       void reflectOnTurn(prompt, res.toolCalls, res, chatId);
     }
+
+    // Outbound webhook: push the outcome to the schedule's configured URL.
+    if (webhook) {
+      fireWebhook(webhook.url, {
+        source: webhook.source,
+        title: webhook.title,
+        id: webhook.id,
+        status: res.isError ? "error" : "ok",
+        summary: res.text?.trim() || undefined,
+        costUsd: res.costUsd,
+        durationMs: res.durationMs,
+        error: res.isError ? res.text?.trim() : undefined,
+        completedAt: new Date().toISOString(),
+      });
+    }
   } catch (err) {
     await streamer.finalize().catch(() => {});
     const stopped = session.abort?.signal.aborted;
@@ -708,6 +765,17 @@ async function handleUserPrompt(
     if (mirror) {
       chatBridge.mirrorEnd(mirrorMsgId, mirrorText || (stopped ? "Stopped." : friendlyError(err)), {
         error: true,
+      });
+    }
+    // Outbound webhook: report the failed/stopped outcome too.
+    if (webhook) {
+      fireWebhook(webhook.url, {
+        source: webhook.source,
+        title: webhook.title,
+        id: webhook.id,
+        status: stopped ? "stopped" : "error",
+        error: stopped ? undefined : errText(err),
+        completedAt: new Date().toISOString(),
       });
     }
   } finally {

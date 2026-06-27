@@ -19,6 +19,8 @@ const ALERT_HISTORY = 50;
 
 export type HeartbeatMode = "off" | "alert" | "active";
 
+export type HeartbeatSignalKey = "cpu" | "mem" | "swap" | "disk" | "stale" | "spend";
+
 export interface HeartbeatConfig {
   mode: HeartbeatMode;
   /** How often to evaluate signals. */
@@ -36,6 +38,12 @@ export interface HeartbeatConfig {
    * for Pro/Max subscription plans (they measure token cost, not subscription spend).
    */
   spendAlertEnabled: boolean;
+  /**
+   * Per-signal-type muting. Keys in this list are silently skipped even when
+   * the global mode is alert/active. Allows turning off e.g. swap alerts
+   * without disabling the whole heartbeat.
+   */
+  mutedSignals: HeartbeatSignalKey[];
 }
 
 interface Signal {
@@ -79,6 +87,7 @@ const DEFAULTS: HeartbeatConfig = {
   diskPct: 90,
   staleCardHours: 48,
   spendAlertEnabled: false,
+  mutedSignals: [],
 };
 
 export interface HeartbeatDeps {
@@ -135,6 +144,12 @@ export class HeartbeatManager {
       if (typeof patch[k] === "number") c[k] = Math.max(0, patch[k]!);
     }
     if (typeof patch.spendAlertEnabled === "boolean") c.spendAlertEnabled = patch.spendAlertEnabled;
+    if (Array.isArray(patch.mutedSignals)) {
+      const valid: HeartbeatSignalKey[] = ["cpu", "mem", "swap", "disk", "stale", "spend"];
+      c.mutedSignals = patch.mutedSignals.filter((s): s is HeartbeatSignalKey => valid.includes(s as HeartbeatSignalKey));
+    }
+    // Ensure the field exists on legacy configs loaded from disk.
+    if (!Array.isArray(c.mutedSignals)) c.mutedSignals = [];
     this.persist();
     audit("heartbeat.config", { mode: c.mode, intervalMs: c.intervalMs });
     return c;
@@ -178,31 +193,36 @@ export class HeartbeatManager {
 
   private async collectSignals(): Promise<Signal[]> {
     const c = this.state.config;
+    const muted = new Set(c.mutedSignals ?? []);
     const out: Signal[] = [];
     try {
       const h = await getHealth();
-      if (h.cpu.load >= c.cpuPct) out.push({ key: "cpu", text: `CPU load ${h.cpu.load.toFixed(0)}% (≥ ${c.cpuPct}%)` });
+      if (!muted.has("cpu") && h.cpu.load >= c.cpuPct) out.push({ key: "cpu", text: `CPU load ${h.cpu.load.toFixed(0)}% (≥ ${c.cpuPct}%)` });
       const memPct = h.mem.total ? (h.mem.used / h.mem.total) * 100 : 0;
-      if (memPct >= c.memPct) out.push({ key: "mem", text: `Memory ${memPct.toFixed(0)}% used (≥ ${c.memPct}%)` });
+      if (!muted.has("mem") && memPct >= c.memPct) out.push({ key: "mem", text: `Memory ${memPct.toFixed(0)}% used (≥ ${c.memPct}%)` });
       const swapPct = h.swap.total ? (h.swap.used / h.swap.total) * 100 : 0;
-      if (swapPct >= c.swapPct) out.push({ key: "swap", text: `Swap ${swapPct.toFixed(0)}% used (≥ ${c.swapPct}%)` });
-      for (const d of h.disks) {
-        if (d.usePct >= c.diskPct) out.push({ key: `disk:${d.mount}`, text: `Disk ${d.mount} ${d.usePct.toFixed(0)}% full (≥ ${c.diskPct}%)` });
+      if (!muted.has("swap") && swapPct >= c.swapPct) out.push({ key: "swap", text: `Swap ${swapPct.toFixed(0)}% used (≥ ${c.swapPct}%)` });
+      if (!muted.has("disk")) {
+        for (const d of h.disks) {
+          if (d.usePct >= c.diskPct) out.push({ key: `disk:${d.mount}`, text: `Disk ${d.mount} ${d.usePct.toFixed(0)}% full (≥ ${c.diskPct}%)` });
+        }
       }
     } catch (err) {
       log.warn("Heartbeat health probe failed", { error: err instanceof Error ? err.message : String(err) });
     }
-    const staleMs = c.staleCardHours * 3_600_000;
-    const now = Date.now();
-    for (const t of listTasks()) {
-      if (t.column === "doing" && now - t.updatedAt > staleMs) {
-        const days = Math.floor((now - t.updatedAt) / 86_400_000);
-        out.push({ key: `stale:${t.id}`, text: `Task "${t.title}" stalled in Doing for ${days}d` });
+    if (!muted.has("stale")) {
+      const staleMs = c.staleCardHours * 3_600_000;
+      const now = Date.now();
+      for (const t of listTasks()) {
+        if (t.column === "doing" && now - t.updatedAt > staleMs) {
+          const days = Math.floor((now - t.updatedAt) / 86_400_000);
+          out.push({ key: `stale:${t.id}`, text: `Task "${t.title}" stalled in Doing for ${days}d` });
+        }
       }
     }
     // Cost/budget alert — only when explicitly enabled and only for API (pay-per-token) plans.
     // Pro/Max subscription plans report SDK token-cost estimates that don't represent real spend.
-    if (c.spendAlertEnabled) {
+    if (c.spendAlertEnabled && !muted.has("spend")) {
       try {
         const plan = getPlanSettings();
         if (plan.plan === "api" && plan.alertThresholdPct > 0 && plan.monthlyCap > 0) {

@@ -22,6 +22,8 @@ export interface Schedule {
   lastRunAt?: number;
   /** Paused schedules stay in the list but are skipped on tick. Defaults to enabled. */
   enabled?: boolean;
+  /** Optional URL POSTed a JSON outcome payload when the run completes. */
+  webhookUrl?: string;
 }
 
 // Sibling of STATE_FILE so it lives in the same gitignored data/ folder.

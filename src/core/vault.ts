@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { chmodSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import { platform } from "node:os";
 import { randomBytes as id4 } from "node:crypto";
 import { loadJson, saveJson, dataPath } from "./jsonStore.js";
@@ -19,6 +19,8 @@ interface VaultEntry {
   name: string;
   description: string;
   ciphertext: string;
+  /** Masked preview (last 4 chars) computed once at write time, never re-derived. */
+  hint?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -26,6 +28,8 @@ interface VaultEntry {
 interface VaultFile {
   version: 1;
   entries: VaultEntry[];
+  /** Last time the master key was rotated (epoch ms). */
+  keyRotatedAt?: number;
 }
 
 /** Panel-safe view: never carries the plaintext, only a masked hint. */
@@ -57,8 +61,19 @@ function loadMasterKey(): Buffer {
   writeFileSync(p, key.toString("base64"), { mode: 0o600 });
   try {
     chmodSync(p, 0o600);
-  } catch {
-    /* best effort */
+  } catch (err) {
+    log.error(`vault: failed to chmod key file ${p} to 0600 — master key may be world-readable`, { err: String(err) });
+  }
+  // A world-readable master key defeats the vault entirely; verify the mode landed.
+  try {
+    const mode = statSync(p).mode & 0o777;
+    if (mode !== 0o600) {
+      log.error(
+        `vault: key file ${p} has mode ${mode.toString(8)} (expected 600) — master key is readable by other users`,
+      );
+    }
+  } catch (err) {
+    log.error(`vault: could not stat key file ${p} to verify permissions`, { err: String(err) });
   }
   return (cachedKey = key);
 }
@@ -92,17 +107,35 @@ function keychainSet(key: Buffer): void {
   }
 }
 
-function encrypt(plain: string): string {
+/** Persist a (new) master key to the platform store and refresh the cache. */
+function storeMasterKey(key: Buffer): void {
+  if (platform() === "darwin") {
+    keychainSet(key);
+  } else {
+    const p = dataPath(KEY_FILE);
+    writeFileSync(p, key.toString("base64"), { mode: 0o600 });
+    try {
+      chmodSync(p, 0o600);
+    } catch {
+      /* best effort */
+    }
+  }
+  cachedKey = key;
+}
+
+/** AES-256-GCM encrypt with an explicit key (defaults to the master key). */
+function encrypt(plain: string, key: Buffer = loadMasterKey()): string {
   const iv = randomBytes(12);
-  const c = createCipheriv("aes-256-gcm", loadMasterKey(), iv);
+  const c = createCipheriv("aes-256-gcm", key, iv);
   const ct = Buffer.concat([c.update(plain, "utf8"), c.final()]);
   return `v1.${iv.toString("base64")}.${c.getAuthTag().toString("base64")}.${ct.toString("base64")}`;
 }
 
-function decrypt(blob: string): string {
+/** AES-256-GCM decrypt with an explicit key (defaults to the master key). */
+function decrypt(blob: string, key: Buffer = loadMasterKey()): string {
   const [v, ivB, tagB, ctB] = blob.split(".");
   if (v !== "v1" || !ivB || !tagB || !ctB) throw new Error("malformed ciphertext");
-  const d = createDecipheriv("aes-256-gcm", loadMasterKey(), Buffer.from(ivB, "base64"));
+  const d = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB, "base64"));
   d.setAuthTag(Buffer.from(tagB, "base64"));
   return Buffer.concat([d.update(Buffer.from(ctB, "base64")), d.final()]).toString("utf8");
 }
@@ -119,7 +152,34 @@ export interface SecretInput {
 
 /** Encrypted secret store. Secrets are referenced elsewhere as `vault:<id>`. */
 export class VaultStore {
-  private entries = loadJson<VaultFile>(FILE, { version: 1, entries: [] }).entries;
+  private file = loadJson<VaultFile>(FILE, { version: 1, entries: [] });
+  private entries = this.file.entries;
+  private keyRotatedAt = this.file.keyRotatedAt;
+
+  constructor() {
+    this.backfillHints();
+  }
+
+  /**
+   * One-time migration: older entries have no stored `hint`. Decrypt each such
+   * entry exactly once to compute and persist the masked preview, so `list()`
+   * never has to touch the ciphertext again.
+   */
+  private backfillHints(): void {
+    let changed = false;
+    for (const e of this.entries) {
+      if (e.hint === undefined) {
+        e.hint = safeHint(e.ciphertext);
+        changed = true;
+      }
+    }
+    if (changed) this.persist();
+  }
+
+  /** Epoch ms of the last master-key rotation, or undefined if never rotated. */
+  lastRotatedAt(): number | undefined {
+    return this.keyRotatedAt;
+  }
 
   list(): SecretView[] {
     return [...this.entries]
@@ -128,7 +188,7 @@ export class VaultStore {
         id: e.id,
         name: e.name,
         description: e.description,
-        hint: safeHint(e.ciphertext),
+        hint: e.hint ?? "••••",
         createdAt: e.createdAt,
         updatedAt: e.updatedAt,
       }));
@@ -141,6 +201,7 @@ export class VaultStore {
       name: input.name.trim() || "secret",
       description: input.description?.trim() ?? "",
       ciphertext: encrypt(input.value),
+      hint: hint(input.value),
       createdAt: now,
       updatedAt: now,
     };
@@ -155,7 +216,10 @@ export class VaultStore {
     if (!e) return undefined;
     if (patch.name !== undefined) e.name = patch.name.trim() || e.name;
     if (patch.description !== undefined) e.description = patch.description.trim();
-    if (patch.value !== undefined && patch.value !== "") e.ciphertext = encrypt(patch.value);
+    if (patch.value !== undefined && patch.value !== "") {
+      e.ciphertext = encrypt(patch.value);
+      e.hint = hint(patch.value);
+    }
     e.updatedAt = Date.now();
     this.persist();
     audit("vault.update", { id });
@@ -183,8 +247,106 @@ export class VaultStore {
     }
   }
 
+  /**
+   * Rotate the master key: decrypt every entry with the current key, generate a
+   * fresh 32-byte key, store it (Keychain or `vault.key`), re-encrypt all
+   * entries, and stamp `keyRotatedAt`. Atomic in spirit: if any entry fails to
+   * decrypt the rotation aborts and nothing is changed.
+   */
+  rotateKey(): { rotated: number; keyRotatedAt: number } {
+    // 1. Decrypt everything up-front with the current key (throws on any failure).
+    const plaintexts = this.entries.map((e) => ({ id: e.id, value: decrypt(e.ciphertext) }));
+    // 2. Generate + persist a new master key.
+    const newKey = randomBytes(32);
+    storeMasterKey(newKey);
+    // 3. Re-encrypt all entries under the new key.
+    const now = Date.now();
+    for (const e of this.entries) {
+      const p = plaintexts.find((x) => x.id === e.id)!;
+      e.ciphertext = encrypt(p.value, newKey);
+    }
+    this.keyRotatedAt = now;
+    this.persist();
+    audit("vault.rotate", { rotated: this.entries.length });
+    return { rotated: this.entries.length, keyRotatedAt: now };
+  }
+
+  /**
+   * Encrypted, passphrase-protected backup of all secrets (plaintext values
+   * included). Uses scrypt(passphrase, salt) → AES-256-GCM. The returned blob is
+   * portable: it does not depend on the host master key, so it can be restored
+   * on another machine via `importBackup`.
+   */
+  exportBackup(passphrase: string): string {
+    if (!passphrase || passphrase.length < 8) throw new Error("passphrase must be at least 8 characters");
+    const payload = JSON.stringify({
+      version: 1,
+      exportedAt: Date.now(),
+      secrets: this.entries.map((e) => ({
+        name: e.name,
+        description: e.description,
+        value: decrypt(e.ciphertext),
+        createdAt: e.createdAt,
+      })),
+    });
+    const salt = randomBytes(16);
+    const key = scryptSync(passphrase, salt, 32);
+    const iv = randomBytes(12);
+    const c = createCipheriv("aes-256-gcm", key, iv);
+    const ct = Buffer.concat([c.update(payload, "utf8"), c.final()]);
+    audit("vault.export", { count: this.entries.length });
+    return [
+      "vaultbak1",
+      salt.toString("base64"),
+      iv.toString("base64"),
+      c.getAuthTag().toString("base64"),
+      ct.toString("base64"),
+    ].join(".");
+  }
+
+  /**
+   * Restore secrets from a passphrase-protected backup. New ids are minted and
+   * values are re-encrypted under the local master key. Returns the count
+   * imported. Existing secrets are left untouched (additive restore).
+   */
+  importBackup(blob: string, passphrase: string): { imported: number } {
+    const [magic, saltB, ivB, tagB, ctB] = blob.trim().split(".");
+    if (magic !== "vaultbak1" || !saltB || !ivB || !tagB || !ctB) throw new Error("not a valid vault backup");
+    const key = scryptSync(passphrase, Buffer.from(saltB, "base64"), 32);
+    const d = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB, "base64"));
+    d.setAuthTag(Buffer.from(tagB, "base64"));
+    let plain: string;
+    try {
+      plain = Buffer.concat([d.update(Buffer.from(ctB, "base64")), d.final()]).toString("utf8");
+    } catch {
+      throw new Error("wrong passphrase or corrupt backup");
+    }
+    const parsed = JSON.parse(plain) as {
+      secrets?: Array<{ name?: string; description?: string; value?: string; createdAt?: number }>;
+    };
+    const secrets = Array.isArray(parsed.secrets) ? parsed.secrets : [];
+    const now = Date.now();
+    let imported = 0;
+    for (const s of secrets) {
+      if (typeof s.value !== "string") continue;
+      this.entries.push({
+        id: id4(4).toString("hex"),
+        name: (s.name ?? "secret").trim() || "secret",
+        description: (s.description ?? "").trim(),
+        ciphertext: encrypt(s.value),
+        hint: hint(s.value),
+        createdAt: s.createdAt ?? now,
+        updatedAt: now,
+      });
+      imported++;
+    }
+    if (imported > 0) this.persist();
+    audit("vault.import-backup", { imported });
+    return { imported };
+  }
+
   private persist(): void {
-    saveJson<VaultFile>(FILE, { version: 1, entries: this.entries });
+    saveJson<VaultFile>(FILE, { version: 1, entries: this.entries, keyRotatedAt: this.keyRotatedAt });
   }
 }
 
@@ -220,6 +382,71 @@ export function resolveSecret(value: string | undefined): string {
 /** Build a reference string for a stored secret id. */
 export function secretRef(id: string): string {
   return `vault:${id}`;
+}
+
+/** Describes one place where a vault secret is referenced. */
+export interface VaultUsage {
+  /** Human-readable category (e.g. "Lead bot", "Provider", "Tunnel", "Connector"). */
+  kind: string;
+  /** Display name of the referencing entity. */
+  name: string;
+}
+
+/**
+ * Scan all data stores that carry vault:<id> references and return a map of
+ * vault id → list of usages. Read-only; never modifies any store.
+ */
+export function vaultUsages(): Record<string, VaultUsage[]> {
+  const usages: Record<string, VaultUsage[]> = {};
+  const add = (id: string, usage: VaultUsage) => {
+    (usages[id] ??= []).push(usage);
+  };
+  const extractId = (ref: string | undefined): string | undefined => {
+    if (!ref) return undefined;
+    const m = REF.exec(ref);
+    return m?.[1];
+  };
+
+  // Providers
+  for (const p of listProviders()) {
+    const id = extractId(p.authToken);
+    if (id) add(id, { kind: "Provider", name: p.name });
+  }
+
+  // Workers (Lead bot tokens + provider tokens via providerId)
+  try {
+    const workerData = loadJson<{ workers?: Array<{ name?: string; telegramToken?: string; role?: string }> }>(
+      "workers.json", { workers: [] },
+    );
+    for (const w of workerData.workers ?? []) {
+      const id = extractId(w.telegramToken);
+      if (id) add(id, { kind: "Lead bot token", name: w.name ?? "unknown" });
+    }
+  } catch { /* non-fatal */ }
+
+  // Tunnel (authToken + passwordRef)
+  try {
+    const tunnelData = loadJson<{ authToken?: string; passwordRef?: string; provider?: string }>(
+      "tunnel.json", {},
+    );
+    const tId = extractId(tunnelData.authToken);
+    if (tId) add(tId, { kind: "Tunnel auth token", name: tunnelData.provider ?? "relay" });
+    const pId = extractId(tunnelData.passwordRef);
+    if (pId) add(pId, { kind: "Tunnel password", name: "Basic Auth" });
+  } catch { /* non-fatal */ }
+
+  // Connectors
+  try {
+    const connData = loadJson<{ connectors?: Array<{ id?: string; name?: string; secretId?: string }> }>(
+      "connectors.json", { connectors: [] },
+    );
+    for (const c of connData.connectors ?? []) {
+      const id = extractId(c.secretId);
+      if (id) add(id, { kind: "Connector", name: c.name ?? c.id ?? "unknown" });
+    }
+  } catch { /* non-fatal */ }
+
+  return usages;
 }
 
 /**

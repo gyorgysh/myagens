@@ -3,6 +3,7 @@ import { Markup, type Telegram } from "telegraf";
 import { config } from "../config.js";
 import { escapeHtml } from "./formatting.js";
 import { log } from "../logger.js";
+import { parseCallback, isHexId } from "./callback.js";
 
 /** What the user decided about a detected loop. */
 export type LoopChoice = "skip" | "once" | "continue";
@@ -82,7 +83,10 @@ export class LoopPromptManager {
 
   /** Resolve a pending loop prompt from a callback_query; returns a toast. */
   async resolve(data: string): Promise<string> {
-    const [, id, action] = data.split(":");
+    const parts = parseCallback(data, `${CB_PREFIX}:`, 2);
+    if (!parts) return "This prompt has expired.";
+    const [id, action] = parts;
+    if (!isHexId(id)) return "This prompt has expired.";
     const entry = this.pending.get(id);
     if (!entry) return "This prompt has expired.";
 

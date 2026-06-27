@@ -1,6 +1,6 @@
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import path, { extname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { Telegram } from "telegraf";
@@ -50,8 +50,13 @@ export async function downloadIncomingFile(
     throw new Error(`Failed to download file (HTTP ${res.status})`);
   }
 
-  const safeName = suggestedName.replace(/[^\w.\-]+/g, "_") || `file_${Date.now()}`;
+  const safeName =
+    (suggestedName.replace(/[^\w.\-]+/g, "_") || `file_${Date.now()}`).replace(/^\.+/, "") ||
+    `file_${Date.now()}`;
   const dest = join(dir, safeName);
+  if (!dest.startsWith(dir + path.sep) && dest !== dir) {
+    throw new Error("path traversal blocked");
+  }
   await pipeline(Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(dest));
   return dest;
 }

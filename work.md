@@ -11,6 +11,41 @@ Everything below is an editable example; replace it with what's true for your ma
   database, `rm -rf`, force-pushing). State exactly what will happen first.
 - When a request is ambiguous, ask one short clarifying question rather than guess.
 
+## Task auto-creation (remind me / todo / follow up)
+When the president says anything that implies a future action or reminder, create
+a Kanban card immediately without asking. Trigger phrases include (but are not
+limited to): "remind me", "don't forget", "follow up on", "note this", "add to
+the backlog", "todo", "make a card", "track this". Examples:
+- "Remind me to renew the SSL cert next month" → `task_create` title="Renew SSL cert", notes with context.
+- "Follow up with Mark on the landing page copy" → card in backlog, delegate-ready.
+- "Note this: switch to PostgreSQL when we hit 10k users" → backlog card with that note.
+Always confirm the card was created (title + column) in your reply.
+
+## Inbox / suggestions (for Atlas and Leads)
+Use `crew_suggest` for any non-urgent idea, finding, or proposal that needs the
+president's review but does not require immediate action. The president triages
+from `/inbox` or the panel Crew tab (accept → backlog card, delegate → Lead run,
+dismiss → archive).
+- **When to suggest vs. report**: suggest when the outcome is uncertain or the
+  president should decide; report (`crew_report`) when the work is done and you
+  are recording the result.
+- **When to ask the president directly**: use `crew_ask_president` only when you
+  are mid-task and genuinely blocked on a decision. State the question tightly
+  (one sentence) and offer concrete options when possible. The president's plain
+  text reply resolves it and the turn continues.
+
+## Delegation patterns (for Leads)
+Leads can hand subtasks to other Leads or specialists via `crew_delegate`. Rules:
+- Delegate only work that is clearly within the target Lead's portfolio.
+- Pass enough context in the task description for the target to act without
+  follow-up questions (cwd, relevant file paths, acceptance criteria).
+- After `crew_delegate` returns, incorporate the result into your own reply or
+  report before finishing. Never just forward raw output without synthesis.
+- If the target Lead needs a president decision mid-task, that Lead uses
+  `crew_ask_president`; do not chain delegation to avoid the question.
+- Log the outcome with `crew_report` once the delegated subtask is done, so the
+  activity feed shows who did what.
+
 ## Services
 When asked to start/stop/restart a service, use these exact commands:
 
@@ -185,6 +220,14 @@ curl -X POST -H "$AUTH" $BASE/api/tasks/<id>/delegate
 # Stop a delegated run
 curl -X POST -H "$AUTH" $BASE/api/tasks/<id>/stop
 
+# Retry a failed delegated run (resets to backlog, clears delegate state, re-delegates)
+curl -X POST -H "$AUTH" $BASE/api/tasks/<id>/retry
+
+# Get / update delegation run settings (timeoutMs, maxConcurrent)
+curl -H "$AUTH" $BASE/api/tasks/run-config
+curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/tasks/run-config \
+  -d '{ "timeoutMs": 600000, "maxConcurrent": 3 }'
+
 # Delete a task
 curl -X DELETE -H "$AUTH" $BASE/api/tasks/<id>
 ```
@@ -290,6 +333,18 @@ curl -H "$AUTH" $BASE/api/vault/<id>/reveal
 
 # Delete
 curl -X DELETE -H "$AUTH" $BASE/api/vault/<id>
+
+# Rotate the master key (re-encrypts every secret under a fresh key, stamps keyRotatedAt)
+curl -X POST -H "$AUTH" $BASE/api/vault/rotate
+
+# Encrypted, passphrase-protected backup of ALL secrets (portable across machines)
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/vault/export \
+  -d '{ "passphrase": "at-least-8-chars" }'
+# Returns { blob: "vaultbak1.<salt>.<iv>.<tag>.<ct>" }
+
+# Restore from a backup blob (additive: existing secrets untouched)
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/vault/import-backup \
+  -d '{ "blob": "vaultbak1.…", "passphrase": "at-least-8-chars" }'
 ```
 
 ### Providers (local/proxy model endpoints)
@@ -314,8 +369,10 @@ curl -H "$AUTH" $BASE/api/heartbeat
 
 # Update config
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/heartbeat \
-  -d '{ "mode": "alert", "intervalMs": 300000, "cpu": 85, "mem": 90, "disk": 85 }'
+  -d '{ "mode": "alert", "intervalMs": 300000, "cpu": 85, "mem": 90, "disk": 85, "mutedSignals": ["swap"] }'
 # mode: "off" | "alert" | "active"
+# mutedSignals: array of signal types to suppress without disabling the heartbeat
+#   valid values: "cpu" | "mem" | "swap" | "disk" | "stale" | "spend"
 
 # Trigger a manual heartbeat check now
 curl -X POST -H "$AUTH" $BASE/api/heartbeat/run
@@ -384,6 +441,9 @@ curl -H "$AUTH" $BASE/api/delegations
 
 # Worker run history across the whole fleet
 curl -H "$AUTH" $BASE/api/runs
+
+# Full per-run transcript (NDJSON events: text, tool, result, start, end)
+curl -H "$AUTH" $BASE/api/runs/<runId>/log
 ```
 
 A council vote can be triggered from Telegram with `/council <proposal>` or from the panel Crew tab:
@@ -392,6 +452,27 @@ A council vote can be triggered from Telegram with `/council <proposal>` or from
 # Trigger a council vote (returns the full tally)
 curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/council \
   -d '{ "proposal": "Should we migrate to PostgreSQL?" }'
+
+# Delete a council session (two-step confirm in the panel Crew tab)
+curl -X DELETE -H "$AUTH" $BASE/api/council/<id>
+```
+
+### Suggestion inbox
+
+Agents file non-urgent ideas with `crew_suggest`; the president triages from `/inbox` or the panel Crew tab.
+
+```bash
+# List suggestions (status: pending | accepted | delegated | dismissed)
+curl -H "$AUTH" "$BASE/api/suggestions?status=pending"
+
+# Park (accept → create a backlog task card)
+curl -X POST -H "$AUTH" $BASE/api/suggestions/<id>/accept
+
+# Delegate (create card + route to a Lead for immediate execution)
+curl -X POST -H "$AUTH" $BASE/api/suggestions/<id>/delegate
+
+# Dismiss (archive)
+curl -X POST -H "$AUTH" $BASE/api/suggestions/<id>/dismiss
 ```
 
 ### Local model backends and embeddings

@@ -16,7 +16,7 @@ export type Priority = (typeof PRIORITIES)[number];
 
 /** Live state of a card delegated to an autonomous agent run. */
 export interface TaskDelegation {
-  status: "running" | "ok" | "error" | "stopped";
+  status: "queued" | "running" | "ok" | "error" | "stopped";
   runId: string;
   startedAt: number;
   endedAt?: number;
@@ -35,6 +35,8 @@ export interface Task {
   parentId?: string;
   /** Set while/after the card has been delegated to an agent run. */
   delegate?: TaskDelegation;
+  /** How many times this card has been re-delegated after a failure. */
+  retryCount?: number;
   /** Sort position within its column (ascending). */
   order: number;
   /**
@@ -47,11 +49,23 @@ export interface Task {
   updatedAt: number;
 }
 
+/** Global delegation controls for autonomous task runs. */
+export interface TaskRunConfig {
+  /** Abort a delegated run after this many ms (0 = no timeout). Default 600000 (10 min). */
+  timeoutMs: number;
+  /** Max delegated runs allowed to execute at once; the rest queue (0 = unlimited). Default 3. */
+  maxConcurrent: number;
+}
+
+export const DEFAULT_TASK_CONFIG: TaskRunConfig = { timeoutMs: 600_000, maxConcurrent: 3 };
+
 interface TaskFile {
   version: 1;
   tasks: Task[];
   /** Optional WIP limit per column (advisory; surfaced in the panel). */
   wip?: Record<string, number>;
+  /** Delegation timeout + concurrency settings. */
+  runConfig?: TaskRunConfig;
 }
 
 function loadFile(): TaskFile {
@@ -67,7 +81,25 @@ function load(): Task[] {
 
 function persist(tasks: Task[], wip?: Record<string, number>): void {
   const current = loadFile();
-  saveJson<TaskFile>(FILE, { version: 1, tasks, wip: wip ?? current.wip });
+  saveJson<TaskFile>(FILE, { version: 1, tasks, wip: wip ?? current.wip, runConfig: current.runConfig });
+}
+
+/** Global delegation timeout + concurrency config (with defaults filled in). */
+export function getTaskRunConfig(): TaskRunConfig {
+  return { ...DEFAULT_TASK_CONFIG, ...(loadFile().runConfig ?? {}) };
+}
+
+/** Update the delegation timeout + concurrency config. Clamps to sane bounds. */
+export function setTaskRunConfig(patch: Partial<TaskRunConfig>): TaskRunConfig {
+  const cur = getTaskRunConfig();
+  const next: TaskRunConfig = {
+    timeoutMs: patch.timeoutMs != null ? Math.max(0, Math.floor(patch.timeoutMs)) : cur.timeoutMs,
+    maxConcurrent: patch.maxConcurrent != null ? Math.max(0, Math.floor(patch.maxConcurrent)) : cur.maxConcurrent,
+  };
+  const f = loadFile();
+  saveJson<TaskFile>(FILE, { version: 1, tasks: f.tasks, wip: f.wip, runConfig: next });
+  audit("task.runConfig", { ...next });
+  return next;
 }
 
 function isColumn(v: unknown): v is Column {
@@ -106,6 +138,28 @@ export function setDelegate(id: string, delegate: TaskDelegation | undefined): T
   task.delegate = delegate;
   task.updatedAt = Date.now();
   persist(tasks);
+  return task;
+}
+
+/**
+ * Reset an errored card so it can be re-delegated: move it back to the first
+ * (backlog) column, clear its delegation error state, and bump retryCount so
+ * runaway retries are visible. Returns the updated card, or undefined if it
+ * doesn't exist. The actual re-delegation is kicked off by the caller.
+ */
+export function prepareRetry(id: string): Task | undefined {
+  const tasks = load();
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return undefined;
+  const backlog = getColumnIds()[0] ?? "backlog";
+  const maxOrder = Math.max(0, ...tasks.filter((t) => t.column === backlog).map((t) => t.order));
+  task.retryCount = (task.retryCount ?? 0) + 1;
+  task.delegate = undefined;
+  task.column = backlog;
+  task.order = maxOrder + 1;
+  task.updatedAt = Date.now();
+  persist(tasks);
+  audit("task.retry", { id, retryCount: task.retryCount });
   return task;
 }
 
@@ -194,8 +248,8 @@ export function deleteTask(id: string): boolean {
 }
 
 /**
- * Move a card to the archive column, stripping notes/delegation data so the
- * archive stays lightweight (title + metadata only).
+ * Move a card to the archive column. Notes and delegation history are kept
+ * intact so a restored card arrives with its full context.
  */
 export function archiveTask(id: string): Task | undefined {
   const tasks = load();
@@ -203,8 +257,6 @@ export function archiveTask(id: string): Task | undefined {
   if (!task || task.column === "archive") return task;
   const maxOrder = Math.max(0, ...tasks.filter((t) => t.column === "archive").map((t) => t.order));
   task.column = "archive";
-  task.notes = "";
-  task.delegate = undefined;
   task.order = maxOrder + 1;
   task.updatedAt = Date.now();
   persist(tasks);
@@ -253,9 +305,9 @@ export function autoArchive(): void {
     (byCols[t.column] ??= []).push(t);
   }
   for (const [col, cards] of Object.entries(byCols)) {
-    if (cards.length <= 10) continue;
+    if (cards.length <= 20) continue;
     const sorted = [...cards].sort((a, b) => a.updatedAt - b.updatedAt);
-    const toArchive = sorted.slice(0, cards.length - 10);
+    const toArchive = sorted.slice(0, cards.length - 20);
     const ids = new Set(toArchive.map((t) => t.id));
     for (const t of tasks) {
       if (ids.has(t.id)) {

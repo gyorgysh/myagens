@@ -25,8 +25,13 @@ let child = null;
 let restartTimer = null;
 let busyTimer = null;
 let shuttingDown = false;
+// Prevents multiple concurrent applyRestart calls from spawning more than one
+// child. Set to true as soon as a restart is in flight; cleared when the new
+// child is actually running (or on error).
+let restarting = false;
 
 function startChild() {
+  restarting = false;
   child = spawn("tsx", [ENTRY], {
     stdio: "inherit",
     env: { ...process.env, CCT_DEV_GUARD: "1" },
@@ -42,12 +47,16 @@ function startChild() {
 }
 
 function applyRestart() {
+  // Only one restart may be in flight at a time.
+  if (restarting) return;
   // Wait out an active run: an agent may be mid-edit on our own source.
   if (existsSync(LOCK)) {
+    if (busyTimer) clearTimeout(busyTimer);
     busyTimer = setTimeout(applyRestart, BUSY_RECHECK_MS);
     return;
   }
   busyTimer = null;
+  restarting = true;
   if (!child) {
     startChild();
     return;
@@ -79,6 +88,7 @@ watch(SRC, { recursive: true }, (_event, filename) => {
 
 function shutdown() {
   shuttingDown = true;
+  restarting = false;
   if (restartTimer) clearTimeout(restartTimer);
   if (busyTimer) clearTimeout(busyTimer);
   if (child) child.kill("SIGTERM");

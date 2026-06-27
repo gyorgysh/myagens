@@ -56,7 +56,7 @@ export class ScheduleManager {
     return [...this.schedules].sort((a, b) => a.nextRunAt - b.nextRunAt);
   }
 
-  add(chatId: number, cwd: string, prompt: string, spec: ScheduleSpec): Schedule {
+  add(chatId: number, cwd: string, prompt: string, spec: ScheduleSpec, webhookUrl?: string): Schedule {
     const s: Schedule = {
       id: randomBytes(3).toString("hex"),
       chatId,
@@ -66,6 +66,7 @@ export class ScheduleManager {
       nextRunAt: nextRun(spec, Date.now()),
       createdAt: Date.now(),
       enabled: true,
+      webhookUrl: webhookUrl?.trim() || undefined,
     };
     this.schedules.push(s);
     saveSchedules(this.schedules);
@@ -74,12 +75,16 @@ export class ScheduleManager {
   }
 
   /** Update mutable fields of a schedule by id. Returns the updated schedule or null. */
-  updateById(id: string, patch: { prompt?: string; when?: string; cwd?: string; chatId?: number }): Schedule | null {
+  updateById(
+    id: string,
+    patch: { prompt?: string; when?: string; cwd?: string; chatId?: number; webhookUrl?: string },
+  ): Schedule | null {
     const s = this.schedules.find((s) => s.id === id);
     if (!s) return null;
     if (patch.prompt !== undefined) s.prompt = patch.prompt.trim();
     if (patch.cwd !== undefined) s.cwd = patch.cwd.trim();
     if (patch.chatId !== undefined) s.chatId = patch.chatId;
+    if (patch.webhookUrl !== undefined) s.webhookUrl = patch.webhookUrl.trim() || undefined;
     if (patch.when !== undefined) {
       const spec = parseWhen(patch.when);
       if (spec) {

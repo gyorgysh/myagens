@@ -4,10 +4,13 @@ import { audit } from "./audit.js";
 const FILE = "connectors.json";
 
 /**
- * Catalog of external MCP connectors. These are placeholders for now: the
- * registration surface (and vault-backed credential slot) exists so the panel
- * can show what's planned and let you pre-attach a secret, but none are wired to
- * a live MCP server yet. Telegram is our channel, so Slack is intentionally absent.
+ * Catalog of external MCP connectors. Two are **live** (Notion, Google
+ * Calendar): wired to a real MCP server in `src/mcp/connectorsMcp.ts`,
+ * contributing tools to every interactive/delegated run once enabled with a
+ * vault-attached credential. The rest are placeholders ("coming-soon"): the
+ * registration surface + credential slot exist so the panel can show what's
+ * planned, but no MCP server is wired yet. Telegram is our channel, so Slack is
+ * intentionally absent.
  */
 export interface ConnectorDef {
   id: string;
@@ -15,14 +18,14 @@ export interface ConnectorDef {
   description: string;
   /** What credential it will need (free text; resolved from the vault later). */
   credential: string;
-  status: "coming-soon";
+  status: "live" | "coming-soon";
 }
 
 export const CONNECTORS: ConnectorDef[] = [
+  { id: "notion", name: "Notion", description: "Search, read, and create Notion pages/databases.", credential: "Notion integration token", status: "live" },
+  { id: "gcal", name: "Google Calendar", description: "List and create calendar events.", credential: "Google OAuth access token", status: "live" },
   { id: "gmail", name: "Gmail", description: "Read and send email.", credential: "Google OAuth token", status: "coming-soon" },
-  { id: "gcal", name: "Google Calendar", description: "Read and create calendar events.", credential: "Google OAuth token", status: "coming-soon" },
   { id: "gdrive", name: "Google Drive", description: "Browse and fetch files.", credential: "Google OAuth token", status: "coming-soon" },
-  { id: "notion", name: "Notion", description: "Read and update Notion pages/databases.", credential: "Notion integration token", status: "coming-soon" },
   { id: "apple-calendar", name: "Apple Calendar", description: "Read and create events in macOS Calendar.", credential: "macOS Calendar access (EventKit)", status: "coming-soon" },
   { id: "apple-mail", name: "Apple Mail", description: "Read and send email via iCloud Mail.", credential: "iCloud app-specific password", status: "coming-soon" },
 ];

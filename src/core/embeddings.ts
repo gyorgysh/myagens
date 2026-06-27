@@ -2,7 +2,7 @@ import { config } from "../config.js";
 import { resolveSecret } from "./vault.js";
 import { loadJson, saveJson } from "./jsonStore.js";
 import { log } from "../logger.js";
-import { assertSafeUrl } from "./safeUrl.js";
+import { safeFetch } from "./safeUrl.js";
 
 const TIMEOUT_MS = 15_000;
 const PROBE_TIMEOUT_MS = 3_000;
@@ -230,9 +230,9 @@ async function postJson(
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
     // SSRF guard: this call carries the embedding auth token, so never let it
-    // hit a cloud-metadata / link-local target.
-    await assertSafeUrl(url);
-    const res = await fetch(url, {
+    // hit a cloud-metadata / link-local target. safeFetch re-validates + pins
+    // the IP at connect time to defeat DNS rebinding.
+    const res = await safeFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -349,15 +349,15 @@ async function listEndpointModels(provider: "ollama" | "openai", baseUrl: string
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   try {
-    await assertSafeUrl(base); // SSRF guard for the user-supplied base URL
+    // SSRF guard (safeFetch re-validates + pins the IP for the user-supplied URL).
     if (provider === "ollama") {
-      const res = await fetch(`${base.replace(/\/v1$/, "")}/api/tags`, { signal: ctrl.signal });
+      const res = await safeFetch(`${base.replace(/\/v1$/, "")}/api/tags`, { signal: ctrl.signal });
       if (!res.ok) return [];
       const json = (await res.json()) as { models?: Array<{ name?: unknown }> };
       return (json.models ?? []).map((m) => (typeof m.name === "string" ? m.name : "")).filter(Boolean);
     }
     const url = /\/v1$/.test(base) ? `${base}/models` : `${base}/v1/models`;
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await safeFetch(url, { signal: ctrl.signal });
     if (!res.ok) return [];
     const json = (await res.json()) as { data?: Array<{ id?: unknown }> };
     return (json.data ?? []).map((m) => (typeof m.id === "string" ? m.id : "")).filter(Boolean);
@@ -371,10 +371,10 @@ async function probeEndpoint(provider: "ollama" | "openai", baseUrl: string, mod
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   try {
-    await assertSafeUrl(baseUrl); // SSRF guard for the user-supplied base URL
+    // SSRF guard (safeFetch re-validates + pins the IP for the user-supplied URL).
     if (provider === "ollama") {
       const url = `${baseUrl.replace(/\/+$/, "")}/api/embeddings`;
-      const res = await fetch(url, {
+      const res = await safeFetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ model, prompt: "test" }),
@@ -385,7 +385,7 @@ async function probeEndpoint(provider: "ollama" | "openai", baseUrl: string, mod
       return Array.isArray(json.embedding) && json.embedding.length > 0;
     } else {
       const url = `${baseUrl.replace(/\/+$/, "")}/v1/embeddings`;
-      const res = await fetch(url, {
+      const res = await safeFetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ model, input: ["test"] }),

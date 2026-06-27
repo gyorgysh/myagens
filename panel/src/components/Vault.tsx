@@ -2,22 +2,32 @@ import { useEffect, useState } from "react";
 import { api, AuthError, type SecretView } from "../api.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import { Badge, Button, Callout, Card, Empty, Input, Label } from "./ui.tsx";
+import { VaultArt } from "./onboarding.tsx";
 
 const blank = { name: "", value: "", description: "" };
+
+type UsageMap = Record<string, Array<{ kind: string; name: string }>>;
 
 export function VaultView({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
   const [secrets, setSecrets] = useState<SecretView[]>([]);
+  const [usages, setUsages] = useState<UsageMap>({});
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [form, setForm] = useState<typeof blank>(blank);
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [keyRotatedAt, setKeyRotatedAt] = useState<number | undefined>(undefined);
+  const [exportPass, setExportPass] = useState("");
+  const [exportBlob, setExportBlob] = useState<string | null>(null);
+  const [importBlob, setImportBlob] = useState("");
+  const [importPass, setImportPass] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const load = () =>
     api
       .vault()
-      .then((r) => setSecrets(r.secrets))
+      .then((r) => { setSecrets(r.secrets); setUsages(r.usages ?? {}); setKeyRotatedAt(r.keyRotatedAt); })
       .catch((e) => (e instanceof AuthError ? onAuthError() : setError(String(e))));
 
   useEffect(() => {
@@ -70,6 +80,65 @@ export function VaultView({ onAuthError }: { onAuthError: () => void }) {
     setStatus(imported ? t("vault_imported").replace("{n}", String(imported)) : t("vault_no_import"));
     setTimeout(() => setStatus(null), 4000);
     await load();
+  };
+
+  const flash = (msg: string) => {
+    setStatus(msg);
+    setTimeout(() => setStatus(null), 5000);
+  };
+
+  const rotate = async () => {
+    if (!confirm(t("vault_rotate_confirm"))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { rotated } = await api.rotateVaultKey();
+      flash(t("vault_rotated").replace("{n}", String(rotated)));
+      await load();
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doExport = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { blob } = await api.exportVault(exportPass);
+      setExportBlob(blob);
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyExport = async () => {
+    if (exportBlob) {
+      await navigator.clipboard.writeText(exportBlob).catch(() => {});
+      flash(t("vault_copied"));
+    }
+  };
+
+  const doImport = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { imported } = await api.importVaultBackup(importBlob.trim(), importPass);
+      flash(t("vault_imported").replace("{n}", String(imported)));
+      setImportBlob("");
+      setImportPass("");
+      await load();
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -137,37 +206,132 @@ export function VaultView({ onAuthError }: { onAuthError: () => void }) {
       )}
 
       {secrets.length === 0 && !editing ? (
-        <Empty>{t("vault_empty")}</Empty>
+        <Empty
+          icon={<VaultArt />}
+          title={t("vault_empty")}
+          action={
+            <Button variant="primary" onClick={startNew}>
+              {t("vault_new")}
+            </Button>
+          }
+        >
+          {t("onb_step_vault_desc")}
+        </Empty>
       ) : (
         <div className="mt-3 space-y-2">
-          {secrets.map((s) => (
-            <div
-              key={s.id}
-              className="flex items-start justify-between gap-3 rounded-lg border border-line p-3"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-fg">{s.name}</span>
-                  <Badge>vault:{s.id}</Badge>
+          {secrets.map((s) => {
+            const uses = usages[s.id] ?? [];
+            return (
+              <div
+                key={s.id}
+                className="flex items-start justify-between gap-3 rounded-lg border border-line p-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-fg">{s.name}</span>
+                    <Badge>vault:{s.id}</Badge>
+                    {uses.length === 0 ? (
+                      <Badge tone="zinc">{t("vault_unused")}</Badge>
+                    ) : (
+                      uses.map((u, i) => (
+                        <Badge key={i} tone="blue">{u.kind}: {u.name}</Badge>
+                      ))
+                    )}
+                  </div>
+                  {s.description && <p className="text-sm text-fg-dim">{s.description}</p>}
+                  <p className="mono mt-1 text-xs text-fg-faint">
+                    {revealed[s.id] !== undefined ? revealed[s.id] : s.hint}
+                  </p>
                 </div>
-                {s.description && <p className="text-sm text-fg-dim">{s.description}</p>}
-                <p className="mono mt-1 text-xs text-fg-faint">
-                  {revealed[s.id] !== undefined ? revealed[s.id] : s.hint}
-                </p>
+                <div className="flex shrink-0 gap-1.5">
+                  <Button onClick={() => reveal(s.id)}>
+                    {revealed[s.id] !== undefined ? t("hide") : t("vault_reveal")}
+                  </Button>
+                  <Button onClick={() => startEdit(s)}>{t("edit")}</Button>
+                  <Button variant="danger" onClick={() => del(s.id)}>
+                    {t("delete")}
+                  </Button>
+                </div>
               </div>
-              <div className="flex shrink-0 gap-1.5">
-                <Button onClick={() => reveal(s.id)}>
-                  {revealed[s.id] !== undefined ? t("hide") : t("vault_reveal")}
-                </Button>
-                <Button onClick={() => startEdit(s)}>{t("edit")}</Button>
-                <Button variant="danger" onClick={() => del(s.id)}>
-                  {t("delete")}
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      <div className="mt-6 border-t border-line pt-4">
+        <h3 className="text-sm font-semibold text-fg">{t("vault_keymgmt_title")}</h3>
+        <p className="mt-1 text-xs text-fg-dim">{t("vault_keymgmt_desc")}</p>
+
+        {/* Rotate */}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button onClick={rotate} disabled={busy}>
+            {t("vault_rotate")}
+          </Button>
+          <span className="text-xs text-fg-faint">
+            {keyRotatedAt
+              ? t("vault_last_rotated").replace("{date}", new Date(keyRotatedAt).toLocaleString())
+              : t("vault_never_rotated")}
+          </span>
+        </div>
+
+        {/* Export */}
+        <div className="mt-4 rounded-lg border border-line p-3">
+          <Label>{t("vault_export_title")}</Label>
+          <p className="mb-2 text-xs text-fg-dim">{t("vault_export_desc")}</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              type="password"
+              value={exportPass}
+              onChange={(e) => setExportPass(e.target.value)}
+              placeholder={t("vault_passphrase")}
+            />
+            <Button onClick={doExport} disabled={busy || exportPass.length < 8}>
+              {t("vault_export_btn")}
+            </Button>
+          </div>
+          {exportBlob && (
+            <div className="mt-2">
+              <textarea
+                readOnly
+                value={exportBlob}
+                onFocus={(e) => e.currentTarget.select()}
+                className="mono h-24 w-full resize-none rounded-md border border-line bg-input p-2 text-xs text-fg-dim"
+              />
+              <div className="mt-1 flex gap-2">
+                <Button onClick={copyExport}>{t("vault_copy")}</Button>
+                <Button onClick={() => setExportBlob(null)}>{t("vault_hide_export")}</Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Import */}
+        <div className="mt-3 rounded-lg border border-line p-3">
+          <Label>{t("vault_import_title")}</Label>
+          <p className="mb-2 text-xs text-fg-dim">{t("vault_import_desc")}</p>
+          <textarea
+            value={importBlob}
+            onChange={(e) => setImportBlob(e.target.value)}
+            placeholder="vaultbak1.…"
+            className="mono h-20 w-full resize-none rounded-md border border-line bg-input p-2 text-xs text-fg"
+          />
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              type="password"
+              value={importPass}
+              onChange={(e) => setImportPass(e.target.value)}
+              placeholder={t("vault_passphrase")}
+            />
+            <Button
+              variant="primary"
+              onClick={doImport}
+              disabled={busy || !importBlob.trim() || !importPass}
+            >
+              {t("vault_import_btn")}
+            </Button>
+          </div>
+        </div>
+      </div>
     </Card>
   );
 }

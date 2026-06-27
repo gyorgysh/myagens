@@ -2,6 +2,7 @@ import { Markup, type Telegram } from "telegraf";
 import { suggestions, type Suggestion } from "../core/suggestions.js";
 import { log } from "../logger.js";
 import { escapeHtml } from "./formatting.js";
+import { parseCallback, isHexId } from "./callback.js";
 
 const HEADER = "<b>📥 Suggestion inbox</b>";
 
@@ -60,7 +61,10 @@ export async function resolveInboxCallback(
   data: string,
   messageId: number | undefined,
 ): Promise<string> {
-  const [, id, action] = data.split(":");
+  const parts = parseCallback(data, "inbox:", 2);
+  if (!parts) return "That suggestion is gone.";
+  const [id, action] = parts;
+  if (!isHexId(id)) return "That suggestion is gone.";
   const s = suggestions.get(id);
   if (!s) return "That suggestion is gone.";
 

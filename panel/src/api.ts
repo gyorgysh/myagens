@@ -94,6 +94,7 @@ export interface ScheduleView {
   lastRunAt?: number;
   createdAt: number;
   enabled: boolean;
+  webhookUrl?: string;
 }
 
 export interface UsageSummary {
@@ -124,8 +125,14 @@ export interface ClaudeRoot {
 export type Column = string;
 export interface ColumnDef { id: string; name: string; order: number; collapsed?: boolean; }
 export type Priority = "low" | "normal" | "high";
+export interface TaskRunConfig {
+  /** Per-run wall-clock timeout in ms (0 = no timeout). */
+  timeoutMs: number;
+  /** Max concurrent delegated runs (0 = unlimited); the rest queue. */
+  maxConcurrent: number;
+}
 export interface TaskDelegation {
-  status: "running" | "ok" | "error" | "stopped";
+  status: "queued" | "running" | "ok" | "error" | "stopped";
   runId: string;
   startedAt: number;
   endedAt?: number;
@@ -140,6 +147,8 @@ export interface Task {
   priority: Priority;
   parentId?: string;
   delegate?: TaskDelegation;
+  /** How many times this card has been re-delegated after a failure. */
+  retryCount?: number;
   order: number;
   /** Creator id stamped at create-time: "atlas", a worker/lead id, or "panel". */
   createdBy?: string;
@@ -175,6 +184,7 @@ export interface Worker {
   persona?: string;
   autonomy?: Autonomy;
   language?: string;
+  webhookUrl?: string;
   /** True when this Lead has a live Telegram bot listening (role+token+enabled). */
   listening?: boolean;
 }
@@ -346,17 +356,31 @@ export interface WorkerRun {
   output: string;
 }
 
+/** One line of a full run transcript (runs/YYYY-MM-DD/<runId>.ndjson). */
+export interface RunLogEvent {
+  ts: number;
+  kind: "text" | "tool" | "result" | "start" | "end";
+  text?: string;
+  tool?: string;
+  arg?: string;
+  isError?: boolean;
+  status?: string;
+  costUsd?: number;
+  durationMs?: number;
+}
+
 export interface Connector {
   id: string;
   name: string;
   description: string;
   credential: string;
-  status: "coming-soon";
+  status: "live" | "coming-soon";
   secretId?: string;
   enabled: boolean;
 }
 
 export type HeartbeatMode = "off" | "alert" | "active";
+export type HeartbeatSignalKey = "cpu" | "mem" | "swap" | "disk" | "stale" | "spend";
 export interface HeartbeatConfig {
   mode: HeartbeatMode;
   intervalMs: number;
@@ -366,6 +390,7 @@ export interface HeartbeatConfig {
   diskPct: number;
   staleCardHours: number;
   spendAlertEnabled: boolean;
+  mutedSignals: HeartbeatSignalKey[];
 }
 export interface HeartbeatView {
   config: HeartbeatConfig;
@@ -596,7 +621,7 @@ export interface TunnelPassword {
 
 export const api = {
   me: () =>
-    get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; atlasName: string; brandName: string }>("/api/me"),
+    get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; atlasName: string; brandName: string; defaultWorkdir: string }>("/api/me"),
   sessions: () => get<{ sessions: SessionView[] }>("/api/sessions"),
   logs: (params?: { date?: string; q?: string; level?: string; limit?: number }) => {
     const qs = new URLSearchParams();
@@ -620,9 +645,9 @@ export const api = {
   logsSummary: (hours?: number) =>
     get<LogUsageSummary>(`/api/logs/summary${hours ? `?hours=${hours}` : ""}`),
   schedules: () => get<{ schedules: ScheduleView[] }>("/api/schedules"),
-  createSchedule: (s: { prompt: string; when: string; cwd?: string }) =>
+  createSchedule: (s: { prompt: string; when: string; cwd?: string; webhookUrl?: string }) =>
     req<{ schedules: ScheduleView[] }>("POST", "/api/schedules", s),
-  updateSchedule: (id: string, patch: { prompt?: string; when?: string; cwd?: string }) =>
+  updateSchedule: (id: string, patch: { prompt?: string; when?: string; cwd?: string; webhookUrl?: string }) =>
     req<{ schedules: ScheduleView[] }>("PUT", `/api/schedules/${id}`, patch),
   setScheduleEnabled: (id: string, enabled: boolean) =>
     req<{ schedules: ScheduleView[] }>("PUT", `/api/schedules/${id}/enabled`, { enabled }),
@@ -645,7 +670,9 @@ export const api = {
   saveClaudeFile: (path: string, content: string) =>
     req<{ ok: boolean }>("PUT", "/api/claude-files/content", { path, content }),
 
-  tasks: () => get<{ tasks: Task[]; columns: ColumnDef[]; wip: Wip }>("/api/tasks"),
+  tasks: () => get<{ tasks: Task[]; columns: ColumnDef[]; wip: Wip; config: TaskRunConfig }>("/api/tasks"),
+  saveTasksConfig: (c: Partial<TaskRunConfig>) =>
+    req<{ config: TaskRunConfig }>("PUT", "/api/tasks/config", c),
   createTask: (t: { title: string; notes?: string; column?: Column; priority?: Priority }) =>
     req<Task>("POST", "/api/tasks", t),
   updateTask: (id: string, t: Partial<Task>) => req<Task>("PATCH", `/api/tasks/${id}`, t),
@@ -656,6 +683,8 @@ export const api = {
     req<{ wip: Wip }>("PUT", "/api/tasks/wip", { column, limit }),
   delegateTask: (id: string) => req<{ ok: boolean }>("POST", `/api/tasks/${id}/delegate`),
   stopTask: (id: string) => req<{ ok: boolean }>("POST", `/api/tasks/${id}/stop`),
+  retryTask: (id: string) =>
+    req<{ ok: boolean; retryCount?: number }>("POST", `/api/tasks/${id}/retry`),
   addColumn: (name: string) => req<ColumnDef>("POST", "/api/tasks/columns", { name }),
   renameColumn: (id: string, name: string) => req<ColumnDef>("PUT", `/api/tasks/columns/${id}`, { name }),
   removeColumn: (id: string) => req<{ ok: boolean }>("DELETE", `/api/tasks/columns/${id}`),
@@ -702,6 +731,7 @@ export const api = {
   runWorker: (id: string) => req<WorkerRun>("POST", `/api/workers/${id}/run`),
   stopWorker: (id: string) => req<{ ok: boolean }>("POST", `/api/workers/${id}/stop`),
   workerRuns: (id: string) => get<{ runs: WorkerRun[] }>(`/api/workers/${id}/runs`),
+  runLog: (runId: string) => get<{ events: RunLogEvent[] }>(`/api/runs/${runId}/log`),
   workerWizard: (body: { goal: string; context?: string; crew?: boolean; schedule?: string; cwd?: string }) =>
     req<{ configs: Partial<Worker>[] }>("POST", "/api/workers/wizard", body),
 
@@ -715,7 +745,12 @@ export const api = {
   saveHeartbeat: (c: Partial<HeartbeatConfig>) => req<HeartbeatView>("PUT", "/api/heartbeat", c),
   runHeartbeat: () => req<{ signals: number }>("POST", "/api/heartbeat/run"),
 
-  vault: () => get<{ secrets: SecretView[] }>("/api/vault"),
+  vault: () =>
+    get<{
+      secrets: SecretView[];
+      usages: Record<string, Array<{ kind: string; name: string }>>;
+      keyRotatedAt?: number;
+    }>("/api/vault"),
   createSecret: (s: { name: string; value: string; description?: string }) =>
     req<SecretView>("POST", "/api/vault", s),
   updateSecret: (id: string, s: { name?: string; value?: string; description?: string }) =>
@@ -723,6 +758,10 @@ export const api = {
   deleteSecret: (id: string) => req<{ ok: boolean }>("DELETE", `/api/vault/${id}`),
   revealSecret: (id: string) => get<{ value: string }>(`/api/vault/${id}/reveal`),
   importSecrets: () => req<{ imported: number }>("POST", "/api/vault/import"),
+  rotateVaultKey: () => req<{ rotated: number; keyRotatedAt: number }>("POST", "/api/vault/rotate"),
+  exportVault: (passphrase: string) => req<{ blob: string }>("POST", "/api/vault/export", { passphrase }),
+  importVaultBackup: (blob: string, passphrase: string) =>
+    req<{ imported: number }>("POST", "/api/vault/import-backup", { blob, passphrase }),
 
   memories: (q?: string, all?: boolean) =>
     get<{ memories: MemoryEntry[] }>(
@@ -763,6 +802,8 @@ export const api = {
 
   runCouncil: (proposal: string) =>
     req<{ session: Record<string, unknown> }>("POST", "/api/council", { proposal }),
+
+  deleteCouncilSession: (id: string) => req<{ ok: boolean }>("DELETE", `/api/council/${id}`),
 
   languages: () => get<{ languages: Record<string, string> }>("/api/languages"),
 

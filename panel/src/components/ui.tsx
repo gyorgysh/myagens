@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useI18n } from "../lib/useI18n";
 
 export function Card({
   title,
@@ -85,9 +86,30 @@ export function Badge({
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
+/** Empty / zero-data placeholder. The simple form (just text children) is
+ *  unchanged; pass `icon` for an illustration above the message, `title` for a
+ *  bolder heading, and `action` for a call-to-action button below it. */
+export function Empty({
+  children,
+  icon,
+  title,
+  action,
+}: {
+  children?: ReactNode;
+  icon?: ReactNode;
+  title?: ReactNode;
+  action?: ReactNode;
+}) {
+  if (!icon && !title && !action) {
+    return <div className="py-10 text-center text-sm text-fg-faint">{children}</div>;
+  }
   return (
-    <div className="py-10 text-center text-sm text-fg-faint">{children}</div>
+    <div className="flex flex-col items-center gap-3 py-12 text-center">
+      {icon && <div className="text-fg-faint/60">{icon}</div>}
+      {title && <p className="text-sm font-medium text-fg-dim">{title}</p>}
+      {children && <p className="max-w-xs text-sm text-fg-faint">{children}</p>}
+      {action && <div className="mt-1">{action}</div>}
+    </div>
   );
 }
 
@@ -116,23 +138,41 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${fieldClass} ${props.className ?? ""}`} />;
 }
 
+/** SVG chevron as a data-URI, used as a CSS mask so it inherits `currentColor`
+ *  and stays visible in both light and dark themes (a baked-in stroke colour
+ *  would be invisible against one of them). */
+const CHEVRON_SVG =
+  "url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%20fill='none'%20stroke='black'%20stroke-width='1.5'%3E%3Cpath%20d='M4%206l4%204%204-4'/%3E%3C/svg%3E\")";
+
 /** Select with native chrome stripped so its height matches Input exactly,
- *  plus a custom chevron. `currentColor` follows the muted text token. */
+ *  plus a custom chevron that follows the muted text token via currentColor. */
 export function Select({
   className = "",
   children,
   ...props
 }: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  const chevron =
-    "bg-[length:1rem] bg-[right_0.6rem_center] bg-no-repeat pr-9 " +
-    "bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2016%2016%22%20fill=%22none%22%20stroke=%22%2371717a%22%20stroke-width=%221.5%22%3E%3Cpath%20d=%22M4%206l4%204%204-4%22/%3E%3C/svg%3E')]";
   return (
-    <select
-      {...props}
-      className={`${fieldClass} h-[38px] cursor-pointer appearance-none ${chevron} ${className}`}
-    >
-      {children}
-    </select>
+    <div className="relative w-full">
+      <select
+        {...props}
+        className={`${fieldClass} h-[38px] cursor-pointer appearance-none pr-9 ${className}`}
+      >
+        {children}
+      </select>
+      {/* Masked chevron: bg is currentColor (text-fg-dim), revealed by the mask. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 bg-fg-dim"
+        style={{
+          maskImage: CHEVRON_SVG,
+          WebkitMaskImage: CHEVRON_SVG,
+          maskRepeat: "no-repeat",
+          WebkitMaskRepeat: "no-repeat",
+          maskSize: "contain",
+          WebkitMaskSize: "contain",
+        }}
+      />
+    </div>
   );
 }
 
@@ -201,6 +241,51 @@ export function InfoCard({
   );
 }
 
+/** A collapsible settings section used to group a long form into named,
+ *  expandable blocks. Open state is remembered in localStorage per `id`.
+ *  `defaultOpen` controls the first-ever state before any toggle. `badge`
+ *  renders on the right of the header (e.g. a dirty-state dot). */
+export function Accordion({
+  id,
+  title,
+  badge,
+  defaultOpen = false,
+  children,
+}: {
+  id: string;
+  title: ReactNode;
+  badge?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const key = `cct.acc.${id}`;
+  const [open, setOpen] = useState(() => {
+    const saved = localStorage.getItem(key);
+    return saved == null ? defaultOpen : saved === "1";
+  });
+  const toggle = () =>
+    setOpen((o) => {
+      const next = !o;
+      localStorage.setItem(key, next ? "1" : "0");
+      return next;
+    });
+  return (
+    <div className="overflow-hidden rounded-lg border border-line">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={toggle}
+        className="flex w-full items-center gap-2 bg-surface-2/40 px-3 py-2 text-left text-sm font-medium text-fg transition-colors hover:bg-surface-2"
+      >
+        <span className="flex-1">{title}</span>
+        {badge}
+        <span className="text-fg-dim">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && <div className="border-t border-line p-3">{children}</div>}
+    </div>
+  );
+}
+
 /** An info callout. Pass `dismissId` to make it dismissible (remembered in
  *  localStorage) — for "good to keep in mind" style tips. */
 export function Callout({
@@ -212,6 +297,7 @@ export function Callout({
   children: ReactNode;
   dismissId?: string;
 }) {
+  const { t } = useI18n();
   const key = dismissId ? `cct.tip.${dismissId}` : undefined;
   const [hidden, setHidden] = useState(() => (key ? localStorage.getItem(key) === "1" : false));
   if (hidden) return null;
@@ -226,7 +312,11 @@ export function Callout({
               setHidden(true);
             }}
             className="text-xs text-fg-faint hover:text-fg-muted"
-            aria-label="Dismiss"
+            aria-label={
+              typeof title === "string"
+                ? t("callout_dismiss_named").replace("{title}", title)
+                : t("callout_dismiss")
+            }
           >
             ✕
           </button>

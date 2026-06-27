@@ -4,6 +4,7 @@ import { Markup, type Telegram } from "telegraf";
 import { sessions, type Session } from "../session/manager.js";
 import { log } from "../logger.js";
 import { escapeHtml } from "./formatting.js";
+import { CALLBACK_MAX_BYTES } from "./callback.js";
 
 const HEADER = "<b>📁 Projects</b>\nTap a directory to switch the working dir.";
 
@@ -47,7 +48,11 @@ export async function resolveProjectCallback(
   data: string,
   messageId: number | undefined,
 ): Promise<string> {
-  const [, action, idxRaw] = data.split(":");
+  // Validate structure: "proj:add" (2 parts) or "proj:go|rm:<idx>" (3 parts).
+  if (Buffer.byteLength(data, "utf8") > CALLBACK_MAX_BYTES) return "";
+  const segs = data.split(":");
+  if (segs.length < 2 || segs.length > 3) return "";
+  const [, action, idxRaw] = segs;
   const s = sessions.get(chatId);
   const idx = Number(idxRaw);
   let toast = "";

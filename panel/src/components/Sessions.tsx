@@ -1,6 +1,7 @@
 import { api } from "../api.ts";
 import { usePoll } from "../lib/usePoll.ts";
 import { Badge, Card, Empty } from "./ui.tsx";
+import { SessionsArt } from "./onboarding.tsx";
 import { ms, usd } from "../lib/format.ts";
 import { useI18n } from "../lib/useI18n.ts";
 
@@ -21,7 +22,7 @@ export function SessionsView({ onAuthError }: { onAuthError: () => void }) {
         {t("sessions_desc_4")}
       </p>
 
-      {sessions.length === 0 && <Empty>{t("sessions_empty")}</Empty>}
+      {sessions.length === 0 && <Empty icon={<SessionsArt />}>{t("sessions_empty")}</Empty>}
 
       {sessions.map((s) => (
         <Card key={s.chatId}>

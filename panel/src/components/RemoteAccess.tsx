@@ -6,7 +6,7 @@ import {
   type TunnelProviderId,
   type TunnelView,
 } from "../api.ts";
-import { Badge, Button, Callout, Card, Empty, Input, Label, Select } from "./ui.tsx";
+import { Badge, Button, Callout, Card, Empty, InfoCard, Input, Label, Select } from "./ui.tsx";
 import { relTime } from "../lib/format.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import type { TranslationKey } from "../i18n/en.ts";
@@ -184,25 +184,35 @@ export function RemoteAccessView({ onAuthError }: { onAuthError: () => void }) {
 
   return (
     <div className="space-y-4">
+      {/* Security warning — stays as a Callout since it's a one-time alert */}
       <Callout title={t("ra_security_title")} dismissId="remote-access-security">
         {t("ra_security_body")}
       </Callout>
+
+      {/* How it works — collapsible InfoCard, same treatment as Inbox/Workers/Crew */}
+      <InfoCard
+        id="remote-access"
+        title={t("ra_info_title")}
+        items={[
+          { label: t("ra_info_providers"), text: t("ra_info_providers_text") },
+          { label: t("ra_info_basic_auth"), text: t("ra_info_basic_auth_text") },
+          { label: t("ra_info_autostart"), text: t("ra_info_autostart_text") },
+          { label: t("ra_status_tip_title"), text: t("ra_status_tip_body") },
+        ]}
+      >
+        <p className="mt-1 text-xs text-fg-faint">{t("ra_info_body")}</p>
+      </InfoCard>
 
       <Card
         title={t("ra_title")}
         right={<StateBadge state={view.state} t={t} />}
       >
-        <p className="mb-3 text-sm text-fg-dim">{t("ra_desc")}</p>
-        <div className="mb-4">
-          <Callout title={t("ra_status_tip_title")} dismissId="remote-access-status-tip">
-            {t("ra_status_tip_body")}
-          </Callout>
-        </div>
+        <p className="mb-4 text-sm text-fg-dim">{t("ra_desc")}</p>
         {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
 
         {/* Public URL panel (when up) */}
         {running && view.url && (
-          <div className="mb-4 rounded-lg border border-accent/30 bg-accent/5 p-3">
+          <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/5 p-3">
             <div className="mb-1 text-xs font-medium uppercase tracking-wider text-fg-dim">
               {t("ra_public_url")}
             </div>
@@ -220,7 +230,7 @@ export function RemoteAccessView({ onAuthError }: { onAuthError: () => void }) {
               </div>
             )}
             {view.basicAuth && view.hasPassword && (
-              <div className="mt-3 grid gap-2 border-t border-accent/20 pt-3 sm:grid-cols-2">
+              <div className="mt-3 grid gap-2 border-t border-green-500/20 pt-3 sm:grid-cols-2">
                 <div>
                   <div className="text-xs font-medium uppercase tracking-wider text-fg-dim">
                     {t("ra_login_user")}
@@ -280,7 +290,7 @@ export function RemoteAccessView({ onAuthError }: { onAuthError: () => void }) {
         </div>
 
         {/* Auth token — only ngrok needs one; cloudflare quick tunnels are free
-            and tokenless, so the field is hidden entirely for cloudflare. */}
+            and tokenless, so we show a plain info note instead. */}
         {provider === "ngrok" ? (
           <div className="mb-3">
             <Label>{t("ra_token_required")}</Label>
@@ -309,14 +319,18 @@ export function RemoteAccessView({ onAuthError }: { onAuthError: () => void }) {
             <p className="mt-1 text-xs text-fg-faint">{t("ra_token_hint")}</p>
           </div>
         ) : (
-          <div className="mb-3 rounded-lg border border-accent/30 bg-accent/5 p-3 text-xs text-fg-dim">
-            {t("ra_cloudflare_free")}
+          <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-line bg-surface p-3">
+            <span className="mt-0.5 text-base leading-none text-green-400">✓</span>
+            <div>
+              <div className="text-sm font-medium text-fg">{t("ra_cloudflare_free_title")}</div>
+              <div className="mt-0.5 text-xs text-fg-faint">{t("ra_cloudflare_free_subtitle")}</div>
+            </div>
           </div>
         )}
 
         {/* Remote access password — HTTP login in front of the public tunnel.
             On by default; this is the username/password a phone enters first. */}
-        <div className="mb-4 rounded-lg border border-line bg-surface-2 p-3">
+        <div className="mb-4 rounded-lg border border-line bg-surface p-3">
           <label className="flex cursor-pointer items-start gap-2.5">
             <input
               type="checkbox"

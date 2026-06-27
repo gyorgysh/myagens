@@ -286,21 +286,29 @@ class MaintenanceScheduler {
     await this.consolidateTier("hot", run);
     await this.consolidateTier("warm", run);
 
-    // Step 4: shorten any remaining verbose entries into terse one-liners. Dedup
-    // only rewrites duplicate groups; a single long entry with no twin still
-    // bloats recall context, so condense it (meaning preserved) here. Hot first.
+    // Step 4: shorten verbose entries into terse one-liners. The priority is
+    // HOT — it injects into every turn, so its context cost is paid constantly;
+    // shorten it past the lower hot threshold. WARM only costs context when it's
+    // actually recalled, so leave it alone unless it's genuinely bloated (the
+    // higher warm threshold). COLD is panel-only and never shortened.
     await this.shortenVerbose("hot", run);
     await this.shortenVerbose("warm", run);
   }
 
   /**
-   * Rewrite any entry longer than MEMORY_SHORTEN_CHARS into one terse sentence
-   * that keeps the meaning, dropping filler and play-by-play detail. Keeps the
-   * recall context small over time even when the agent saved a wordy entry.
+   * Rewrite any entry longer than the tier's shorten threshold into one terse
+   * sentence that keeps the meaning, dropping filler and play-by-play detail.
+   * Keeps recall context small over time even when the agent saved a wordy
+   * entry. Hot uses a lower threshold (MEMORY_SHORTEN_CHARS_HOT) since it's the
+   * priority — paid for on every turn; warm uses the higher MEMORY_SHORTEN_CHARS.
    */
   private async shortenVerbose(tier: "hot" | "warm", run: MaintenanceStats): Promise<void> {
-    const limit = config.MEMORY_SHORTEN_CHARS;
-    if (limit <= 0) return;
+    const warmLimit = config.MEMORY_SHORTEN_CHARS;
+    if (warmLimit <= 0) return;
+    // Hot is the priority: trim it past the lower threshold (falling back to the
+    // warm one when unset). Warm uses the higher threshold as before.
+    const limit =
+      tier === "hot" ? config.MEMORY_SHORTEN_CHARS_HOT || warmLimit : warmLimit;
     const verbose = memory
       .allRaw()
       .filter((e) => e.tier === tier && e.text.length > limit);

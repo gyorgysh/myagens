@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, clearToken, getToken } from "./api.ts";
 import { useTheme } from "./lib/useTheme.ts";
 import { Login } from "./components/Login.tsx";
-import { Sidebar, tabLabel, isTab, type Tab } from "./components/Sidebar.tsx";
+import { Sidebar, BottomNav, tabLabel, isTab, type Tab } from "./components/Sidebar.tsx";
 import { useI18n } from "./lib/useI18n.ts";
 import type { TranslationKey } from "./i18n/en.ts";
 import { ChatView } from "./components/Chat.tsx";
@@ -174,11 +174,11 @@ export function App() {
           </span>
         </header>
 
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 sm:px-6 md:pb-6">
           {tab === "chat" && <ChatView onAuthError={onAuthError} />}
           {tab === "terminal" && <TerminalView onAuthError={onAuthError} />}
           {tab === "crew" && <CrewView onAuthError={onAuthError} />}
-          {tab === "health" && <HealthView />}
+          {tab === "health" && <HealthView onGoto={select} />}
           {tab === "status" && <StatusView onAuthError={onAuthError} />}
           {tab === "updates" && <UpdatesView onAuthError={onAuthError} onStatus={setUpdateAvailable} />}
           {tab === "workers" && <WorkersView onAuthError={onAuthError} />}
@@ -222,6 +222,15 @@ export function App() {
           )}
         </main>
       </div>
+
+      {/* Mobile bottom nav — high-traffic tabs + a More button opening the drawer. */}
+      <BottomNav
+        tab={tab}
+        onSelect={select}
+        onOpenMenu={() => setDrawer(true)}
+        chatEnabled={chatEnabled}
+        inboxPending={inboxPending}
+      />
     </div>
   );
 }

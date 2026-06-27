@@ -21,6 +21,7 @@ interface CouncilSession {
   opposeCount: number;
   abstainCount: number;
   createdAt: number;
+  noQuorum?: boolean;
 }
 
 export function CrewView({ onAuthError }: { onAuthError: () => void }) {
@@ -31,6 +32,7 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
   const [council, setCouncil] = useState<CouncilSession[]>([]);
   const [proposal, setProposal] = useState("");
   const [voting, setVoting] = useState(false);
+  const [voteElapsed, setVoteElapsed] = useState(0);
   const [voteError, setVoteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +57,17 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
     if (error === "AuthError: unauthorized") onAuthError();
   }, [error, onAuthError]);
 
+  // While a vote is in flight the request blocks until every Lead + Atlas has
+  // answered (each is a one-shot model call), so tick an elapsed counter to make
+  // it obvious work is happening and the panel hasn't frozen.
+  useEffect(() => {
+    if (!voting) return;
+    const started = Date.now();
+    setVoteElapsed(0);
+    const timer = setInterval(() => setVoteElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [voting]);
+
   if (error) return <Empty>Failed to load: {error}</Empty>;
 
   const leads = workers.filter((w) => w.role === "lead");
@@ -64,16 +77,20 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
   );
 
   // Resolve a delegation-log agent id to a display name. "president"/"atlas" are
-  // literals; a worker id resolves to its name; a since-deleted worker falls back
-  // to a short id so the historical record still reads sensibly.
-  const resolveAgent = (id: string | undefined): string => {
-    if (!id) return t("crew_unknown_agent");
+  // literals; a worker id resolves to its name; a name string is matched
+  // case-insensitively (crew_delegate stores the resolved name as toAgentId);
+  // a since-deleted worker falls back to the id itself so the record still reads.
+  const resolveAgent = (id: string | undefined, hint?: string): string => {
+    if (!id) return hint ?? t("crew_unknown_agent");
     const low = id.toLowerCase();
     if (low === "president" || low === "user") return t("crew_president");
     if (low === "atlas") return "Atlas";
-    const w = workers.find((x) => x.id === id);
-    if (w) return w.name;
-    return t("crew_removed_agent").replace("{id}", id.slice(0, 8));
+    const byId = workers.find((x) => x.id === id);
+    if (byId) return byId.name;
+    const byName = workers.find((x) => x.name.toLowerCase() === low);
+    if (byName) return byName.name;
+    // Fall back to the hint (leadName) when available, otherwise show the raw id.
+    return hint ?? id;
   };
 
   const enabledLeads = leads.filter((w) => w.enabled).length;
@@ -95,7 +112,7 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 [--crew-indent:14px] sm:[--crew-indent:24px]">
       <div>
         <h1 className="text-lg font-semibold text-fg">{t("crew_title")}</h1>
         <p className="mt-1 text-sm text-fg-dim">{t("crew_subtitle")}</p>
@@ -140,6 +157,16 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
       />
 
       {/* Leads and their Assistants */}
+      {leads.length > 0 && (
+        <div
+          className="text-xs font-medium uppercase tracking-wider text-fg-faint pl-3"
+          style={{ marginLeft: "calc(2 * var(--crew-indent))" }}
+        >
+          {t("crew_leads_count")
+            .replace("{total}", String(leads.length))
+            .replace("{active}", String(enabledLeads))}
+        </div>
+      )}
       {leads.map((lead) => (
         <div key={lead.id}>
           <CrewNode
@@ -150,6 +177,7 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
               .join(" · ")}
             tone="blue"
             depth={2}
+            paused={!lead.enabled}
             extra={lead.listening ? t("crew_listening") : undefined}
             extraHref={
               lead.listening && lead.botUsername ? `https://t.me/${lead.botUsername}` : undefined
@@ -166,6 +194,7 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
                 subtitle={a.portfolio ?? "Assistant"}
                 tone="zinc"
                 depth={3}
+                paused={!a.enabled}
               />
             ))}
         </div>
@@ -182,6 +211,7 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
             subtitle={a.portfolio ?? "Assistant"}
             tone="zinc"
             depth={2}
+            paused={!a.enabled}
           />
         ))}
 
@@ -199,6 +229,7 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
               subtitle={w.model || "default model"}
               tone="zinc"
               depth={2}
+              paused={!w.enabled}
             />
           ))}
         </div>
@@ -222,16 +253,37 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
             <span className="text-xs text-fg-dim">
               {enabledLeads === 0
                 ? t("crew_council_no_leads")
-                : t("crew_council_lead_count").replace("{n}", String(enabledLeads))}
+                : t("crew_council_lead_count").replace("{n}", String(enabledLeads + 1))}
             </span>
             <button
               onClick={runVote}
               disabled={voting || !proposal.trim() || enabledLeads === 0}
-              className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             >
+              {voting && (
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              )}
               {voting ? t("crew_council_voting") : t("crew_council_call")}
             </button>
           </div>
+          {voting && (
+            <div className="mt-3 flex items-start gap-3 rounded-md border border-accent/30 bg-accent/10 p-3">
+              <span className="mt-0.5 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-fg">
+                  {t("crew_council_voting_title").replace("{n}", String(enabledLeads + 1))}
+                </p>
+                <p className="mt-0.5 text-xs text-fg-dim">
+                  {t("crew_council_voting_hint")}
+                  {voteElapsed > 0 && (
+                    <span className="ml-1 tabular-nums text-fg-faint">
+                      {t("crew_council_voting_elapsed").replace("{s}", String(voteElapsed))}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
           {voteError && (
             <p className="mt-2 text-xs text-red-400">{voteError}</p>
           )}
@@ -242,7 +294,16 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
         ) : (
           <div className="space-y-4">
             {council.map((session) => (
-              <CouncilCard key={session.id} session={session} t={t} />
+              <CouncilCard
+                key={session.id}
+                session={session}
+                t={t}
+                onDelete={(id) => {
+                  void api.deleteCouncilSession(id).then(() =>
+                    setCouncil((prev) => prev.filter((s) => s.id !== id))
+                  ).catch(() => {});
+                }}
+              />
             ))}
           </div>
         )}
@@ -270,7 +331,7 @@ function DelegationCard({
   resolveAgent,
 }: {
   d: DelegationRecord;
-  resolveAgent: (id: string | undefined) => string;
+  resolveAgent: (id: string | undefined, hint?: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   // Expandable when any field carries more than fits on a single truncated line.
@@ -290,10 +351,9 @@ function DelegationCard({
         <span className="tabular">{relTime(d.ts)}</span>
         {(d.fromAgentId || d.toAgentId) && (
           <span className="text-fg-faint">
-            {resolveAgent(d.fromAgentId)} → {resolveAgent(d.toAgentId ?? "president")}
+            {resolveAgent(d.fromAgentId)} → {resolveAgent(d.toAgentId ?? "president", d.leadName)}
           </span>
         )}
-        {d.leadName && <span className="font-medium text-fg">{d.leadName}</span>}
         {d.durationMs != null && (
           <span className="tabular text-fg-faint ml-auto">
             {(d.durationMs / 1000).toFixed(1)}s
@@ -331,8 +391,17 @@ function DelegationCard({
   );
 }
 
-function CouncilCard({ session, t }: { session: CouncilSession; t: ReturnType<typeof useI18n>["t"] }) {
+function CouncilCard({
+  session,
+  t,
+  onDelete,
+}: {
+  session: CouncilSession;
+  t: ReturnType<typeof useI18n>["t"];
+  onDelete: (id: string) => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
   const total = session.votes.length;
   const winner =
     session.supportCount > session.opposeCount
@@ -341,33 +410,68 @@ function CouncilCard({ session, t }: { session: CouncilSession; t: ReturnType<ty
       ? "oppose"
       : null;
 
+  if (session.noQuorum) {
+    return (
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-fg">{session.proposal.slice(0, 100)}</span>
+          <Badge tone="amber">{t("crew_council_no_quorum")}</Badge>
+          <span className="ml-auto text-xs text-fg-faint">{relTime(session.createdAt)}</span>
+          <button
+            type="button"
+            onClick={() => (confirmDel ? onDelete(session.id) : setConfirmDel(true))}
+            onBlur={() => setConfirmDel(false)}
+            aria-label={t("crew_council_delete")}
+            title={t("crew_council_delete")}
+            className="text-xs text-fg-faint hover:text-red-400"
+          >
+            {confirmDel ? t("crew_council_delete_confirm") : "✕"}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-fg-dim">{t("crew_council_no_quorum_hint")}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border border-line overflow-hidden">
       {/* Header / summary */}
-      <button
-        className="w-full flex flex-wrap items-center gap-2 p-3 text-left hover:bg-surface-2 transition-colors"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="text-sm font-medium text-fg truncate flex-1">
-          {session.proposal.slice(0, 100)}
-        </span>
-        <span className="shrink-0 flex items-center gap-1.5 text-xs">
-          <Badge tone="green">✅ {session.supportCount}</Badge>
-          <Badge tone="amber">❌ {session.opposeCount}</Badge>
-          {session.abstainCount > 0 && <Badge tone="zinc">⬜ {session.abstainCount}</Badge>}
-          {total > 0 && (
-            <Badge tone={winner === "support" ? "green" : winner === "oppose" ? "amber" : "zinc"}>
-              {winner === "support"
-                ? t("crew_council_support")
-                : winner === "oppose"
-                ? t("crew_council_oppose")
-                : "Tied"}
-            </Badge>
-          )}
-        </span>
-        <span className="shrink-0 text-xs text-fg-faint">{relTime(session.createdAt)}</span>
-        <span className="shrink-0 text-fg-dim">{open ? "▴" : "▾"}</span>
-      </button>
+      <div className="w-full flex flex-wrap items-center gap-2 p-3">
+        <button
+          className="flex flex-wrap items-center gap-2 text-left flex-1 min-w-0 hover:opacity-80 transition-opacity"
+          onClick={() => setOpen((o) => !o)}
+        >
+          <span className="text-sm font-medium text-fg truncate flex-1">
+            {session.proposal.slice(0, 100)}
+          </span>
+          <span className="shrink-0 flex items-center gap-1.5 text-xs">
+            <Badge tone="green">✅ {session.supportCount}</Badge>
+            <Badge tone="amber">❌ {session.opposeCount}</Badge>
+            {session.abstainCount > 0 && <Badge tone="zinc">⬜ {session.abstainCount}</Badge>}
+            {total > 0 && (
+              <Badge tone={winner === "support" ? "green" : winner === "oppose" ? "amber" : "zinc"}>
+                {winner === "support"
+                  ? t("crew_council_support")
+                  : winner === "oppose"
+                  ? t("crew_council_oppose")
+                  : "Tied"}
+              </Badge>
+            )}
+          </span>
+          <span className="shrink-0 text-xs text-fg-faint">{relTime(session.createdAt)}</span>
+          <span className="shrink-0 text-fg-dim">{open ? "▴" : "▾"}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => (confirmDel ? onDelete(session.id) : setConfirmDel(true))}
+          onBlur={() => setConfirmDel(false)}
+          aria-label={t("crew_council_delete")}
+          title={t("crew_council_delete")}
+          className="shrink-0 text-xs text-fg-faint hover:text-red-400 transition-colors px-1"
+        >
+          {confirmDel ? t("crew_council_delete_confirm") : "✕"}
+        </button>
+      </div>
 
       {/* Expanded votes */}
       {open && (
@@ -412,6 +516,7 @@ function CrewNode({
   extra,
   extraHref,
   warn,
+  paused,
 }: {
   icon: string;
   title: string;
@@ -422,17 +527,31 @@ function CrewNode({
   /** When set, the `extra` badge becomes a link (e.g. a t.me handle). */
   extraHref?: string;
   warn?: string;
+  /** Dim the node and show a "paused" badge when the worker is disabled. */
+  paused?: boolean;
 }) {
-  const indent = depth * 24;
+  const { t } = useI18n();
   const toneClass: Record<Tone, string> = {
     amber: "text-amber-400",
     accent: "text-[var(--accent)]",
     blue: "text-blue-400",
     zinc: "text-fg-dim",
   };
+  // A coloured left rule per depth gives a width-independent hierarchy cue, so
+  // even when the responsive indent is small on a phone the nesting stays legible.
+  const ruleClass: Record<number, string> = {
+    1: "border-l-2 border-[var(--accent)]/40",
+    2: "border-l-2 border-blue-400/40",
+    3: "border-l-2 border-fg-faint/40",
+  };
 
   return (
-    <div className="flex items-center gap-3" style={{ paddingLeft: indent }}>
+    <div
+      className={`flex items-center gap-3 ${depth > 0 ? "pl-3" : ""} ${
+        ruleClass[depth] ?? ""
+      } ${paused ? "opacity-50" : ""}`}
+      style={{ marginLeft: `calc(${depth} * var(--crew-indent))` }}
+    >
       {depth > 0 && (
         <div className="flex items-center">
           <div className="h-px w-4 bg-line" />
@@ -442,6 +561,7 @@ function CrewNode({
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-medium text-fg">{title}</span>
+          {paused && <Badge tone="zinc">{t("crew_paused")}</Badge>}
           {extra &&
             (extraHref ? (
               <a href={extraHref} target="_blank" rel="noreferrer" className="hover:underline">
@@ -450,9 +570,11 @@ function CrewNode({
             ) : (
               <Badge tone="green">{extra}</Badge>
             ))}
-          {warn && <Badge tone="amber">⚠ {warn}</Badge>}
+          {warn && <Badge tone="zinc">{warn}</Badge>}
         </div>
-        <div className="text-xs text-fg-dim">{subtitle}</div>
+        <div className="truncate text-xs text-fg-dim" title={subtitle}>
+          {subtitle}
+        </div>
       </div>
     </div>
   );

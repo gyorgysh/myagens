@@ -4,6 +4,8 @@ import { useWorkerEvents, type LiveRun } from "../lib/useWorkerEvents.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import type { TranslationKey } from "../i18n/en.ts";
 import { Badge, Button, Card, Empty, InfoCard, Input, Label, Select, TextArea } from "./ui.tsx";
+import { RunLog } from "./RunLog.tsx";
+import { CrewArt } from "./onboarding.tsx";
 import { ms, relTime, usd } from "../lib/format.ts";
 import { AGENT_LANGUAGES } from "../i18n/languages.ts";
 
@@ -23,6 +25,7 @@ const emptyForm = {
   persona: "",
   autonomy: "full" as Autonomy,
   language: "",
+  webhookUrl: "",
 };
 type Form = typeof emptyForm;
 
@@ -140,7 +143,17 @@ export function WorkersView({ onAuthError }: { onAuthError: () => void }) {
       )}
 
       {workers.length === 0 && !creating ? (
-        <Empty>{t("workers_empty")}</Empty>
+        <Empty
+          icon={<CrewArt />}
+          title={t("workers_empty")}
+          action={
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              {t("workers_new")}
+            </Button>
+          }
+        >
+          {t("onb_step_crew_desc")}
+        </Empty>
       ) : (
         (() => {
           const leads = workers.filter((w) => w.role === "lead");
@@ -259,7 +272,7 @@ function WorkerRow({
             <Badge tone="green">{t("crew_listening")}</Badge>
           ))}
         {worker.role === "lead" && worker.enabled && !worker.telegramToken && (
-          <Badge tone="amber">⚠ {t("crew_no_token")}</Badge>
+          <Badge tone="zinc">{t("crew_no_token")}</Badge>
         )}
         {running && <Badge tone="green">{t("running")}</Badge>}
         <span className="ml-auto flex gap-1.5">
@@ -307,6 +320,7 @@ function WorkerRow({
               persona: worker.persona ?? "",
               autonomy: worker.autonomy ?? "full",
               language: worker.language ?? "",
+              webhookUrl: worker.webhookUrl ?? "",
             }}
             enabled={worker.enabled}
             onCancel={() => setEditing(false)}
@@ -332,19 +346,7 @@ function WorkerRow({
             ) : (
               <div className="space-y-1">
                 {runs.map((r) => (
-                  <div key={r.id} className="flex items-center gap-2 text-xs">
-                    <Badge tone={r.status === "ok" ? "green" : r.status === "error" ? "amber" : "zinc"}>
-                      {r.status}
-                    </Badge>
-                    <span className="tabular text-fg-dim">{relTime(r.startedAt)}</span>
-                    {r.durationMs != null && (
-                      <span className="tabular text-fg-faint">{ms(r.durationMs)}</span>
-                    )}
-                    {r.costUsd != null && (
-                      <span className="tabular text-fg-faint">{usd(r.costUsd)}</span>
-                    )}
-                    {r.error && <span className="truncate text-red-400">{r.error}</span>}
-                  </div>
+                  <RunRow key={r.id} run={r} />
                 ))}
               </div>
             )}
@@ -352,6 +354,32 @@ function WorkerRow({
         </div>
       )}
     </Card>
+  );
+}
+
+/**
+ * One run-history row. Click to expand the full uncapped transcript fetched from
+ * /api/runs/:runId/log (lazily, only when first opened).
+ */
+function RunRow({ run: r }: { run: WorkerRun }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="text-xs">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-left hover:opacity-80">
+        <Badge tone={r.status === "ok" ? "green" : r.status === "error" ? "amber" : "zinc"}>
+          {r.status}
+        </Badge>
+        <span className="tabular text-fg-dim">{relTime(r.startedAt)}</span>
+        {r.durationMs != null && <span className="tabular text-fg-faint">{ms(r.durationMs)}</span>}
+        {r.costUsd != null && <span className="tabular text-fg-faint">{usd(r.costUsd)}</span>}
+        {r.error && <span className="truncate text-red-400">{r.error}</span>}
+        <span className="ml-auto shrink-0 text-accent">
+          {open ? t("workers_hide_full_log") : t("workers_view_full_log")}
+        </span>
+      </button>
+      {open && <RunLog runId={r.id} />}
+    </div>
   );
 }
 
@@ -389,6 +417,15 @@ function WorkerWizard({
   const [created, setCreated] = useState<Set<number>>(new Set());
   const [genError, setGenError] = useState<string | null>(null);
 
+  // Prefill the working directory with the panel's default so generated configs
+  // (and the editable review step) have a valid cwd out of the box.
+  useEffect(() => {
+    api
+      .me()
+      .then((m) => setAnswers((a) => (a.cwd.trim() ? a : { ...a, cwd: m.defaultWorkdir })))
+      .catch(() => {});
+  }, []);
+
   const generate = async () => {
     if (!answers.goal.trim()) return;
     setPhase("generating");
@@ -418,6 +455,7 @@ function WorkerWizard({
         persona: String(c.persona ?? ""),
         autonomy: (c.autonomy ?? "full") as Autonomy,
         language: String(c.language ?? ""),
+        webhookUrl: "",
       }));
       setConfigs(forms);
       setCreated(new Set());
@@ -815,6 +853,20 @@ function WorkerForm({
   const [fetchingModels, setFetchingModels] = useState(false);
   const listId = useId();
 
+  // Prefill the working directory with the panel's default for a brand-new
+  // worker (empty cwd), so the form can be saved straight away instead of the
+  // save button staying greyed out until a path is typed. The user can edit it.
+  useEffect(() => {
+    if (form.cwd.trim()) return;
+    api
+      .me()
+      .then((m) => {
+        setForm((f) => (f.cwd.trim() ? f : { ...f, cwd: m.defaultWorkdir }));
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const fetchModels = async () => {
     if (!form.providerId) return;
     setFetchingModels(true);
@@ -1053,6 +1105,15 @@ function WorkerForm({
             ))}
           </Select>
         </div>
+      </div>
+      <div>
+        <Label>{t("workers_webhook")}</Label>
+        <Input
+          value={form.webhookUrl}
+          onChange={(e) => setForm({ ...form, webhookUrl: e.target.value })}
+          placeholder={t("workers_webhook_placeholder")}
+        />
+        <p className="mt-1 text-xs text-fg-faint">{t("workers_webhook_hint")}</p>
       </div>
       <div className="flex gap-2">
         <Button

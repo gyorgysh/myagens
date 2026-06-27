@@ -42,6 +42,19 @@ const schema = z.object({
   // many times in one turn, pause and ask Skip / Approve once / Continue, so a
   // runaway retry can't burn tokens unattended. Set to 0 to disable.
   LOOP_THRESHOLD: z.coerce.number().int().nonnegative().default(3),
+  // Per-chat turn rate limit (SEC): even an allow-listed user mustn't be able to
+  // spawn unbounded concurrent turns by messaging faster than one finishes. Each
+  // chat may start at most TURN_RATE_LIMIT new turns per TURN_RATE_WINDOW_MS
+  // (token bucket); over the limit it gets a short "slow down" notice instead of
+  // a new turn. Autonomous turns (schedules/heartbeat) are exempt. Set the limit
+  // to 0 to disable.
+  TURN_RATE_LIMIT: z.coerce.number().int().nonnegative().default(5),
+  TURN_RATE_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  // Outbound webhooks: when a schedule or worker/task run with a webhookUrl
+  // completes, POST a JSON outcome payload to that URL. This is the per-request
+  // timeout (ms) for that POST. Every webhook URL is run through assertSafeUrl()
+  // (SSRF guard) before the call.
+  WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
   // Branding overrides (allows white-labelling / self-hosting with a different name).
   ATLAS_NAME: z.string().min(1).default("Atlas"),
   BRAND_NAME: z.string().min(1).default("MyHQ"),
@@ -64,9 +77,16 @@ const schema = z.object({
   // Memory compaction thresholds.
   MEMORY_MAX_ENTRIES: z.coerce.number().int().positive().default(500),
   COLD_MAX: z.coerce.number().int().positive().default(200),
-  // Maintenance rewrites any memory entry longer than this many chars into a
-  // terse one-liner (meaning preserved) to keep recall context small. 0 = off.
+  // Maintenance rewrites verbose memory entries into a terse one-liner (meaning
+  // preserved) to keep recall context small. 0 = off. Hot entries inject into
+  // EVERY turn, so they're the priority: shorten them past the (lower) hot
+  // threshold. Warm entries only cost context when recalled, so they're left
+  // alone unless they're genuinely bloated (the higher warm threshold). Cold
+  // entries are panel-only and never shortened.
   MEMORY_SHORTEN_CHARS: z.coerce.number().int().nonnegative().default(220),
+  // Hot-tier shorten threshold (chars). Lower than the warm one because hot
+  // entries are paid for on every single turn. 0 = fall back to the warm value.
+  MEMORY_SHORTEN_CHARS_HOT: z.coerce.number().int().nonnegative().default(160),
   // --- Semantic memory (Phase 2): local embeddings for similarity recall ---
   // Tri-state, default "auto": probe Ollama then LM Studio at startup and enable
   // embeddings against whichever is live (the panel can override this). "on" pins

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, AuthError, type ClaudeRoot, type Skill } from "../api.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import { Badge, Button, Card, Empty, Input, Label, TextArea } from "./ui.tsx";
+import { SkillsArt } from "./onboarding.tsx";
 
 export function SkillsView({ onAuthError }: { onAuthError: () => void }) {
   return (
@@ -118,7 +119,7 @@ function PromptLibrary({ onAuthError }: { onAuthError: () => void }) {
       )}
 
       {skills.length === 0 && !editing ? (
-        <Empty>{t("skills_empty_full")}</Empty>
+        <Empty icon={<SkillsArt />}>{t("skills_empty_full")}</Empty>
       ) : (
         <div className="space-y-2">
           {skills.map((s) => (

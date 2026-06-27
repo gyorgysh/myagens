@@ -106,6 +106,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Bottom padding that clears the iOS home-indicator / notch safe area. Used by
+   full-height views (Logs) that butt up against the mobile bottom nav. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* Terminal wordmark / mono kickers. */
 .mono {
   font-family: var(--font-mono);

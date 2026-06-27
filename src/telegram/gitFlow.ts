@@ -3,6 +3,7 @@ import { Markup, type Telegram } from "telegraf";
 import { sessions } from "../session/manager.js";
 import { log } from "../logger.js";
 import { escapeHtml } from "./formatting.js";
+import { CALLBACK_MAX_BYTES } from "./callback.js";
 import * as git from "../git.js";
 
 const DIFF_INLINE_LIMIT = 3500; // above this we send the diff as a .diff file
@@ -73,6 +74,7 @@ export async function resolveGitCallback(
   data: string,
   messageId: number | undefined,
 ): Promise<string> {
+  if (Buffer.byteLength(data, "utf8") > CALLBACK_MAX_BYTES) return "";
   const action = data.slice("git:".length);
   const cwd = sessions.get(chatId).cwd;
 

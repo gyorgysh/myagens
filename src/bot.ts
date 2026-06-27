@@ -365,6 +365,9 @@ async function handleUserPrompt(
 
   await tg.sendChatAction(chatId, "typing").catch(() => {});
   const typing = setInterval(() => {
+    // While the turn is parked inside crew_ask_president waiting on the user,
+    // suppress the "typing…" indicator so their input area isn't stuck spinning.
+    if (hasPendingAsk(chatId)) return;
     void tg.sendChatAction(chatId, "typing").catch(() => {});
   }, 4000);
 

@@ -906,6 +906,7 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
 
   // --- maintenance scheduler ---
   app.get("/api/maintenance", async () => maintenance.view());
+  app.post("/api/maintenance/preview", async () => maintenance.previewCompaction());
   app.post("/api/maintenance/run", async () => maintenance.runOnce());
 
   // --- language catalogue ---

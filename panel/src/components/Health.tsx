@@ -4,6 +4,8 @@ import {
   api,
   type Health,
   type MaintenanceStats,
+  type MaintenancePreview,
+  type MemoryEntry,
   type ProbeResult,
   type UsageLimitWindow,
 } from "../api.ts";
@@ -348,6 +350,109 @@ function MaintenanceCard() {
       ) : (
         <p className="text-xs text-fg-faint">{t("loading")}</p>
       )}
+
+      <MaintenancePreviewSection refreshKey={stats?.lastRunAt} />
     </Card>
+  );
+}
+
+/**
+ * Collapsible dry-run of the deterministic compaction steps. Loads lazily on
+ * first expand, and re-fetches whenever `refreshKey` (the last-run time) changes
+ * so the preview reflects what the next run would do after one has completed.
+ */
+function MaintenancePreviewSection({ refreshKey }: { refreshKey?: number }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState<MaintenancePreview | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try { setPreview(await api.previewMaintenance()); } catch { /* ignore */ } finally { setLoading(false); }
+  };
+
+  // Lazy-load when first opened; refresh if a run completed while open.
+  useEffect(() => {
+    if (!open) return;
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, refreshKey]);
+
+  const total = preview
+    ? preview.toDelete.length + preview.toDemote.length + preview.toMerge.length
+    : 0;
+
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-fg-faint hover:text-fg-dim transition-colors"
+      >
+        <span>{t("health_maint_preview_title")}</span>
+        <span className="opacity-50">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          {loading && !preview ? (
+            <p className="text-xs text-fg-faint">{t("loading")}</p>
+          ) : !preview || total === 0 ? (
+            <p className="text-xs text-fg-faint">{t("health_maint_preview_empty")}</p>
+          ) : (
+            <>
+              <p className="text-xs text-fg-dim">{t("health_maint_preview_note")}</p>
+              {preview.toDelete.length > 0 && (
+                <PreviewGroup
+                  label={t("health_maint_preview_delete").replace("{n}", String(preview.toDelete.length))}
+                  tone="delete"
+                  entries={preview.toDelete}
+                />
+              )}
+              {preview.toDemote.length > 0 && (
+                <PreviewGroup
+                  label={t("health_maint_preview_demote").replace("{n}", String(preview.toDemote.length))}
+                  tone="demote"
+                  entries={preview.toDemote}
+                />
+              )}
+              {preview.toMerge.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-amber-400">
+                    {t("health_maint_preview_merge").replace("{n}", String(preview.toMerge.length))}
+                  </p>
+                  {preview.toMerge.map((m, i) => (
+                    <div key={i} className="rounded border border-line bg-input px-2.5 py-1.5 text-xs">
+                      <p className="text-fg"><span className="text-fg-faint">{t("health_maint_preview_keep")} </span>{m.kept.text}</p>
+                      {m.dropped.map((d) => (
+                        <p key={d.id} className="mt-0.5 text-fg-faint line-through">{d.text}</p>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PreviewGroup({ label, tone, entries }: { label: string; tone: "delete" | "demote"; entries: MemoryEntry[] }) {
+  const color = tone === "delete" ? "text-red-400" : "text-amber-400";
+  return (
+    <div className="space-y-1.5">
+      <p className={`text-xs font-semibold ${color}`}>{label}</p>
+      <div className="space-y-1">
+        {entries.map((e) => (
+          <div key={e.id} className="flex items-start gap-2 rounded border border-line bg-input px-2.5 py-1.5 text-xs">
+            <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-faint">{e.tier}</span>
+            <span className="min-w-0 flex-1 truncate text-fg-dim">{e.text}</span>
+            <span className="tabular shrink-0 text-fg-faint">{e.salience.toFixed(2)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

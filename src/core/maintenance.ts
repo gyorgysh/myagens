@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../config.js";
-import { memory } from "./memory.js";
+import { memory, type MemoryEntry } from "./memory.js";
 import { listSkills, updateSkill } from "./skills.js";
 import { isResult, type SdkMessage } from "../claude/events.js";
 import { loadJson, saveJson } from "./jsonStore.js";
@@ -26,6 +26,34 @@ export interface MaintenanceStats {
   /** Verbose entries the shorten pass condensed into a terse one-liner. */
   memoriesShortened: number;
   skillsArchived: number;
+}
+
+/** A memory entry as shown in a preview (no embedding vector). */
+export type PreviewEntry = Omit<MemoryEntry, "embedding" | "embeddingModel">;
+
+/**
+ * Dry-run result of the deterministic compaction steps (salience thresholds),
+ * computed without committing any change. Only the deterministic passes are
+ * previewable; the AI consolidation/shortening steps depend on a live model
+ * call and can't be predicted ahead of time.
+ */
+export interface MaintenancePreview {
+  /** Cold-overflow entries that an actual run would delete (lowest salience first). */
+  toDelete: PreviewEntry[];
+  /** Warm entries an actual run would demote to cold (over the entry cap). */
+  toDemote: PreviewEntry[];
+  /**
+   * Deterministic merges. Always empty for now — merging is AI-driven, so it
+   * can't be previewed — but kept in the shape so the panel can render it if a
+   * deterministic merge step is ever added.
+   */
+  toMerge: { kept: PreviewEntry; dropped: PreviewEntry[] }[];
+}
+
+/** Strip the bulky embedding fields so a preview stays lightweight over the wire. */
+function toPreviewEntry(e: MemoryEntry): PreviewEntry {
+  const { embedding: _embedding, embeddingModel: _embeddingModel, ...rest } = e;
+  return rest;
 }
 
 /** Pull the first JSON array out of a model reply (tolerates ```json fences / prose). */
@@ -151,6 +179,51 @@ class MaintenanceScheduler {
       this.running = false;
     }
     return this.view();
+  }
+
+  /**
+   * Dry-run the deterministic compaction steps (the salience-threshold passes)
+   * and report what an actual run would delete or demote, without committing
+   * anything. Pure reads over the live store — no entry is mutated. The AI
+   * consolidation/shortening passes are intentionally excluded: they depend on
+   * a live model call and can't be predicted here.
+   */
+  previewCompaction(): MaintenancePreview {
+    const all = memory.allRaw();
+    const counts = memory.countByTier();
+    const total = counts.hot + counts.warm + counts.cold;
+
+    // Step 1 (demote): warm entries the cap would push to cold, lowest salience first.
+    const toDemote: MemoryEntry[] = [];
+    const demotedIds = new Set<string>();
+    if (total > config.MEMORY_MAX_ENTRIES) {
+      const excess = total - config.MEMORY_MAX_ENTRIES;
+      const warm = all
+        .filter((e) => e.tier === "warm")
+        .sort((a, b) => a.salience - b.salience);
+      for (const e of warm.slice(0, excess)) {
+        toDemote.push(e);
+        demotedIds.add(e.id);
+      }
+    }
+
+    // Step 2 (delete): cold entries over COLD_MAX, lowest salience first. The
+    // real run deletes after demoting, so a just-demoted warm entry counts as
+    // cold for the overflow check here too.
+    const cold = all.filter((e) => e.tier === "cold" || demotedIds.has(e.id));
+    const toDelete: MemoryEntry[] = [];
+    if (cold.length > config.COLD_MAX) {
+      const sorted = [...cold].sort((a, b) => a.salience - b.salience);
+      toDelete.push(...sorted.slice(0, cold.length - config.COLD_MAX));
+    }
+
+    const deleteIds = new Set(toDelete.map((e) => e.id));
+    return {
+      toDelete: toDelete.map(toPreviewEntry),
+      // An entry both demoted and then deleted is reported only as a deletion.
+      toDemote: toDemote.filter((e) => !deleteIds.has(e.id)).map(toPreviewEntry),
+      toMerge: [],
+    };
   }
 
   private checkAndRun(): void {

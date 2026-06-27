@@ -537,6 +537,13 @@ export const en = {
   health_maint_rewritten: "Rewritten",
   health_maint_shortened: "Shortened",
   health_maint_archived: "Archived skills",
+  health_maint_preview_title: "What will run",
+  health_maint_preview_empty: "Nothing to compact — the deterministic passes would make no changes.",
+  health_maint_preview_note: "Dry run of the deterministic passes only. AI consolidation and shortening can't be previewed.",
+  health_maint_preview_delete: "Will delete ({n})",
+  health_maint_preview_demote: "Will demote to cold ({n})",
+  health_maint_preview_merge: "Will merge ({n})",
+  health_maint_preview_keep: "Keep:",
 
   // Usage-limit window labels (shared by System + Usage)
   limit_5h: "5-hour session",

@@ -539,6 +539,13 @@ export const hu: Translations = {
   health_maint_rewritten: "Átírva",
   health_maint_shortened: "Rövidítve",
   health_maint_archived: "Archivált készségek",
+  health_maint_preview_title: "Mi fog lefutni",
+  health_maint_preview_empty: "Nincs mit tömöríteni — a determinisztikus lépések nem változtatnának semmin.",
+  health_maint_preview_note: "Csak a determinisztikus lépések próbafuttatása. Az AI-összevonás és -rövidítés nem nézhető meg előre.",
+  health_maint_preview_delete: "Törlésre kerül ({n})",
+  health_maint_preview_demote: "Cold szintre kerül ({n})",
+  health_maint_preview_merge: "Összevonásra kerül ({n})",
+  health_maint_preview_keep: "Megtartva:",
 
   // Limit-ablak címkék (Rendszer + Használat közös)
   limit_5h: "5 órás munkamenet",

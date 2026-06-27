@@ -314,6 +314,13 @@ export interface MaintenanceStats {
   skillsArchived: number;
 }
 
+/** Dry-run of the deterministic compaction steps before an actual run. */
+export interface MaintenancePreview {
+  toDelete: MemoryEntry[];
+  toDemote: MemoryEntry[];
+  toMerge: { kept: MemoryEntry; dropped: MemoryEntry[] }[];
+}
+
 export interface DelegationRecord {
   ts: number;
   fromAgentId?: string;
@@ -741,6 +748,7 @@ export const api = {
   dismissSuggestion: (id: string) => req<Suggestion>("POST", `/api/suggestions/${id}/dismiss`),
 
   maintenance: () => get<MaintenanceStats>("/api/maintenance"),
+  previewMaintenance: () => req<MaintenancePreview>("POST", "/api/maintenance/preview"),
   runMaintenance: () => req<MaintenanceStats>("POST", "/api/maintenance/run"),
 
   delegations: (limit?: number) =>
@@ -752,6 +760,9 @@ export const api = {
     get<{ sessions: Record<string, unknown>[] }>(
       `/api/council${limit ? `?limit=${limit}` : ""}`,
     ),
+
+  runCouncil: (proposal: string) =>
+    req<{ session: Record<string, unknown> }>("POST", "/api/council", { proposal }),
 
   languages: () => get<{ languages: Record<string, string> }>("/api/languages"),
 

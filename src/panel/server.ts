@@ -82,6 +82,7 @@ import { ptyManager } from "../core/ptyManager.js";
 import { tunnelManager, BASIC_AUTH_USER } from "../core/tunnelManager.js";
 import { PanelHub } from "./hub.js";
 import { runTurn } from "../claude/runner.js";
+import { runCouncil } from "../core/council.js";
 
 const STATIC_DIR = join(repoRoot, "panel", "dist");
 
@@ -926,6 +927,20 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
       return { sessions };
     } catch {
       return { sessions: [] };
+    }
+  });
+
+  // Trigger a council vote (same flow as the Telegram /council command)
+  app.post("/api/council", async (req, reply) => {
+    const { proposal } = (req.body ?? {}) as { proposal?: string };
+    if (!proposal?.trim()) return reply.code(400).send({ error: "proposal required" });
+    try {
+      const session = await runCouncil(proposal.trim());
+      return { session };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error("Panel council vote failed", { error: message });
+      return reply.code(500).send({ error: message });
     }
   });
 

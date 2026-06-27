@@ -131,6 +131,11 @@ export const hu: Translations = {
   crew_council_support: "Támogatja",
   crew_council_oppose: "Ellenzi",
   crew_council_abstain: "Tartózkodik",
+  crew_council_placeholder: "Írd le a javaslatot, amiről a tanács szavazzon…",
+  crew_council_call: "Tanács összehívása",
+  crew_council_voting: "Szavazás…",
+  crew_council_lead_count: "{n} aktív Lead fog szavazni",
+  crew_council_no_leads: "A szavazáshoz engedélyezz legalább egy Leadet",
   // Postaláda nézet (ügynökök javaslatai)
   inbox_title: "Postaláda",
   inbox_subtitle:

@@ -129,6 +129,11 @@ export const en = {
   crew_council_support: "Support",
   crew_council_oppose: "Oppose",
   crew_council_abstain: "Abstain",
+  crew_council_placeholder: "Describe a proposal to put to the council vote…",
+  crew_council_call: "Call the council",
+  crew_council_voting: "Voting…",
+  crew_council_lead_count: "{n} enabled Lead(s) will vote",
+  crew_council_no_leads: "Enable at least one Lead to hold a vote",
   // Inbox view (suggestions from agents)
   inbox_title: "Inbox",
   inbox_subtitle:

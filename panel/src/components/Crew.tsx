@@ -29,6 +29,9 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [delegations, setDelegations] = useState<DelegationRecord[]>([]);
   const [council, setCouncil] = useState<CouncilSession[]>([]);
+  const [proposal, setProposal] = useState("");
+  const [voting, setVoting] = useState(false);
+  const [voteError, setVoteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,6 +74,24 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
     const w = workers.find((x) => x.id === id);
     if (w) return w.name;
     return t("crew_removed_agent").replace("{id}", id.slice(0, 8));
+  };
+
+  const enabledLeads = leads.filter((w) => w.enabled).length;
+
+  const runVote = async () => {
+    const text = proposal.trim();
+    if (!text || voting) return;
+    setVoting(true);
+    setVoteError(null);
+    try {
+      const { session } = await api.runCouncil(text);
+      setCouncil((prev) => [session as unknown as CouncilSession, ...prev]);
+      setProposal("");
+    } catch (e) {
+      setVoteError(String(e));
+    } finally {
+      setVoting(false);
+    }
   };
 
   return (
@@ -186,6 +207,36 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
       {/* Council vote log */}
       <Card title={t("crew_council")}>
         <p className="mb-3 text-sm text-fg-dim">{t("crew_council_desc")}</p>
+
+        {/* Trigger a new vote */}
+        <div className="mb-4 rounded-lg border border-accent/30 bg-accent/5 p-3">
+          <textarea
+            value={proposal}
+            onChange={(e) => setProposal(e.target.value)}
+            placeholder={t("crew_council_placeholder")}
+            rows={3}
+            disabled={voting}
+            className="w-full resize-y rounded-md border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-dim focus:border-accent focus:outline-none disabled:opacity-60"
+          />
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className="text-xs text-fg-dim">
+              {enabledLeads === 0
+                ? t("crew_council_no_leads")
+                : t("crew_council_lead_count").replace("{n}", String(enabledLeads))}
+            </span>
+            <button
+              onClick={runVote}
+              disabled={voting || !proposal.trim() || enabledLeads === 0}
+              className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {voting ? t("crew_council_voting") : t("crew_council_call")}
+            </button>
+          </div>
+          {voteError && (
+            <p className="mt-2 text-xs text-red-400">{voteError}</p>
+          )}
+        </div>
+
         {council.length === 0 ? (
           <Empty>{t("crew_council_empty")}</Empty>
         ) : (

@@ -571,7 +571,10 @@ export const hu: Translations = {
   workers_webhook_placeholder: "https://hooks.example.com/...",
   workers_webhook_hint: "A futás végén JSON eredményt (név, összegzés, költség, állapot) POST-ol erre az URL-re.",
   workers_name: "Név",
-  workers_run_now: "Futtatás most",
+  workers_run_now: "Ügynök kipróbálása",
+  workers_try_agent_tooltip: "Az ügynököt egyszer futtatja a jelenlegi promptjával, ütemezés nélkül.",
+  workers_interact_hint:
+    "A Lead-ek kétféleképpen működhetnek. Ha Telegram bot token van beállítva, a Lead saját chattel rendelkezik, amelyen közvetlenül üzenhetsz neki. Token nélkül kérd meg Atlast a főchatben, hogy delegáljon feladatot vagy kérdést ehhez az ügynökhöz névvel.",
   workers_no_cwd: "(nincs munkamappa)",
   workers_next: "következő {time}",
   workers_wizard: "Varázsló",

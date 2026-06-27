@@ -840,6 +840,7 @@ function Card({
           )}
           {task.parentId && <div className="mt-1 text-xs text-fg-faint">{t("tasks_subtask")}</div>}
           <div className="mt-1 flex items-center gap-1.5 text-xs text-fg-faint">
+            <span className="font-mono text-[10px] text-fg-faint opacity-60">#{task.id}</span>
             <span>{t("tasks_created").replace("{date}", formatDate(task.createdAt))}</span>
             {(task.createdByName || task.createdBy) && (
               <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent">

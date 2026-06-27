@@ -248,6 +248,8 @@ interface Activity {
   agentTitle?: string;
   diffLines?: string;
   diffSnippet?: string;
+  /** Task ID chip, shown on delegating entries from taskRunner. */
+  taskId?: string;
 }
 
 /** Map a tool name to a friendly icon and verb. */
@@ -375,6 +377,7 @@ function toActivities(source: LogEntry[], t: TFn): Activity[] {
           : undefined;
       const diffLines = typeof l.meta.diffLines === "string" ? l.meta.diffLines : undefined;
       const diffSnippet = typeof l.meta.diffSnippet === "string" ? l.meta.diffSnippet : undefined;
+      const taskId = typeof l.meta.taskId === "string" ? l.meta.taskId : undefined;
       out.push({
         key: `${l.seq}-${l.ts}`,
         ts: l.ts,
@@ -386,6 +389,7 @@ function toActivities(source: LogEntry[], t: TFn): Activity[] {
         agentTitle,
         diffLines,
         diffSnippet,
+        taskId,
       });
       continue;
     }
@@ -589,6 +593,11 @@ function ActivityFeed({
                         className="shrink-0 max-w-[12rem] truncate rounded-full px-2 py-0.5 text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 tracking-wide"
                       >
                         {a.agentLabel}
+                      </span>
+                    )}
+                    {a.taskId && (
+                      <span className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] text-fg-faint bg-surface-2 border border-line">
+                        #{a.taskId}
                       </span>
                     )}
                     <span

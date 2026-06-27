@@ -22,6 +22,7 @@ export function InboxView({ onAuthError }: { onAuthError: () => void }) {
   const [filter, setFilter] = useState<Filter>("pending");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = () =>
     api
@@ -41,6 +42,25 @@ export function InboxView({ onAuthError }: { onAuthError: () => void }) {
     setBusy(id);
     try {
       await api.acceptSuggestion(id);
+      await load();
+    } catch (e) {
+      if (e instanceof AuthError) onAuthError();
+      else setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const delegate = async (id: string) => {
+    setBusy(id);
+    setNotice(null);
+    try {
+      const r = await api.delegateSuggestion(id);
+      setNotice(
+        r.leadName
+          ? t("inbox_delegated_lead").replace("{lead}", r.leadName)
+          : t("inbox_delegated_generic"),
+      );
       await load();
     } catch (e) {
       if (e instanceof AuthError) onAuthError();
@@ -74,6 +94,14 @@ export function InboxView({ onAuthError }: { onAuthError: () => void }) {
         <h1 className="text-lg font-semibold text-fg">{t("inbox_title")}</h1>
         <p className="mt-1 text-sm text-fg-dim">{t("inbox_subtitle")}</p>
       </div>
+
+      <InboxInfo t={t} />
+
+      {notice && (
+        <div className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-2 text-sm text-accent">
+          {notice}
+        </div>
+      )}
 
       {/* Filter chips */}
       <div className="flex flex-wrap gap-2">
@@ -114,6 +142,7 @@ export function InboxView({ onAuthError }: { onAuthError: () => void }) {
               t={t}
               busy={busy === s.id}
               onAccept={() => accept(s.id)}
+              onDelegate={() => delegate(s.id)}
               onDismiss={() => dismiss(s.id)}
             />
           ))}
@@ -128,12 +157,14 @@ function SuggestionCard({
   t,
   busy,
   onAccept,
+  onDelegate,
   onDismiss,
 }: {
   s: Suggestion;
   t: ReturnType<typeof useI18n>["t"];
   busy: boolean;
   onAccept: () => void;
+  onDelegate: () => void;
   onDismiss: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -170,8 +201,11 @@ function SuggestionCard({
         </div>
 
         {s.status === "pending" && (
-          <div className="flex shrink-0 gap-2">
-            <Button variant="primary" disabled={busy} onClick={onAccept}>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button variant="primary" disabled={busy} onClick={onDelegate}>
+              {t("inbox_delegate")}
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={onAccept}>
               {t("inbox_accept")}
             </Button>
             <Button variant="ghost" disabled={busy} onClick={onDismiss}>
@@ -180,6 +214,39 @@ function SuggestionCard({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Collapsible "what is this / what do the buttons mean" explainer. */
+function InboxInfo({ t }: { t: ReturnType<typeof useI18n>["t"] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-line bg-surface overflow-hidden">
+      <button
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-fg hover:bg-surface-2 transition-colors"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="text-accent">ⓘ</span>
+        <span className="flex-1">{t("inbox_info_title")}</span>
+        <span className="text-fg-dim">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t border-line px-3 py-3 text-sm text-fg-dim">
+          <p>{t("inbox_info_body")}</p>
+          <ul className="space-y-1.5">
+            <li>
+              <span className="font-medium text-fg">{t("inbox_delegate")}</span> — {t("inbox_info_delegate")}
+            </li>
+            <li>
+              <span className="font-medium text-fg">{t("inbox_accept")}</span> — {t("inbox_info_park")}
+            </li>
+            <li>
+              <span className="font-medium text-fg">{t("inbox_dismiss")}</span> — {t("inbox_info_dismiss")}
+            </li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

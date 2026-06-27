@@ -102,8 +102,23 @@ export const en = {
   crew_president_sub: "President · sets direction, final say",
   crew_atlas_sub: "Chief coordinator",
   crew_leads: "Leads",
-  crew_listening: "Listening",
+  crew_listening: "Available on Telegram",
   crew_no_token: "No token, not reachable on Telegram",
+  // Crew "how it works" info card
+  crew_how_title: "How the crew works",
+  crew_how_intro:
+    "Your crew is a hierarchy of AI agents. You (President) set direction. Atlas coordinates and talks to you in the main chat. Leads own a domain and can run on their own; Assistants report to a Lead; Specialists are single-purpose workers.",
+  crew_how_wizard_title: "Adding agents (wizard)",
+  crew_how_wizard:
+    "On the Workers page, the wizard turns a plain-English goal into one or more ready agent configs (name, prompt, working dir, schedule, model). You review each draft and confirm before anything is created. You can also add one by hand.",
+  crew_how_tasks_title: "Tasks and delegation",
+  crew_how_tasks:
+    "Work reaches agents three ways: you delegate a Kanban card to a run, Atlas hands a subtask to a Lead, or an accepted Inbox suggestion is delegated. A delegated card moves backlog → doing, the agent works it end to end (breaking it into subtasks if needed), then it lands in done with a memory note and a Telegram report.",
+  crew_how_runs_title: "How agents run",
+  crew_how_runs:
+    "Each run is an autonomous Claude session in the agent's own working directory, persona, and model. A Lead with its own Telegram bot is 'Available on Telegram' and you can message it directly. Scheduled agents fire on their interval or daily time; the rest run on demand (Run now or when delegated).",
+  crew_how_show: "How the crew works",
+  crew_how_hide: "Hide",
   crew_specialists: "Specialists",
   crew_delegations: "Delegation log",
   crew_delegations_desc: "Recent inter-agent tasks and reports.",
@@ -116,7 +131,8 @@ export const en = {
   crew_council_abstain: "Abstain",
   // Inbox view (suggestions from agents)
   inbox_title: "Inbox",
-  inbox_subtitle: "Suggestions your agents filed for review. Accept to turn one into a task, or dismiss it.",
+  inbox_subtitle:
+    "Suggestions your agents filed for review. Park one as a task, delegate it to get it done now, or dismiss it.",
   inbox_filter_pending: "Pending",
   inbox_filter_accepted: "Accepted",
   inbox_filter_dismissed: "Dismissed",
@@ -125,10 +141,21 @@ export const en = {
   inbox_status_dismissed: "Dismissed",
   inbox_empty: "Nothing here.",
   inbox_empty_pending: "No pending suggestions. Your agents will file ideas here as they work.",
-  inbox_accept: "Accept",
+  inbox_accept: "Park",
+  inbox_delegate: "Delegate",
   inbox_dismiss: "Dismiss",
   inbox_more: "Show more",
   inbox_less: "Show less",
+  inbox_delegated_lead: "Delegated to {lead}. It's running now.",
+  inbox_delegated_generic: "Delegated. A generic run is on it now.",
+  // Inbox "what is this" info box
+  inbox_info_title: "What is the Inbox?",
+  inbox_info_body:
+    "When your agents work, they file ideas, findings, and proposals here instead of messaging you directly. Atlas batches them so you can review and decide in one place. Each suggestion shows who filed it and why.",
+  inbox_info_park: "Park: file it as a backlog task to do later. Nothing runs yet.",
+  inbox_info_delegate:
+    "Delegate: do it now. Creates the task and starts a run, routed to the agent that suggested it (or the best-fit Lead). You get a Telegram report when it's done.",
+  inbox_info_dismiss: "Dismiss: archive it. No task, no action.",
   // Health view
   health_cpu: "CPU",
   health_memory: "Memory",
@@ -311,6 +338,8 @@ export const en = {
   workers_no_cwd: "(no cwd)",
   workers_next: "next {time}",
   workers_wizard: "Wizard",
+  workers_hint:
+    "Workers are autonomous agents. Use the Wizard to describe a goal and let it draft ready-to-run agents, or New worker to set one up by hand. Each runs on its schedule or on demand (Run now / when delegated a task).",
   wizard_title: "Agent Setup Wizard",
   wizard_subtitle: "Answer a few questions and I'll generate a ready-to-run agent configuration for you.",
   wizard_q_goal: "What do you want this agent to do?",

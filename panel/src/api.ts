@@ -725,6 +725,11 @@ export const api = {
   suggestions: (status?: SuggestionStatus) =>
     get<{ suggestions: Suggestion[] }>(`/api/suggestions${status ? `?status=${status}` : ""}`),
   acceptSuggestion: (id: string) => req<Suggestion>("POST", `/api/suggestions/${id}/accept`),
+  delegateSuggestion: (id: string) =>
+    req<{ suggestion: Suggestion; leadName?: string; started: boolean }>(
+      "POST",
+      `/api/suggestions/${id}/delegate`,
+    ),
   dismissSuggestion: (id: string) => req<Suggestion>("POST", `/api/suggestions/${id}/dismiss`),
 
   maintenance: () => get<MaintenanceStats>("/api/maintenance"),

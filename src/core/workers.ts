@@ -138,6 +138,35 @@ export class WorkerManager {
     return this.workers.filter((w) => w.role === "lead" && w.telegramToken && w.enabled);
   }
 
+  /**
+   * Pick the most relevant Lead to hand a suggestion to, so an accepted idea is
+   * worked by the right specialist. If the suggestion was filed BY a Lead, it
+   * routes straight back to that Lead. Otherwise (e.g. Atlas filed it) it scores
+   * every enabled Lead by keyword overlap between the suggestion's category/title
+   * and the Lead's portfolio/name, returning the best match or undefined (→ a
+   * generic run) when nothing matches well.
+   */
+  routeFor(input: { fromAgentId?: string; category?: string; title?: string }): Worker | undefined {
+    // 1. Filed by a Lead → back to that Lead.
+    if (input.fromAgentId) {
+      const self = this.get(input.fromAgentId);
+      if (self && self.role === "lead" && self.enabled) return self;
+    }
+    // 2. Score enabled Leads by keyword overlap with portfolio/name.
+    const leads = this.workers.filter((w) => w.role === "lead" && w.enabled);
+    if (leads.length === 0) return undefined;
+    const needle = tokenize(`${input.category ?? ""} ${input.title ?? ""}`);
+    if (needle.size === 0) return undefined;
+    let best: { lead: Worker; score: number } | undefined;
+    for (const lead of leads) {
+      const hay = tokenize(`${lead.portfolio ?? ""} ${lead.name}`);
+      let score = 0;
+      for (const w of needle) if (hay.has(w)) score++;
+      if (score > 0 && (!best || score > best.score)) best = { lead, score };
+    }
+    return best?.lead;
+  }
+
   create(input: WorkerInput): Worker {
     const now = Date.now();
     const worker: Worker = {
@@ -388,6 +417,20 @@ export function describeWorkerSchedule(w: Worker): string {
 function summarize(input: unknown): string {
   const o = (input ?? {}) as Record<string, unknown>;
   return String(o.command ?? o.file_path ?? o.pattern ?? o.path ?? "").slice(0, 80);
+}
+
+const STOPWORDS = new Set([
+  "the", "and", "for", "with", "a", "an", "to", "of", "in", "on", "add", "new",
+  "fix", "update", "make", "lead", "support", "system",
+]);
+
+/** Lowercase word set (≥3 chars, stopwords dropped) for cheap keyword overlap. */
+function tokenize(s: string): Set<string> {
+  const out = new Set<string>();
+  for (const w of s.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (w.length >= 3 && !STOPWORDS.has(w)) out.add(w);
+  }
+  return out;
 }
 
 export const workers = new WorkerManager();

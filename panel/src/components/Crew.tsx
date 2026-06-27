@@ -67,6 +67,8 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
         <p className="mt-1 text-sm text-fg-dim">{t("crew_subtitle")}</p>
       </div>
 
+      <CrewHowItWorks t={t} />
+
       {/* President */}
       <CrewNode
         icon="★"
@@ -265,6 +267,39 @@ function CouncilCard({ session, t }: { session: CouncilSession; t: ReturnType<ty
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Collapsible explainer of how the crew, wizard, tasks and runs work. */
+function CrewHowItWorks({ t }: { t: ReturnType<typeof useI18n>["t"] }) {
+  const [open, setOpen] = useState(false);
+  const sections: Array<[string, string]> = [
+    [t("crew_how_wizard_title"), t("crew_how_wizard")],
+    [t("crew_how_tasks_title"), t("crew_how_tasks")],
+    [t("crew_how_runs_title"), t("crew_how_runs")],
+  ];
+  return (
+    <div className="rounded-lg border border-line bg-surface overflow-hidden">
+      <button
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-fg hover:bg-surface-2 transition-colors"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="text-accent">ⓘ</span>
+        <span className="flex-1">{open ? t("crew_how_title") : t("crew_how_show")}</span>
+        <span className="text-fg-dim">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && (
+        <div className="space-y-3 border-t border-line px-3 py-3 text-sm text-fg-dim">
+          <p>{t("crew_how_intro")}</p>
+          {sections.map(([title, body]) => (
+            <div key={title}>
+              <div className="font-medium text-fg">{title}</div>
+              <p className="mt-0.5">{body}</p>
+            </div>
+          ))}
         </div>
       )}
     </div>

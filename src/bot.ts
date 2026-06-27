@@ -279,14 +279,15 @@ export function buildBot(): Telegraf {
   taskDelegator.onReport(async (r) => {
     const chatId = alertTargets[0];
     if (chatId === undefined) return;
+    const by = r.leadName ? ` (${r.leadName})` : "";
     if (r.status === "ok" && r.res) {
-      await sendSummaryReport(bot.telegram, chatId, r.res, `Task: ${r.title}`).catch(() => {});
+      await sendSummaryReport(bot.telegram, chatId, r.res, `Task${by}: ${r.title}`).catch(() => {});
       return;
     }
     const notice =
       r.status === "stopped"
-        ? `⏹ Task stopped — ${r.title}`
-        : `⚠️ Task failed — ${r.title}${r.error ? `: ${r.error}` : ""}`;
+        ? `⏹ Task stopped — ${r.title}${by}`
+        : `⚠️ Task failed — ${r.title}${by}${r.error ? `: ${r.error}` : ""}`;
     await bot.telegram
       .sendMessage(chatId, `<i>${escapeHtml(notice)}</i>`, { parse_mode: "HTML" })
       .catch(() => {});

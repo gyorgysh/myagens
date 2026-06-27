@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import { loadJson, saveJson } from "./jsonStore.js";
 import { audit } from "./audit.js";
 import { createTask } from "./tasks.js";
+import { taskDelegator } from "./taskRunner.js";
+import { workers } from "./workers.js";
 
 const FILE = "suggestions.json";
 
@@ -108,13 +110,10 @@ class SuggestionStore {
     return this.items.find((s) => s.id === id);
   }
 
-  /**
-   * Accept a pending suggestion: file it as a Kanban backlog card and mark it
-   * accepted. No-op if already decided. Returns the updated suggestion.
-   */
-  accept(id: string): Suggestion | undefined {
-    const s = this.get(id);
-    if (!s || s.status !== "pending") return s;
+  /** Create the backlog card for a pending suggestion and mark it accepted.
+   *  Returns the new task id, or undefined if the suggestion can't be accepted. */
+  private fileCard(s: Suggestion): string | undefined {
+    if (s.status !== "pending") return undefined;
     const task = createTask({
       title: s.title,
       notes: [s.detail, `— suggested by ${s.fromAgentName}`].filter(Boolean).join("\n\n"),
@@ -123,9 +122,39 @@ class SuggestionStore {
     s.status = "accepted";
     s.decidedAt = Date.now();
     s.taskId = task.id;
+    return task.id;
+  }
+
+  /**
+   * Accept (park) a pending suggestion: file it as a Kanban backlog card and mark
+   * it accepted. No-op if already decided. Returns the updated suggestion.
+   */
+  accept(id: string): Suggestion | undefined {
+    const s = this.get(id);
+    if (!s || s.status !== "pending") return s;
+    const taskId = this.fileCard(s);
     this.persist();
-    audit("suggestion.accept", { id, taskId: task.id });
+    audit("suggestion.accept", { id, taskId });
     return s;
+  }
+
+  /**
+   * Accept AND immediately delegate a pending suggestion: file the card, route it
+   * to the most relevant Lead (or a generic run when none fits), and kick off an
+   * autonomous run that does the work, moves the card to done, and reports back.
+   * Returns the updated suggestion plus the routed Lead's display name (if any).
+   */
+  delegate(id: string): { suggestion?: Suggestion; leadName?: string; started: boolean } {
+    const s = this.get(id);
+    if (!s) return { started: false };
+    if (s.status !== "pending") return { suggestion: s, started: false };
+    const taskId = this.fileCard(s);
+    this.persist();
+    if (!taskId) return { suggestion: s, started: false };
+    const lead = workers.routeFor({ fromAgentId: s.fromAgentId, category: s.category, title: s.title });
+    const res = taskDelegator.delegate(taskId, lead?.id);
+    audit("suggestion.delegate", { id, taskId, leadId: lead?.id, ok: res.ok });
+    return { suggestion: s, leadName: lead?.name, started: res.ok };
   }
 
   /** Dismiss (archive) a pending suggestion. No-op if already decided. */

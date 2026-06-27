@@ -104,8 +104,23 @@ export const hu: Translations = {
   crew_president_sub: "Elnök · irányt ad, végső döntés",
   crew_atlas_sub: "Főkoordinátor",
   crew_leads: "Vezetők",
-  crew_listening: "Figyel",
+  crew_listening: "Elérhető Telegramon",
   crew_no_token: "Nincs token, Telegramon nem elérhető",
+  // Crew "hogyan működik" infókártya
+  crew_how_title: "Hogyan működik a csapat",
+  crew_how_intro:
+    "A csapatod AI-ügynökök hierarchiája. Te (Elnök) adod az irányt. Atlas koordinál és a fő csevegésben beszél veled. A Leadek egy területet visznek és önállóan futhatnak; az Asszisztensek egy Leadnek jelentenek; a Specialisták egycélú munkások.",
+  crew_how_wizard_title: "Ügynökök hozzáadása (varázsló)",
+  crew_how_wizard:
+    "A Munkások oldalon a varázsló egy köznyelvi célból kész ügynök-konfigurációkat készít (név, prompt, munkakönyvtár, ütemezés, modell). Minden tervezetet átnézel és jóváhagysz, mielőtt bármi létrejön. Kézzel is felvehetsz egyet.",
+  crew_how_tasks_title: "Feladatok és delegálás",
+  crew_how_tasks:
+    "A munka három módon jut el az ügynökökhöz: delegálsz egy Kanban-kártyát, Atlas egy részfeladatot ad egy Leadnek, vagy egy elfogadott Postaláda-javaslat lesz delegálva. A delegált kártya backlog → folyamatban lép, az ügynök végig elvégzi (szükség esetén részfeladatokra bontva), majd a kész oszlopba kerül egy memóriabejegyzéssel és egy Telegram-jelentéssel.",
+  crew_how_runs_title: "Hogyan futnak az ügynökök",
+  crew_how_runs:
+    "Minden futás egy önálló Claude-munkamenet az ügynök saját munkakönyvtárában, personájával és modelljével. Egy saját Telegram-bottal rendelkező Lead 'Elérhető Telegramon', és közvetlenül üzenhetsz neki. Az ütemezett ügynökök az intervallumukon vagy napi időpontjukon futnak; a többi igény szerint (Futtatás most vagy delegáláskor).",
+  crew_how_show: "Hogyan működik a csapat",
+  crew_how_hide: "Elrejt",
   crew_specialists: "Specialisták",
   crew_delegations: "Delegálási napló",
   crew_delegations_desc: "Legutóbbi ügynökök közötti feladatok és jelentések.",
@@ -118,7 +133,8 @@ export const hu: Translations = {
   crew_council_abstain: "Tartózkodik",
   // Postaláda nézet (ügynökök javaslatai)
   inbox_title: "Postaláda",
-  inbox_subtitle: "Az ügynökeid által beküldött javaslatok. Fogadd el, hogy feladat legyen belőle, vagy vesd el.",
+  inbox_subtitle:
+    "Az ügynökeid által beküldött javaslatok. Tedd feladatok közé, delegáld hogy most elkészüljön, vagy vesd el.",
   inbox_filter_pending: "Függőben",
   inbox_filter_accepted: "Elfogadva",
   inbox_filter_dismissed: "Elvetve",
@@ -127,10 +143,21 @@ export const hu: Translations = {
   inbox_status_dismissed: "Elvetve",
   inbox_empty: "Itt nincs semmi.",
   inbox_empty_pending: "Nincs függőben lévő javaslat. Az ügynökeid ide küldik az ötleteiket munka közben.",
-  inbox_accept: "Elfogad",
+  inbox_accept: "Feladathoz",
+  inbox_delegate: "Delegál",
   inbox_dismiss: "Elvet",
   inbox_more: "Több",
   inbox_less: "Kevesebb",
+  inbox_delegated_lead: "Delegálva: {lead}. Most fut.",
+  inbox_delegated_generic: "Delegálva. Egy általános futás dolgozik rajta.",
+  // Postaláda "mi ez" infódoboz
+  inbox_info_title: "Mi a Postaláda?",
+  inbox_info_body:
+    "Amikor az ügynökeid dolgoznak, ide küldik az ötleteiket, megállapításaikat és javaslataikat ahelyett, hogy közvetlenül üzennének. Atlas összegyűjti őket, hogy egy helyen átnézd és döntsd el. Minden javaslat mutatja, ki és miért küldte.",
+  inbox_info_park: "Feladathoz: tedd a backlogba későbbre. Még semmi nem fut.",
+  inbox_info_delegate:
+    "Delegál: csináld meg most. Létrehozza a feladatot és elindít egy futást, a javasló ügynökhöz (vagy a legjobban illő Leadhez) irányítva. A végén Telegram-jelentést kapsz.",
+  inbox_info_dismiss: "Elvet: archiváld. Nincs feladat, nincs művelet.",
   // Egészség nézet
   health_cpu: "CPU",
   health_memory: "Memória",
@@ -313,6 +340,8 @@ export const hu: Translations = {
   workers_no_cwd: "(nincs munkamappa)",
   workers_next: "következő {time}",
   workers_wizard: "Varázsló",
+  workers_hint:
+    "A munkások önálló ügynökök. A Varázslóval írj le egy célt, és elkészíti a futtatásra kész ügynököket, vagy az Új munkással állítsd be kézzel. Mindegyik az ütemezése szerint vagy igény szerint fut (Futtatás most / ha feladatot delegálsz).",
   wizard_title: "Ügynök beállító varázsló",
   wizard_subtitle: "Válaszolj néhány kérdésre, és elkészítek egy futtatásra kész ügynök-konfigurációt.",
   wizard_q_goal: "Mit szeretnél, hogy ez az ügynök csináljon?",

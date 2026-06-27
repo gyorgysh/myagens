@@ -102,6 +102,10 @@ export function WorkersView({ onAuthError }: { onAuthError: () => void }) {
         )}
       </div>
 
+      {!creating && !wizarding && (
+        <p className="text-xs text-fg-dim">{t("workers_hint")}</p>
+      )}
+
       {wizarding && (
         <WorkerWizard
           providers={providers}
@@ -230,7 +234,9 @@ function WorkerRow({
         {worker.role === "lead" && <Badge tone="blue">{t("workers_lead")}</Badge>}
         {worker.role === "assistant" && <Badge tone="zinc">{t("workers_assistant")}</Badge>}
         {worker.portfolio && <Badge>{worker.portfolio}</Badge>}
-        <Badge tone={worker.schedule === "manual" ? "zinc" : "blue"}>{worker.schedule}</Badge>
+        {worker.schedule && worker.schedule !== "manual" && (
+          <Badge tone="blue">{worker.schedule}</Badge>
+        )}
         {worker.model && <Badge>{shortModel(worker.model)}</Badge>}
         {providerName && <Badge tone="blue">⌂ {providerName}</Badge>}
         {!worker.enabled && <Badge tone="amber">{t("disabled")}</Badge>}

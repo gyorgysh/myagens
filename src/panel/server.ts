@@ -588,6 +588,11 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     if (!updated) return reply.code(404).send({ error: "not found" });
     return updated;
   });
+  app.post("/api/suggestions/:id/delegate", async (req, reply) => {
+    const { suggestion, leadName, started } = suggestions.delegate((req.params as { id: string }).id);
+    if (!suggestion) return reply.code(404).send({ error: "not found" });
+    return { suggestion, leadName, started };
+  });
   app.post("/api/suggestions/:id/dismiss", async (req, reply) => {
     const updated = suggestions.dismiss((req.params as { id: string }).id);
     if (!updated) return reply.code(404).send({ error: "not found" });

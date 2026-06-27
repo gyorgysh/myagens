@@ -5,18 +5,23 @@ import { escapeHtml } from "./formatting.js";
 
 const HEADER = "<b>📥 Suggestion inbox</b>";
 
-/** One block of HTML per pending suggestion + its Accept / Dismiss / Details row. */
-function renderItem(s: Suggestion): { text: string; buttons: ReturnType<typeof Markup.button.callback>[] } {
+type Row = ReturnType<typeof Markup.button.callback>[];
+
+/** One block of HTML per pending suggestion + its action rows. */
+function renderItem(s: Suggestion): { text: string; rows: Row[] } {
   const cat = s.category ? ` <i>[${escapeHtml(s.category)}]</i>` : "";
   const text =
     `• <b>${escapeHtml(s.title)}</b>${cat}\n` +
     `  <i>${escapeHtml(s.fromAgentName)}</i> · <code>${s.id}</code>`;
   return {
     text,
-    buttons: [
-      Markup.button.callback("✅ Accept", `inbox:${s.id}:acc`),
-      Markup.button.callback("✕ Dismiss", `inbox:${s.id}:dis`),
-      Markup.button.callback("🔎 Details", `inbox:${s.id}:det`),
+    rows: [
+      [
+        Markup.button.callback("📋 Park", `inbox:${s.id}:acc`),
+        Markup.button.callback("🚀 Delegate", `inbox:${s.id}:del`),
+        Markup.button.callback("✕ Dismiss", `inbox:${s.id}:dis`),
+      ],
+      [Markup.button.callback("🔎 Details", `inbox:${s.id}:det`)],
     ],
   };
 }
@@ -31,10 +36,11 @@ function buildDigest(): { body: string; keyboard: ReturnType<typeof Markup.inlin
     };
   }
   const blocks = pending.map(renderItem);
-  const body = `${HEADER}\n${pending.length} pending. Accept files a backlog card; dismiss archives it.\n\n${blocks
-    .map((b) => b.text)
-    .join("\n\n")}`;
-  return { body, keyboard: Markup.inlineKeyboard(blocks.map((b) => b.buttons)) };
+  const body =
+    `${HEADER}\n${pending.length} pending. ` +
+    `Park files a backlog card; delegate gets it done now; dismiss archives it.\n\n` +
+    blocks.map((b) => b.text).join("\n\n");
+  return { body, keyboard: Markup.inlineKeyboard(blocks.flatMap((b) => b.rows)) };
 }
 
 /** Reply to /inbox with the pending suggestion digest. */
@@ -73,10 +79,27 @@ export async function resolveInboxCallback(
   } else if (action === "acc") {
     const updated = suggestions.accept(id);
     if (updated?.status === "accepted") {
-      log.info("Suggestion accepted", { id, taskId: updated.taskId });
-      toast = "Accepted → backlog card";
+      log.info("Suggestion parked", { id, taskId: updated.taskId });
+      toast = "Parked → backlog card";
     } else {
       toast = "Already decided";
+    }
+  } else if (action === "del") {
+    const { suggestion, leadName, started } = suggestions.delegate(id);
+    if (started && suggestion) {
+      const who = leadName ?? "a generic run";
+      log.info("Suggestion delegated", { id, taskId: suggestion.taskId, leadName });
+      await tg
+        .sendMessage(
+          chatId,
+          `🚀 Delegated <b>${escapeHtml(suggestion.title)}</b> to <b>${escapeHtml(who)}</b>. ` +
+            `The card is in progress; I'll report back when it's done.`,
+          { parse_mode: "HTML" },
+        )
+        .catch(() => {});
+      toast = leadName ? `Delegated to ${leadName}` : "Delegated";
+    } else {
+      toast = suggestion ? "Couldn't start (already running?)" : "That suggestion is gone.";
     }
   } else if (action === "dis") {
     const updated = suggestions.dismiss(id);

@@ -159,7 +159,7 @@ export function LogsView({ onAuthError }: { onAuthError: () => void }) {
   const source = histLogs ?? liveLogs;
 
   return (
-    <div className="flex h-[70vh] flex-col gap-3">
+    <div className="flex min-h-[82vh] flex-col gap-3">
       {/* Top-level tabs */}
       <div className="flex items-center gap-1 rounded-lg border border-line bg-surface p-1 self-start">
         <TabButton active={tab === "activity"} onClick={() => setTab("activity")}>
@@ -388,6 +388,9 @@ function toActivities(source: LogEntry[], t: TFn): Activity[] {
   return out;
 }
 
+/** Sentinel agent-filter key for activities with no detectable agent label. */
+const UNKNOWN_AGENT = "__unknown__";
+
 function ActivityFeed({
   source,
   follow,
@@ -400,11 +403,43 @@ function ActivityFeed({
   t: TFn;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
-  const activities = toActivities(source, t);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const all = toActivities(source, t);
+
+  // Per-item diff override: flips whichever default `collapseDiffs` sets.
+  const [toggled, setToggled] = useState<Set<string>>(new Set());
+  // When checked, diffs are collapsed by default (opt-out of the expanded view).
+  const [collapseDiffs, setCollapseDiffs] = useState(false);
+  // Agent labels the user has hidden (empty = show all).
+  const [hiddenAgents, setHiddenAgents] = useState<Set<string>>(new Set());
+
+  // Distinct agent labels present in the feed, for the filter buttons.
+  const agentKeys: string[] = [];
+  let hasUnknown = false;
+  for (const a of all) {
+    if (a.agentLabel) {
+      if (!agentKeys.includes(a.agentLabel)) agentKeys.push(a.agentLabel);
+    } else {
+      hasUnknown = true;
+    }
+  }
+  agentKeys.sort((x, y) => x.localeCompare(y));
+
+  const activities = all.filter((a) =>
+    !hiddenAgents.has(a.agentLabel ?? UNKNOWN_AGENT),
+  );
+
+  const isDiffOpen = (key: string) =>
+    collapseDiffs ? toggled.has(key) : !toggled.has(key);
 
   const toggleDiff = (key: string) =>
-    setExpanded((prev) => {
+    setToggled((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+
+  const toggleAgent = (key: string) =>
+    setHiddenAgents((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
@@ -413,6 +448,8 @@ function ActivityFeed({
   useEffect(() => {
     if (follow && boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
   }, [activities.length, follow]);
+
+  const showAgentFilters = agentKeys.length + (hasUnknown ? 1 : 0) > 1;
 
   return (
     <>
@@ -424,6 +461,18 @@ function ActivityFeed({
         <label className="flex items-center gap-1.5 text-xs text-fg-muted">
           <input
             type="checkbox"
+            checked={collapseDiffs}
+            onChange={(e) => {
+              setCollapseDiffs(e.target.checked);
+              setToggled(new Set()); // reset per-item overrides to the new default
+            }}
+            className="h-3.5 w-3.5 accent-[var(--accent)]"
+          />
+          {t("logs_collapse_diffs")}
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+          <input
+            type="checkbox"
             checked={follow}
             onChange={(e) => setFollow(e.target.checked)}
             className="h-3.5 w-3.5 accent-[var(--accent)]"
@@ -431,60 +480,95 @@ function ActivityFeed({
           {t("logs_follow")}
         </label>
       </div>
+
+      {/* Per-agent filter buttons */}
+      {showAgentFilters && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-fg-faint">
+            {t("logs_filter_agent")}
+          </span>
+          {agentKeys.map((key) => (
+            <button
+              key={key}
+              onClick={() => toggleAgent(key)}
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                hiddenAgents.has(key)
+                  ? "border-line text-fg-faint opacity-50"
+                  : "border-accent/30 bg-accent/10 text-accent"
+              }`}
+            >
+              {key}
+            </button>
+          ))}
+          {hasUnknown && (
+            <button
+              onClick={() => toggleAgent(UNKNOWN_AGENT)}
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                hiddenAgents.has(UNKNOWN_AGENT)
+                  ? "border-line text-fg-faint opacity-50"
+                  : "border-line bg-surface-2 text-fg-muted"
+              }`}
+            >
+              {t("logs_filter_system")}
+            </button>
+          )}
+        </div>
+      )}
+
       <div
         ref={boxRef}
         onWheel={() => setFollow(false)}
-        className="flex-1 overflow-auto rounded-xl border border-line bg-input p-2"
+        className="flex-1 overflow-auto rounded-xl border border-line bg-surface p-3"
       >
         {activities.length === 0 ? (
           <Empty>{t("logs_activity_empty")}</Empty>
         ) : (
-          <div className="flex flex-col">
+          <div className="flex flex-col divide-y divide-line/50">
             {activities.map((a) => (
-              <div key={a.key} className="rounded-lg px-2 py-1 hover:bg-surface-2">
-                <div className="flex items-center gap-3 py-0.5">
-                  <span className="shrink-0 text-base leading-none">{a.icon}</span>
+              <div key={a.key} className="group px-2 py-2 hover:bg-surface-2/60 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="shrink-0 text-sm leading-none w-5 text-center">{a.icon}</span>
                   <div className="min-w-0 flex-1 flex flex-wrap items-center gap-1.5">
                     {a.agentLabel && (
-                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium bg-accent/10 text-accent border border-accent/20">
+                      <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 tracking-wide">
                         {a.agentLabel}
                       </span>
                     )}
                     <span
                       className={`text-sm font-medium ${
-                        a.tone === "error" ? "text-red-400" : "text-fg"
+                        a.tone === "error" ? "text-red-500 dark:text-red-400" : "text-fg"
                       }`}
                     >
                       {a.verb}
                     </span>
                     {a.target && (
-                      <span className="truncate font-mono text-xs text-fg-dim max-w-[200px]">{a.target}</span>
+                      <span className="font-mono text-[11px] text-fg-dim break-all max-w-full leading-snug">{a.target}</span>
                     )}
                     {a.diffLines && (
-                      <span className="shrink-0 font-mono text-[10px] text-fg-faint">{a.diffLines}</span>
+                      <span className="shrink-0 font-mono text-[10px] text-fg-faint bg-surface-2 rounded px-1.5 py-0.5">{a.diffLines}</span>
                     )}
                     {a.diffSnippet && (
                       <button
                         type="button"
                         onClick={() => toggleDiff(a.key)}
-                        className="shrink-0 text-[10px] text-accent hover:underline"
+                        className="shrink-0 text-[10px] font-medium text-accent hover:text-accent/80 underline-offset-2 hover:underline"
                       >
-                        {expanded.has(a.key) ? t("logs_act_diff_collapse") : t("logs_act_diff_expand")}
+                        {isDiffOpen(a.key) ? t("logs_act_diff_collapse") : t("logs_act_diff_expand")}
                       </button>
                     )}
                   </div>
-                  <span className="tabular shrink-0 text-xs text-fg-faint">
+                  <span className="tabular shrink-0 text-[10px] text-fg-faint font-mono">
                     {new Date(a.ts).toLocaleTimeString()}
                   </span>
                 </div>
-                {a.diffSnippet && expanded.has(a.key) && (
-                  <pre className="mt-1 ml-8 overflow-x-auto rounded bg-surface-2 p-2 text-[10px] leading-[1.5]">
+                {a.diffSnippet && isDiffOpen(a.key) && (
+                  <pre className="mt-1.5 ml-8 overflow-x-auto rounded-lg border border-line bg-surface p-3 text-[11px] leading-relaxed shadow-sm">
                     {a.diffSnippet.split("\n").map((line, i) => (
                       <div
                         key={i}
                         className={
-                          line.startsWith("+ ") ? "text-green-400" :
-                          line.startsWith("- ") ? "text-red-400" :
+                          line.startsWith("+ ") ? "text-emerald-600 dark:text-emerald-400" :
+                          line.startsWith("- ") ? "text-red-600 dark:text-red-400" :
                           "text-fg-dim"
                         }
                       >
@@ -610,23 +694,25 @@ function RawLogs({
       <div
         ref={boxRef}
         onWheel={() => setFollow(false)}
-        className="flex-1 overflow-auto rounded-xl border border-line bg-input p-3 font-mono text-xs leading-relaxed"
+        className="flex-1 overflow-auto rounded-xl border border-line bg-surface p-3 font-mono text-xs leading-relaxed"
       >
         {visible.length === 0 ? (
           <Empty>{t("logs_no_lines")}</Empty>
         ) : (
-          visible.map((l) => (
-            <div key={`${l.seq}-${l.ts}`} className="whitespace-pre-wrap break-words">
-              <span className="text-fg-faint">{new Date(l.ts).toLocaleTimeString()} </span>
-              <span className={`${LEVEL_COLOR[l.level]} font-semibold`}>
-                {l.level.toUpperCase().padEnd(5)}{" "}
-              </span>
-              <span className="text-fg">{l.msg}</span>
-              {l.meta && Object.keys(l.meta).length > 0 && (
-                <span className="text-fg-dim"> {JSON.stringify(l.meta)}</span>
-              )}
-            </div>
-          ))
+          <div className="flex flex-col divide-y divide-line/30">
+            {visible.map((l) => (
+              <div key={`${l.seq}-${l.ts}`} className="py-0.5 whitespace-pre-wrap break-words hover:bg-surface-2/40">
+                <span className="text-fg-faint">{new Date(l.ts).toLocaleTimeString()} </span>
+                <span className={`${LEVEL_COLOR[l.level]} font-semibold`}>
+                  {l.level.toUpperCase().padEnd(5)}{" "}
+                </span>
+                <span className="text-fg">{l.msg}</span>
+                {l.meta && Object.keys(l.meta).length > 0 && (
+                  <span className="text-fg-dim"> {JSON.stringify(l.meta)}</span>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </>
@@ -689,7 +775,7 @@ function AnalyticsTab({
   t: TFn;
 }) {
   return (
-    <div className="flex-1 overflow-auto rounded-xl border border-line bg-input p-4">
+    <div className="flex-1 overflow-auto rounded-xl border border-line bg-surface p-4">
       <div className="mb-4 flex items-center gap-2">
         <span className="text-sm font-semibold text-fg">
           {t("logs_insights_title")}

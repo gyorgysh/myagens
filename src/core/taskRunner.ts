@@ -5,7 +5,7 @@ import { memoryMcp } from "../mcp/memory.js";
 import { createTasksMcp } from "../mcp/tasks.js";
 import { skillsMcp } from "../mcp/skills.js";
 import { selfUpdateMcp } from "../mcp/selfUpdate.js";
-import { getTask, setDelegate, updateTask } from "./tasks.js";
+import { getTask, setDelegate, updateTask, listTasks, archiveTask } from "./tasks.js";
 import { memory } from "./memory.js";
 import { workers, type Worker } from "./workers.js";
 import { getSkill } from "./skills.js";
@@ -151,7 +151,7 @@ export class TaskDelegator {
         },
         onToolUse: (name, input) => {
           const diff = toolDiffMeta(name, input);
-          log.info("Tool use", { chatId: 0, tool: name, arg: preview(typeof input === "string" ? input : JSON.stringify(input), 80), task: title, taskId: id, lead: lead?.name, runId, ...(diff ?? {}) });
+          log.info("Tool use", { chatId: 0, tool: name, arg: preview(typeof input === "string" ? input : JSON.stringify(input), 300), task: title, taskId: id, lead: lead?.name, runId, ...(diff ?? {}) });
           this.broadcast({ type: "task", event: "tool", taskId: id, runId, tool: name });
         },
         onSessionId: () => {},
@@ -166,6 +166,15 @@ export class TaskDelegator {
       });
       const finalColumn = res.isError ? undefined : "done";
       if (finalColumn) updateTask(id, { column: finalColumn });
+      // If the run broke the card into subtasks, archive the parent card to
+      // keep the backlog clean — the children carry the actual work forward.
+      if (!res.isError) {
+        const hadChildren = listTasks().some((t) => t.parentId === id);
+        if (hadChildren) {
+          archiveTask(id);
+          log.info("Task parent archived after subtask breakdown", { taskId: id });
+        }
+      }
       // On success, write a hot memory so the agent knows this task was done.
       // Useful for git commit messages and context across sessions.
       if (!res.isError) {

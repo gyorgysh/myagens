@@ -348,7 +348,7 @@ export const hu: Translations = {
   tasks_created_by: "{name} által",
   tasks_did_you_know_title: "Tudtad?",
   tasks_did_you_know_body: "Kérheted az ügynököt, hogy adjon hozzá kártyát (pl. 'adj hozzá egy feladatot a lemezhasználat ellenőrzéséhez'), vagy delegálj egy kártyát autonóm futtatásra egy kattintással. A Kész oszlopból 1 nap után kerülnek az archívumba, ami 7 nap után automatikusan törlődik.",
-  tasks_add_card_top: "+ Kártya hozzáadása a tetejére",
+  tasks_add_card_top: "+ Kártya hozzáadása",
   tasks_select_mode: "Kijelölés",
   tasks_select_cancel: "Mégse",
   tasks_bulk_delete: "{n} törlése",
@@ -691,6 +691,9 @@ export const hu: Translations = {
   logs_act_panel_ready: "Panel online",
   logs_act_diff_expand: "▸ diff",
   logs_act_diff_collapse: "▾ diff",
+  logs_collapse_diffs: "Diffek összecsukása",
+  logs_filter_agent: "Ügynök:",
+  logs_filter_system: "Rendszer",
 
   // Fő ügynök kártya
   agent_main_title: "Fő ügynök",

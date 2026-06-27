@@ -355,7 +355,7 @@ export class WorkerManager {
         },
         onToolUse: (name, input) => {
           const diff = toolDiffMeta(name, input);
-          log.info("Tool use", { chatId: 0, tool: name, arg: preview(summarize(input), 80), worker: w.name, workerId: w.id, runId: run.id, ...(diff ?? {}) });
+          log.info("Tool use", { chatId: 0, tool: name, arg: preview(summarize(input), 300), worker: w.name, workerId: w.id, runId: run.id, ...(diff ?? {}) });
           this.broadcast({
             type: "worker",
             event: "tool",

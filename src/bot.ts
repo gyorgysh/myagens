@@ -605,7 +605,7 @@ async function handleUserPrompt(
       },
       onToolUse: (name, input) => {
         const diff = toolDiffMeta(name, input);
-        log.info("Tool use", { chatId, tool: name, arg: preview(summarizeArg(input), 80), ...(diff ?? {}) });
+        log.info("Tool use", { chatId, tool: name, arg: preview(summarizeArg(input), 300), ...(diff ?? {}) });
         streamer.setStatus(`🔧 <i>${name}</i> ${summarizeInput(input)}`);
         if (mirror) chatBridge.mirrorTool(mirrorMsgId, name, preview(summarizeArg(input), 120));
 

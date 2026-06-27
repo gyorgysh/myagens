@@ -12,6 +12,7 @@ import { isAuthorized } from "../auth.js";
 import { resolveSecret } from "../core/vault.js";
 import { getProvider } from "../core/providers.js";
 import { TelegramStreamer } from "./streamer.js";
+import { AskQuestionManager } from "./askQuestion.js";
 import { sendExpandableQuote, sendFormattedMarkdown } from "./send.js";
 import { normalizeAgentText, summarizeInput } from "./formatting.js";
 import { getLeadProtocol } from "../prompt.js";
@@ -27,6 +28,7 @@ export class LeadBot {
   private bot: Telegraf;
   private sessions: SessionManager;
   private lead: Worker;
+  private asks: AskQuestionManager;
 
   constructor(lead: Worker) {
     this.lead = lead;
@@ -38,10 +40,12 @@ export class LeadBot {
     this.bot = new Telegraf(token, { handlerTimeout: Infinity });
     // Each lead bot gets its own session store, namespaced by lead id.
     this.sessions = new SessionManager(`lead-${lead.id}-state.json`);
+    // Renders AskUserQuestion tool calls as inline buttons in this Lead's chat.
+    this.asks = new AskQuestionManager(this.bot.telegram);
   }
 
   async start(): Promise<void> {
-    const { bot, sessions, lead } = this;
+    const { bot, sessions, lead, asks } = this;
 
     // Auth middleware — identical rule to the main bot: allow-listed user in a
     // private 1:1 chat. The shared helper also enforces the private-chat check,
@@ -60,6 +64,21 @@ export class LeadBot {
         updateType: ctx.updateType,
         error: String(err),
       });
+    });
+
+    // AskUserQuestion inline buttons resolve through here, mirroring the main
+    // bot's callback_query handler. The blocking canUseTool promise is settled
+    // by asks.resolve once the user taps an option (or Done for multi-select).
+    bot.on("callback_query", async (ctx) => {
+      const data =
+        ctx.callbackQuery && "data" in ctx.callbackQuery ? ctx.callbackQuery.data : undefined;
+      if (data && asks.isAskCallback(data)) {
+        log.debug("AskQuestion button pressed (lead)", { leadId: lead.id, chatId: ctx.chat?.id, data });
+        const toast = await asks.resolve(data);
+        await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
+      } else {
+        await ctx.answerCbQuery().catch(() => {});
+      }
     });
 
     // /status
@@ -120,6 +139,13 @@ export class LeadBot {
         log.info("crew_ask resolved by user (lead)", { leadId: lead.id, chatId: ctx.chat.id });
         return;
       }
+      // A free-text "Other" answer to an AskUserQuestion prompt resolves that
+      // pending question instead of starting a new turn (the asking turn holds
+      // busy=true, so this must short-circuit before the busy guard).
+      if (asks.hasPendingText(ctx.chat.id) && asks.resolveText(ctx.chat.id, ctx.message.text)) {
+        log.info("AskUserQuestion resolved by text (lead)", { leadId: lead.id, chatId: ctx.chat.id });
+        return;
+      }
       const s = sessions.get(ctx.chat.id);
       if (s.busy) {
         await ctx.reply("Already working on something. /stop to cancel.");
@@ -134,7 +160,10 @@ export class LeadBot {
       // crew_ask_president so the input area isn't stuck spinning.
       await ctx.telegram.sendChatAction(ctx.chat.id, "typing").catch(() => {});
       const typing = setInterval(() => {
-        if (hasPendingAsk(ctx.chat.id)) return;
+        // Suppress while parked on crew_ask_president or an AskUserQuestion
+        // prompt, so the input area isn't stuck spinning (and a typed "Other"
+        // reply isn't masked).
+        if (hasPendingAsk(ctx.chat.id) || asks.hasPending(ctx.chat.id)) return;
         void ctx.telegram.sendChatAction(ctx.chat.id, "typing").catch(() => {});
       }, 4000);
       try {
@@ -172,7 +201,19 @@ export class LeadBot {
           permissionMode: s.autonomy === "full" ? "bypassPermissions" : "default",
           abortController: s.abort,
           mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead.id }), skills: skillsMcp, crew: crewMcp },
-          canUseTool: async (_name, input) => ({ behavior: "allow", updatedInput: input }),
+          canUseTool: async (name, input) => {
+            // AskUserQuestion has no Telegram-native picker, so render it as
+            // inline buttons (with a free-text fallback) and hand the collected
+            // answers back to the model as the tool result via a deny message —
+            // same interception the main bot does. Everything else is allowed
+            // (Leads run autonomously).
+            if (name === "AskUserQuestion") {
+              log.info("AskUserQuestion intercepted (lead)", { leadId: lead.id, chatId: ctx.chat.id });
+              const answer = await asks.ask(ctx.chat.id, input);
+              return { behavior: "deny", message: answer };
+            }
+            return { behavior: "allow", updatedInput: input };
+          },
           onText: (delta) => {
             streamer.appendText(normalizeAgentText(delta));
           },

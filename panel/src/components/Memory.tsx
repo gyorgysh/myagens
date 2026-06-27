@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { api, AuthError, type MemoryEntry, type MemoryTier } from "../api.ts";
+import { api, AuthError, type MemoryEntry, type MemoryStats, type MemoryTier } from "../api.ts";
 import { useI18n } from "../lib/useI18n.ts";
+import { relTime } from "../lib/format.ts";
 import { Badge, Button, Callout, Card, Empty, Input, Label, TextArea } from "./ui.tsx";
 
 const blank = { text: "", tags: "", salience: 0.5, tier: "warm" as MemoryTier };
@@ -13,34 +14,52 @@ const TIER_TONE = {
 
 const TIER_KEY = { hot: "memory_tier_hot", warm: "memory_tier_warm", cold: "memory_tier_cold" } as const;
 
+type TierFilter = "all" | MemoryTier;
+
 export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
+  const [stats, setStats] = useState<MemoryStats | null>(null);
   const [query, setQuery] = useState("");
-  const [showCold, setShowCold] = useState(false);
+  const [tierFilter, setTierFilter] = useState<TierFilter>("all");
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [form, setForm] = useState<typeof blank>(blank);
   const [error, setError] = useState<string | null>(null);
 
+  // The unfiltered list endpoint already returns every tier (incl. cold); the
+  // `all` flag only widens *search* to cold entries. So only ask for cold when
+  // searching and the active filter could include cold.
+  const wantCold = tierFilter === "cold" || tierFilter === "all";
+
+  const loadStats = () => api.memoryStats().then(setStats).catch(() => {});
+
   const load = (q?: string) =>
     api
-      .memories(q, q ? showCold : false)
+      .memories(q, q ? wantCold : false)
       .then((r) => {
-        const filtered = showCold ? r.memories : r.memories.filter((m) => m.tier !== "cold");
+        const filtered =
+          tierFilter === "all"
+            ? r.memories
+            : r.memories.filter((m) => m.tier === tierFilter);
         setEntries(filtered);
       })
       .catch((e) => (e instanceof AuthError ? onAuthError() : setError(String(e))));
 
   useEffect(() => {
-    void load();
+    void loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showCold]);
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => void load(query.trim() || undefined), 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, showCold]);
+  }, [query, tierFilter]);
+
+  const reload = async () => {
+    await load(query.trim() || undefined);
+    await loadStats();
+  };
 
   const startNew = () => {
     setForm(blank);
@@ -62,7 +81,7 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
       if (editing === "new") await api.createMemory(payload);
       else if (editing) await api.updateMemory(editing, payload);
       setEditing(null);
-      await load(query.trim() || undefined);
+      await reload();
     } catch (e) {
       if (e instanceof AuthError) return onAuthError();
       setError(String(e));
@@ -72,7 +91,7 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
   const setTier = async (id: string, tier: MemoryTier) => {
     try {
       await api.setMemoryTier(id, tier);
-      await load(query.trim() || undefined);
+      await reload();
     } catch (e) {
       if (e instanceof AuthError) onAuthError();
     }
@@ -81,7 +100,7 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
   const del = async (id: string) => {
     if (!confirm(t("memory_forget"))) return;
     await api.deleteMemory(id);
-    await load(query.trim() || undefined);
+    await reload();
   };
 
   return (
@@ -102,6 +121,27 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
           {t("memory_tip_body")}
         </Callout>
       </div>
+
+      {stats && (
+        <div className="mb-4 overflow-hidden rounded-lg border border-line bg-line">
+          <div className="grid grid-cols-2 gap-px sm:grid-cols-4">
+            <Stat label={t("memory_stat_total")} value={stats.total} />
+            <Stat label={t("memory_stat_recalls")} value={stats.totalRecalls} />
+            <Stat label={t("memory_stat_recalled")} value={`${stats.recalledCount}/${stats.total}`} />
+            <Stat label={t("memory_stat_tags")} value={stats.tagCount} />
+            <Stat label={t("memory_tier_hot")} value={stats.byTier.hot} />
+            <Stat label={t("memory_tier_warm")} value={stats.byTier.warm} />
+            <Stat label={t("memory_tier_cold")} value={stats.byTier.cold} />
+            <Stat label={t("memory_stat_embedded")} value={`${stats.embedded}/${stats.total}`} />
+          </div>
+          {stats.lastRecalledAt && (
+            <div className="mt-px flex items-center justify-between gap-3 bg-input px-3 py-2 text-xs">
+              <span className="text-fg-faint">{t("memory_stat_last_recall")}</span>
+              <span className="text-fg-dim tabular">{relTime(stats.lastRecalledAt)}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
 
@@ -165,19 +205,34 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
         </div>
       )}
 
-      <div className="mb-3 flex gap-2">
+      <div className="mb-3 space-y-2">
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("memory_search")}
-          className="flex-1"
+          className="w-full"
         />
-        <button
-          onClick={() => setShowCold((s) => !s)}
-          className={`rounded px-2.5 py-1 text-xs border border-line transition-colors ${showCold ? "bg-[var(--accent)] text-white" : "text-fg-dim hover:text-fg"}`}
-        >
-          {showCold ? t("memory_hide_cold") : t("memory_show_cold")}
-        </button>
+        <div className="flex flex-wrap gap-1.5">
+          {(["all", "hot", "warm", "cold"] as TierFilter[]).map((f) => {
+            const count =
+              f === "all" ? stats?.total : stats?.byTier[f];
+            const label = f === "all" ? t("memory_filter_all") : t(TIER_KEY[f]);
+            return (
+              <button
+                key={f}
+                onClick={() => setTierFilter(f)}
+                className={`rounded px-2.5 py-1 text-xs border border-line transition-colors ${
+                  tierFilter === f
+                    ? "bg-[var(--accent)] text-white"
+                    : "text-fg-dim hover:text-fg"
+                }`}
+              >
+                {label}
+                {count !== undefined && <span className="ml-1 tabular opacity-70">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {entries.length === 0 && !editing ? (
@@ -226,5 +281,14 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
         </div>
       )}
     </Card>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="flex flex-col gap-1 bg-input px-3 py-2.5">
+      <span className="text-lg font-semibold leading-none text-fg tabular">{value}</span>
+      <span className="truncate text-[11px] uppercase tracking-wide text-fg-faint">{label}</span>
+    </div>
   );
 }

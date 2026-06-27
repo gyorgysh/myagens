@@ -44,6 +44,22 @@ export interface MemoryEntry {
   embeddingModel?: string;
 }
 
+/** Aggregate overview of the memory store, surfaced in the panel. */
+export interface MemoryStats {
+  total: number;
+  byTier: Record<"hot" | "warm" | "cold", number>;
+  /** Sum of useCount across all entries. */
+  totalRecalls: number;
+  /** Number of entries recalled at least once. */
+  recalledCount: number;
+  /** Number of entries with a computed embedding vector. */
+  embedded: number;
+  /** Distinct tags in use. */
+  tagCount: number;
+  /** Most recent lastUsedAt across all entries. */
+  lastRecalledAt?: number;
+}
+
 interface MemoryFile {
   version: 1;
   entries: MemoryEntry[];
@@ -371,6 +387,34 @@ export class MemoryStore {
     const counts = { hot: 0, warm: 0, cold: 0 };
     for (const e of this.entries) counts[e.tier]++;
     return counts;
+  }
+
+  /** Aggregate overview stats for the panel: counts, recalls, embeddings, tags. */
+  stats(): MemoryStats {
+    this.applyDecay();
+    const byTier = this.countByTier();
+    let totalRecalls = 0;
+    let recalledCount = 0;
+    let embedded = 0;
+    let lastRecalledAt: number | undefined;
+    const tagSet = new Set<string>();
+    for (const e of this.entries) {
+      totalRecalls += e.useCount;
+      if (e.useCount > 0) recalledCount++;
+      if (e.embedding && e.embedding.length) embedded++;
+      if (e.lastUsedAt && (lastRecalledAt === undefined || e.lastUsedAt > lastRecalledAt))
+        lastRecalledAt = e.lastUsedAt;
+      for (const tag of e.tags) tagSet.add(tag);
+    }
+    return {
+      total: this.entries.length,
+      byTier,
+      totalRecalls,
+      recalledCount,
+      embedded,
+      tagCount: tagSet.size,
+      lastRecalledAt,
+    };
   }
 
   /** All entries including cold, unordered (for maintenance compaction). */

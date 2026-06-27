@@ -67,8 +67,6 @@ export const en = {
   memory_empty_query: "No matching memories.",
   memory_empty: "No memories yet.",
   memory_forget: "Forget this memory?",
-  memory_show_cold: "Show cold",
-  memory_hide_cold: "Hide cold",
   memory_tip_title: "Tip",
   memory_tip_body: 'In chat, tell your agent "please remember…" to save any fact you think it missed. You can also ask "what do you remember about X?" to verify recall before a long task.',
   // Skills view
@@ -188,6 +186,13 @@ export const en = {
   memory_tier_warm: "warm",
   memory_tier_cold: "❄️ cold",
   memory_recalled: "recalled",
+  memory_filter_all: "All",
+  memory_stat_total: "Total",
+  memory_stat_recalls: "Recalls",
+  memory_stat_recalled: "Recalled",
+  memory_stat_tags: "Tags",
+  memory_stat_embedded: "Embedded",
+  memory_stat_last_recall: "Last recall:",
 
   // Skills (additional)
   skills_library: "Prompt library",

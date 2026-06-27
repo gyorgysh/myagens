@@ -401,6 +401,17 @@ export interface MemoryEntry {
   createdAt: number;
   updatedAt: number;
   lastUsedAt?: number;
+  embedded?: boolean;
+}
+
+export interface MemoryStats {
+  total: number;
+  byTier: Record<MemoryTier, number>;
+  totalRecalls: number;
+  recalledCount: number;
+  embedded: number;
+  tagCount: number;
+  lastRecalledAt?: number;
 }
 
 export interface ChatMessage {
@@ -685,6 +696,7 @@ export const api = {
     get<{ memories: MemoryEntry[] }>(
       `/api/memories${q ? `?q=${encodeURIComponent(q)}${all ? "&all=true" : ""}` : ""}`,
     ),
+  memoryStats: () => get<MemoryStats>("/api/memories/stats"),
   createMemory: (m: { text: string; tags?: string[]; salience?: number; tier?: MemoryTier }) =>
     req<MemoryEntry>("POST", "/api/memories", m),
   updateMemory: (id: string, m: { text?: string; tags?: string[]; salience?: number; tier?: MemoryTier }) =>

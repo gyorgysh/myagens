@@ -541,6 +541,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     const { embedding, ...rest } = e;
     return { ...rest, embedded: !!(embedding && embedding.length) };
   };
+  app.get("/api/memories/stats", async () => memory.stats());
   app.get("/api/memories", async (req) => {
     const { q, all } = req.query as { q?: string; all?: string };
     if (q) {

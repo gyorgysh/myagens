@@ -69,8 +69,6 @@ export const hu: Translations = {
   memory_empty_query: "Nincs találat.",
   memory_empty: "Még nincs memória.",
   memory_forget: "Töröljük ezt a memóriát?",
-  memory_show_cold: "Hideg mutatása",
-  memory_hide_cold: "Hideg elrejtése",
   memory_tip_title: "Tipp",
   memory_tip_body: 'Csevegésben mondd az ügynöknek: „kérlek jegyezd meg…", ha úgy érzed, kihagyott egy fontos tényt. Azt is megkérdezheted: „mit tudsz X-ről?", hogy ellenőrizd az emlékezetet egy hosszabb feladat előtt.',
   // Készségek nézet
@@ -190,6 +188,13 @@ export const hu: Translations = {
   memory_tier_warm: "meleg",
   memory_tier_cold: "❄️ hideg",
   memory_recalled: "előhívva",
+  memory_filter_all: "Mind",
+  memory_stat_total: "Összes",
+  memory_stat_recalls: "Előhívások",
+  memory_stat_recalled: "Előhívva",
+  memory_stat_tags: "Címkék",
+  memory_stat_embedded: "Beágyazva",
+  memory_stat_last_recall: "Utolsó előhívás:",
 
   // Készségek (további)
   skills_library: "Prompt könyvtár",

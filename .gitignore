@@ -25,3 +25,6 @@ logs/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Launch/marketing docs — kept locally, not shipped in the repo
+docs/

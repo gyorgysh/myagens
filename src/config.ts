@@ -42,6 +42,14 @@ const schema = z.object({
   // many times in one turn, pause and ask Skip / Approve once / Continue, so a
   // runaway retry can't burn tokens unattended. Set to 0 to disable.
   LOOP_THRESHOLD: z.coerce.number().int().nonnegative().default(3),
+  // Per-chat turn rate limit (SEC): even an allow-listed user mustn't be able to
+  // spawn unbounded concurrent turns by messaging faster than one finishes. Each
+  // chat may start at most TURN_RATE_LIMIT new turns per TURN_RATE_WINDOW_MS
+  // (token bucket); over the limit it gets a short "slow down" notice instead of
+  // a new turn. Autonomous turns (schedules/heartbeat) are exempt. Set the limit
+  // to 0 to disable.
+  TURN_RATE_LIMIT: z.coerce.number().int().nonnegative().default(5),
+  TURN_RATE_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   // Outbound webhooks: when a schedule or worker/task run with a webhookUrl
   // completes, POST a JSON outcome payload to that URL. This is the per-request
   // timeout (ms) for that POST. Every webhook URL is run through assertSafeUrl()

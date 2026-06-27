@@ -37,6 +37,7 @@ import { heartbeat } from "./core/heartbeat.js";
 import { taskDelegator } from "./core/taskRunner.js";
 import { fireWebhook, type WebhookSource } from "./core/webhook.js";
 import { resolveMainRun } from "./core/mainSettings.js";
+import { TokenBucketLimiter } from "./core/rateLimiter.js";
 import { workers } from "./core/workers.js";
 import { suggestions } from "./core/suggestions.js";
 import {
@@ -332,6 +333,15 @@ export function buildBot(): Telegraf {
   return bot;
 }
 
+// Per-chat turn rate limit (SEC): cap how many new user-initiated turns a single
+// chat can start in a rolling window, so an allow-listed user can't spawn many
+// concurrent runTurn calls by messaging faster than one finishes. Disabled when
+// TURN_RATE_LIMIT is 0. Autonomous turns (schedules/heartbeat) bypass it.
+const turnLimiter =
+  config.TURN_RATE_LIMIT > 0
+    ? new TokenBucketLimiter(config.TURN_RATE_LIMIT, config.TURN_RATE_WINDOW_MS)
+    : undefined;
+
 interface TurnOptions {
   /** Images to include inline (vision). */
   images?: ImageInput[];
@@ -379,6 +389,17 @@ async function handleUserPrompt(
   if (session.busy) {
     log.info("Prompt rejected — chat busy", { chatId });
     await tg.sendMessage(chatId, "⏳ Still working on the previous request. Send /stop to cancel.");
+    return;
+  }
+  // Per-chat turn rate limit (SEC): an allow-listed user mustn't be able to spawn
+  // unbounded concurrent turns by messaging faster than one finishes. Autonomous
+  // turns (schedules/heartbeat) are exempt.
+  if (!autonomous && turnLimiter && !turnLimiter.tryConsume(chatId)) {
+    const waitS = Math.ceil(turnLimiter.retryAfterMs(chatId) / 1000);
+    log.info("Prompt rejected — rate limited", { chatId, retryAfterS: waitS });
+    await tg
+      .sendMessage(chatId, `🐢 Slow down — I'm still catching up. Try again in ~${waitS}s.`)
+      .catch(() => {});
     return;
   }
   const cwd = opts.cwd ?? session.cwd;

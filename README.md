@@ -177,6 +177,8 @@ You can also ask Atlas to restart himself: "restart yourself" triggers `./script
 | `ANTHROPIC_API_KEY` | no | API key; omit to use `claude` CLI login |
 | `APPROVAL_TIMEOUT_MS` | no | Approval wait before auto-deny (default `300000`) |
 | `LOOP_THRESHOLD` | no | Repeats of an identical tool call before the loop guard fires (default `3`; `0` disables) |
+| `TURN_RATE_LIMIT` | no | Max turns a single chat may start in one window (default `5`; `0` disables) |
+| `TURN_RATE_WINDOW_MS` | no | Rolling window for the per-chat turn rate limit in ms (default `60000`) |
 | `STREAM_MODE` | no | `rich` (default), `draft`, or `edit` |
 | `ATLAS_NAME` | no | Override the main agent's name (default `Atlas`) |
 | `BRAND_NAME` | no | Override the product name (default `MyHQ`) |
@@ -254,14 +256,14 @@ Everything the panel does is a REST call you can script. Auth is the same `PANEL
 | --- | --- |
 | Main agent | `GET\|PUT /api/agent`, `PUT /api/agent/embeddings`, `PUT /api/agent/embeddings/preferred`, `POST /api/agent/reset`, `POST /api/agent/restart` |
 | Workers (Leads/Assistants) | `GET\|POST /api/workers`, `GET\|PUT\|DELETE /api/workers/:id`, `POST /api/workers/:id/run\|stop`, `GET /api/workers/:id/runs`, `POST /api/workers/wizard` |
-| Crew | `GET\|POST /api/council`, `DELETE /api/council/:id`, `GET /api/delegations`, `GET /api/runs` |
+| Crew | `GET\|POST /api/council`, `DELETE /api/council/:id`, `GET /api/delegations`, `GET /api/runs`, `GET /api/runs/:runId/log` |
 | Suggestions | `GET /api/suggestions`, `POST /api/suggestions/:id/accept\|delegate\|dismiss` |
-| Tasks | `GET\|POST /api/tasks`, `PATCH\|DELETE /api/tasks/:id`, `POST /api/tasks/:id/delegate\|stop`, `POST /api/tasks/reorder`, `GET\|POST /api/tasks/columns`, `PUT\|DELETE /api/tasks/columns/:id`, `POST /api/tasks/columns/reorder`, `PUT /api/tasks/wip` |
+| Tasks | `GET\|POST /api/tasks`, `PATCH\|DELETE /api/tasks/:id`, `POST /api/tasks/:id/delegate\|stop\|retry`, `POST /api/tasks/reorder`, `GET\|POST /api/tasks/columns`, `PUT\|DELETE /api/tasks/columns/:id`, `POST /api/tasks/columns/reorder`, `PUT /api/tasks/wip`, `GET\|PUT /api/tasks/run-config` |
 | Schedules | `GET\|POST /api/schedules`, `PUT\|DELETE /api/schedules/:id`, `PUT /api/schedules/:id/enabled`, `POST /api/schedules/:id/run` |
 | Memory | `GET\|POST /api/memories`, `PUT\|DELETE /api/memories/:id`, `PATCH /api/memories/:id/tier` |
 | Skills | `GET\|POST /api/skills`, `PUT\|DELETE /api/skills/:id` |
 | Providers and backends | `GET\|POST /api/providers`, `PUT\|DELETE /api/providers/:id`, `GET /api/providers/:id/models`, `POST /api/providers/models`, `GET /api/integrations/ollama\|lmstudio`, `POST /api/integrations/ollama\|lmstudio/connect` |
-| Vault | `GET\|POST /api/vault`, `PUT\|DELETE /api/vault/:id`, `GET /api/vault/:id/reveal`, `POST /api/vault/import` |
+| Vault | `GET\|POST /api/vault`, `PUT\|DELETE /api/vault/:id`, `GET /api/vault/:id/reveal`, `POST /api/vault/import`, `POST /api/vault/rotate`, `POST /api/vault/export`, `POST /api/vault/import-backup` |
 | Plan and usage | `GET\|PUT /api/plan`, `POST /api/plan/report-test`, `GET /api/usage`, `GET /api/usage-probe`, `POST /api/usage-probe/run`, `GET /api/claude-usage` |
 | Monitoring | `GET /api/health`, `GET /api/status`, `GET /api/sessions`, `GET /api/audit`, `GET\|PUT /api/heartbeat`, `POST /api/heartbeat/run`, `GET /api/maintenance`, `POST /api/maintenance/run`, `POST /api/maintenance/preview` |
 | Content and config | `GET\|PUT /api/prompt`, `GET /api/claude-files`, `GET\|PUT /api/claude-files/content`, `GET /api/languages`, `GET /api/connectors`, `PUT /api/connectors/:id` |
@@ -303,8 +305,8 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Branding overrides**: `ATLAS_NAME` and `BRAND_NAME` let you rename the system for self-hosted deployments.
 - **Live streaming**: Telegram Rich Messages (Bot API 10.1) and message drafts (Bot API 9.3): replies animate as previews and land as clean, structured messages.
 - **Proactive monitoring**: optional heartbeat watches host health (CPU/mem/swap/disk) and stalled task cards, pinging Telegram on breach, or running an autonomous turn to investigate first. Individual signal types (cpu, mem, swap, disk, stale) can be muted from the panel without disabling the whole heartbeat.
-- **Secret vault**: AES-256-GCM encrypted secrets with the master key in the macOS Keychain (file fallback on Linux). Reference secrets anywhere as `vault:<id>`. The panel Vault view shows **usage badges** on each secret — which workers, providers, tunnel config, or connectors are referencing it — so you can see at a glance whether a secret is in use before deleting it.
-- **Multi-agent task delegation**: task board cards can be delegated to an autonomous run. The agent can break cards into subtasks, complete them, and move the card to Done. When a delegated run breaks a card into subtasks, the parent card is auto-archived to keep the backlog clean.
+- **Secret vault**: AES-256-GCM encrypted secrets with the master key in the macOS Keychain (file fallback on Linux). Reference secrets anywhere as `vault:<id>`. The panel Vault view shows **usage badges** on each secret so you can see at a glance whether a secret is in use before deleting it. **Key rotation** (`POST /api/vault/rotate`) re-encrypts all secrets under a fresh key in one atomic operation. **Encrypted backup** (`POST /api/vault/export`) produces a portable passphrase-protected blob you can import on another machine; `POST /api/vault/import-backup` additively restores without touching existing entries.
+- **Multi-agent task delegation**: task board cards can be delegated to an autonomous run. The agent can break cards into subtasks, complete them, and move the card to Done. When a delegated run breaks a card into subtasks, the parent card is auto-archived to keep the backlog clean. A global concurrency queue (`maxConcurrent`, default 3) prevents simultaneous delegation pile-ups; excess runs show a "queued" status in amber until a slot opens. Failed cards can be retried with one click from the panel or from the inline 🔁 button in Telegram. Per-run transcripts are stored in `data/runs/` and viewable in the panel via `GET /api/runs/:runId/log`.
 - **Tasks board ergonomics**: an "+ Add card" button at the top of each column so you can prepend without scrolling. Bulk select mode lets you select multiple cards and Delete, Delegate, or "Run as one task" (combines their titles and notes into a single delegated run) in one shot. Columns auto-archive cards once they exceed 20 items.
 - **Custom task columns**: the Kanban board starts with Planned / In Progress / Done but you can rename any column and add as many as you need. Columns are managed from the board header with a single click.
 - **Live Claude usage**: the System and Usage panels pull real 5-hour session and 7-day weekly limit percentages from `GET /api/oauth/usage` using the OAuth token the Claude Code CLI stores in your Keychain. No extra credentials needed. Subscription type auto-detected. Configurable auto-refresh (default 30 min) and a "Check now" button. Historical stats (message counts, token breakdown, 14-day sparkline) from `~/.claude/stats-cache.json`.
@@ -323,9 +325,9 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Remote access (tunnel)**: expose the loopback panel to the internet so you can reach it from your phone, still behind the panel login. The Remote Access view spawns an **ngrok** or **cloudflared** relay pointed at the panel port and shows the public URL. **Off by default** (`PANEL_TUNNEL_ENABLED`); even when enabled the relay only runs on an explicit Start (or auto-start after a reboot), an HTTP Basic Auth gate (username `myhq`, auto-generated password) sits in front as a second factor, the public URL and login are DM'd to you and surfaced by `/status`, and the ngrok token is stored in the vault.
 - **AskUserQuestion inline buttons**: when an agent calls `AskUserQuestion`, the choices render as Telegram inline buttons instead of freeform text. Tapping a button resolves the question instantly; a free-text fallback is always available. Works in both the main Atlas bot and Lead bots.
 - **Agentic loop detection**: a per-turn guard hashes each tool call and, after `LOOP_THRESHOLD` identical repeats (default 3), prompts you to Skip / Approve once / Continue (interactive turns) or aborts a runaway autonomous turn, so a stuck retry loop can't burn tokens overnight.
-- **Security hardening**: the panel token is rate-limited against brute force, enforced to a 16-char minimum (a weak or missing token is auto-healed on startup and the new one DM'd to you), and only accepted as a Bearer header for REST (never a query string). Provider auth tokens are never returned in plaintext. Server-side outbound fetches are SSRF-guarded (cloud-metadata and link-local IPs blocked). Lead bots enforce private-chat-only auth. The `.claude` file editor is locked to known directories with symlink-escape protection. The data dir is `chmod 0700`, store reads are protected against prototype pollution, and Telegram-added group members can't read agent output.
+- **Security hardening**: the panel token is rate-limited against brute force, enforced to a 16-char minimum (a weak or missing token is auto-healed on startup and the new one DM'd to you), and only accepted as a Bearer header for REST (never a query string). Provider auth tokens are never returned in plaintext. Server-side outbound fetches are SSRF-guarded (cloud-metadata and link-local IPs blocked) and DNS rebinding is closed by resolving the host immediately before every HTTP connection and pinning to the validated IP. A per-chat token-bucket rate limiter caps how many new agent turns a single user can start in a rolling window (`TURN_RATE_LIMIT`, default 5 per 60s; autonomous turns are exempt). All Telegram callback data is validated for structure and ID format before dispatch. Uploaded filenames are sanitised against path traversal before writing. Lead bots enforce private-chat-only auth. The `.claude` file editor is locked to known directories with symlink-escape protection. The data dir is `chmod 0700`, store reads are protected against prototype pollution, and Telegram-added group members can't read agent output.
 - **In-panel updates**: the Updates view checks for a new version, applies it, and can roll back, mirroring `scripts/update.sh` without leaving the dashboard.
-- **Connectors catalogue**: a registry for external services (Gmail, Google Calendar, Google Drive, Notion, Apple Calendar, Apple Mail) with a vault-backed credential slot, ready to wire up (placeholders for now).
+- **Connectors**: external-service integrations, each with a vault-backed credential slot. **Notion** and **Google Calendar** are live (real MCP tool calls: `notion_search`, `notion_get_page`, `notion_create_page`, `gcal_list_events`, `gcal_create_event`); Gmail, Google Drive, Apple Calendar, and Apple Mail are placeholders. Connector tools run through the normal approval flow in interactive mode and freely in autonomous (`full`) mode.
 
 ## Commands (Atlas)
 
@@ -380,7 +382,8 @@ src/
     chat.ts           the panel's dedicated Claude chat session
     memory.ts         tiered fact store (hot/warm/cold, decay, recall)
     embeddings.ts     optional local embedding client for semantic recall
-    vault.ts          AES-256-GCM secrets (keychain/file master key)
+    vault.ts          AES-256-GCM secrets (keychain/file master key, key rotation, encrypted backup)
+    rateLimiter.ts    per-chat token-bucket turn rate limiter
     heartbeat.ts      proactive host/kanban monitoring loop
     council.ts        council vote runner and formatter
     maintenance.ts    daily memory compaction and skill pruning
@@ -395,7 +398,8 @@ src/
     playbook.ts       read/write the operator playbook (work.md)
     skills.ts         reusable prompt library (skills.json, useCount, archived)
     claudeFiles.ts    scoped browser/editor for on-disk .claude/* + CLAUDE.md
-    tasks.ts          task board (tasks.json) + taskRunner.ts delegate-to-agent
+    runLog.ts         per-run NDJSON transcript writer (data/runs/)
+    tasks.ts          task board (tasks.json) + taskRunner.ts delegate-to-agent (concurrency queue, retry)
     workers.ts        crew registry: Leads + Assistants + specialists; concurrent run manager
     providers.ts      local/proxy model-endpoint presets + providerModels.ts model listing
     mainSettings.ts   Atlas model/provider/persona/autonomy/language override
@@ -420,11 +424,13 @@ src/
     send.ts            shared final-message sender (markdown to HTML, splitting)
     formatting.ts      markdown to Telegram HTML
     permissions.ts     approval keyboards + always-allow registry
+    callback.ts        shared callback-data parser + hex-ID validator
     gitFlow.ts         /diff rendering + commit/discard callbacks
+    taskFlow.ts        task-delegate status messages + 🔁 retry button
     projects.ts        /projects switch menu
     voice.ts           voice-note transcription dispatcher (openai or vosk)
     vosk.ts            local offline transcription (ffmpeg + Vosk)
-    files.ts           incoming file downloads + image decoding for vision
+    files.ts           incoming file downloads + image decoding for vision (path-traversal guarded)
     resumePrompt.ts    first-message-after-restart resume-or-fresh offer
 
 panel/                MyHQ Panel frontend (React + Vite + Tailwind v4)

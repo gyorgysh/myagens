@@ -185,6 +185,14 @@ curl -X POST -H "$AUTH" $BASE/api/tasks/<id>/delegate
 # Stop a delegated run
 curl -X POST -H "$AUTH" $BASE/api/tasks/<id>/stop
 
+# Retry a failed delegated run (resets to backlog, clears delegate state, re-delegates)
+curl -X POST -H "$AUTH" $BASE/api/tasks/<id>/retry
+
+# Get / update delegation run settings (timeoutMs, maxConcurrent)
+curl -H "$AUTH" $BASE/api/tasks/run-config
+curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/tasks/run-config \
+  -d '{ "timeoutMs": 600000, "maxConcurrent": 3 }'
+
 # Delete a task
 curl -X DELETE -H "$AUTH" $BASE/api/tasks/<id>
 ```
@@ -398,6 +406,9 @@ curl -H "$AUTH" $BASE/api/delegations
 
 # Worker run history across the whole fleet
 curl -H "$AUTH" $BASE/api/runs
+
+# Full per-run transcript (NDJSON events: text, tool, result, start, end)
+curl -H "$AUTH" $BASE/api/runs/<runId>/log
 ```
 
 A council vote can be triggered from Telegram with `/council <proposal>` or from the panel Crew tab:

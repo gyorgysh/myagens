@@ -314,8 +314,10 @@ curl -H "$AUTH" $BASE/api/heartbeat
 
 # Update config
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/heartbeat \
-  -d '{ "mode": "alert", "intervalMs": 300000, "cpu": 85, "mem": 90, "disk": 85 }'
+  -d '{ "mode": "alert", "intervalMs": 300000, "cpu": 85, "mem": 90, "disk": 85, "mutedSignals": ["swap"] }'
 # mode: "off" | "alert" | "active"
+# mutedSignals: array of signal types to suppress without disabling the heartbeat
+#   valid values: "cpu" | "mem" | "swap" | "disk" | "stale" | "spend"
 
 # Trigger a manual heartbeat check now
 curl -X POST -H "$AUTH" $BASE/api/heartbeat/run
@@ -395,6 +397,24 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/council \
 
 # Delete a council session (two-step confirm in the panel Crew tab)
 curl -X DELETE -H "$AUTH" $BASE/api/council/<id>
+```
+
+### Suggestion inbox
+
+Agents file non-urgent ideas with `crew_suggest`; the president triages from `/inbox` or the panel Crew tab.
+
+```bash
+# List suggestions (status: pending | accepted | delegated | dismissed)
+curl -H "$AUTH" "$BASE/api/suggestions?status=pending"
+
+# Park (accept → create a backlog task card)
+curl -X POST -H "$AUTH" $BASE/api/suggestions/<id>/accept
+
+# Delegate (create card + route to a Lead for immediate execution)
+curl -X POST -H "$AUTH" $BASE/api/suggestions/<id>/delegate
+
+# Dismiss (archive)
+curl -X POST -H "$AUTH" $BASE/api/suggestions/<id>/dismiss
 ```
 
 ### Local model backends and embeddings

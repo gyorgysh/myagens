@@ -67,9 +67,9 @@ Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** 
 
 **Atlas knows his team.** Every turn, Atlas's system prompt is automatically updated with the current Lead roster (who they are, what they own). He can reference them, delegate to them, and tell you which Lead to ask.
 
-**Council votes.** Use `/council <proposal>` to put an idea to a full council vote from Telegram or directly from the panel Crew tab. Every enabled Lead evaluates the proposal from their domain's perspective and returns a SUPPORT or OPPOSE vote with a one-sentence reason and a one-sentence concern. Results arrive in Telegram with individual breakdowns and a final tally. All sessions are stored and visible in the panel Crew tab; individual sessions can be deleted from the panel.
+**Council votes.** Use `/council <proposal>` to put an idea to a full council vote from Telegram or directly from the panel Crew tab. Atlas always votes alongside the Leads. Every enabled Lead evaluates the proposal from their domain's perspective and returns a SUPPORT or OPPOSE vote with a one-sentence reason and a one-sentence concern. Results arrive in Telegram with individual breakdowns and a final tally. A vote requires at least one enabled Lead; if none exist, the panel shows an amber "No quorum" banner. All sessions are stored and visible in the panel Crew tab; individual sessions can be deleted.
 
-**Inter-agent delegation.** Atlas can delegate subtasks directly to Leads via `crew_delegate`, receive their output inline, and report back to you. Leads can ask you a question mid-turn with `crew_ask_president` (which pauses until you reply), file a report with `crew_report`, or queue non-urgent ideas for your review with `crew_suggest`. The suggestion inbox queues proposals for triage; you accept (turning it into a task) or dismiss from the panel Crew tab. A persistent delegation log tracks all cross-agent activity.
+**Inter-agent delegation.** Atlas can delegate subtasks directly to Leads via `crew_delegate`, receive their output inline, and report back to you. Leads can ask you a question mid-turn with `crew_ask_president` (which pauses until you reply), file a report with `crew_report`, or queue non-urgent ideas with `crew_suggest`. Suggestions land in a persistent inbox — triage them from the `/inbox` Telegram command or the panel: **Park** turns it into a backlog card, **Delegate** files the card and routes it to a Lead immediately, **Dismiss** archives it. A persistent delegation log tracks all cross-agent activity.
 
 **Personas.** Give Atlas or any Lead a persona: concise and direct, warm and encouraging, formal and precise, or fully custom. Persona shapes character and tone; system prompt carries domain knowledge. Both are set separately and combine naturally.
 
@@ -79,7 +79,7 @@ Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** 
 
 **Autonomous delegation.** Task cards on the board can be delegated to an agent run with one button. The agent can break cards into subtasks, complete them, and move the card to Done without you touching it.
 
-**Proactive monitoring.** The heartbeat runs in the background watching host health and stalled task cards. It can alert you, or it can run an autonomous turn to investigate and act first.
+**Proactive monitoring.** The heartbeat runs in the background watching host health and stalled task cards. It can alert you, or it can run an autonomous turn to investigate and act first. Individual signal types (cpu, mem, swap, disk, stale cards) can be muted independently from the panel without disabling the whole heartbeat.
 
 **Scheduled runs.** Set any agent or Lead to run a prompt on a timer: check disk space at 9am, summarize logs every 2 hours, pull a report every Monday. A daily maintenance window can compact memory (a small Haiku model reads the hot and warm tiers, consolidates near-duplicate entries into one clear entry, drops redundant copies, and shortens any entry over 220 characters into a single terse sentence) and auto-archive unused skills older than 14 days. A dry-run preview in the panel Health card shows which entries would be deleted, demoted, or merged before the next run fires.
 
@@ -255,6 +255,7 @@ Everything the panel does is a REST call you can script. Auth is the same `PANEL
 | Main agent | `GET\|PUT /api/agent`, `PUT /api/agent/embeddings`, `PUT /api/agent/embeddings/preferred`, `POST /api/agent/reset`, `POST /api/agent/restart` |
 | Workers (Leads/Assistants) | `GET\|POST /api/workers`, `GET\|PUT\|DELETE /api/workers/:id`, `POST /api/workers/:id/run\|stop`, `GET /api/workers/:id/runs`, `POST /api/workers/wizard` |
 | Crew | `GET\|POST /api/council`, `DELETE /api/council/:id`, `GET /api/delegations`, `GET /api/runs` |
+| Suggestions | `GET /api/suggestions`, `POST /api/suggestions/:id/accept\|delegate\|dismiss` |
 | Tasks | `GET\|POST /api/tasks`, `PATCH\|DELETE /api/tasks/:id`, `POST /api/tasks/:id/delegate\|stop`, `POST /api/tasks/reorder`, `GET\|POST /api/tasks/columns`, `PUT\|DELETE /api/tasks/columns/:id`, `POST /api/tasks/columns/reorder`, `PUT /api/tasks/wip` |
 | Schedules | `GET\|POST /api/schedules`, `PUT\|DELETE /api/schedules/:id`, `PUT /api/schedules/:id/enabled`, `POST /api/schedules/:id/run` |
 | Memory | `GET\|POST /api/memories`, `PUT\|DELETE /api/memories/:id`, `PATCH /api/memories/:id/tier` |
@@ -289,8 +290,9 @@ Lead bots default to standard mode with the same approve/deny prompts.
 ## Full Feature List
 
 - **Crew hierarchy**: President, Atlas, Leads, Assistants. Each level knows the one above it. Leads have portfolios, their own sessions, and optionally their own Telegram bots.
-- **Council votes**: `/council <idea>` calls every enabled Lead, gets a SUPPORT/OPPOSE vote with domain reasoning from each, and delivers a tally to Telegram. Full history in the panel Crew tab; individual sessions can be deleted (`DELETE /api/council/:id`).
-- **Inter-agent crew tools**: `crew_delegate` (hand a task to a Lead and get their output back), `crew_report` (log a summary and optionally notify the president), `crew_ask_president` (pause until the user replies, then continue), `crew_suggest` (file a non-urgent idea to the president's inbox for triage; the president accepts it as a task or dismisses it from the panel Crew tab).
+- **Council votes**: `/council <idea>` calls every enabled Lead plus Atlas himself, gets a SUPPORT/OPPOSE vote with domain reasoning from each, and delivers a tally to Telegram. Requires at least one enabled Lead; otherwise returns `noQuorum` and shows an amber banner in the panel. Full history in the panel Crew tab; individual sessions can be deleted (`DELETE /api/council/:id`).
+- **Inter-agent crew tools**: `crew_delegate` (hand a task to a Lead and get their output back), `crew_report` (log a summary and optionally notify the president), `crew_ask_president` (pause until the user replies, then continue), `crew_suggest` (file a non-urgent idea to the president's persistent suggestion inbox). From Telegram `/inbox` or the panel Crew tab, triage each suggestion: **Park** (create a backlog card), **Delegate** (create and immediately route to a Lead), or **Dismiss** (archive).
+- **Suggestion inbox** (`/inbox`): a persistent queue of non-urgent proposals from agents. Accepts `Park`, `Delegate`, and `Dismiss` actions with inline buttons in Telegram; panel Crew tab shows the same digest. Routes: `GET /api/suggestions`, `POST /api/suggestions/:id/accept|delegate|dismiss`.
 - **Memory tiers**: hot (every turn), warm (keyword-recalled), cold (panel-only). Auto-decay and promote/demote controls in the panel.
 - **Semantic memory**: recall ranks by meaning using a local embedding model, blending cosine similarity with keyword overlap and salience. On by default in auto mode: at startup the bot probes Ollama then LM Studio and enables embeddings against whichever is live, with zero configuration, re-selecting the live backend on every restart. It falls back to keyword search whenever no backend is reachable, so it is always safe to leave on. The Settings tab has an **Auto / Manual / Off** control (Auto is the default), shows live up/down status and available models for each local backend, one-click connect, and a preferred-backend pick when both are running. Non-panel users can force the mode with `EMBEDDING_ENABLED=auto|on|off` in `.env`, which locks the panel control when set to `on` or `off`.
 - **Auto skill extraction**: after expensive turns, an async haiku pass checks whether the work established a reusable procedure and proposes a skill entry. Gated by `AUTO_SKILL_GENERATION=true`.
@@ -300,8 +302,8 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Language**: 30 languages for agent responses; global default from Settings; per-agent override on each Lead; per-chat `/lang` command. Panel interface available in English and Hungarian.
 - **Branding overrides**: `ATLAS_NAME` and `BRAND_NAME` let you rename the system for self-hosted deployments.
 - **Live streaming**: Telegram Rich Messages (Bot API 10.1) and message drafts (Bot API 9.3): replies animate as previews and land as clean, structured messages.
-- **Proactive monitoring**: optional heartbeat watches host health (CPU/mem/swap/disk) and stalled task cards, pinging Telegram on breach, or running an autonomous turn to investigate first.
-- **Secret vault**: AES-256-GCM encrypted secrets with the master key in the macOS Keychain (file fallback on Linux). Reference secrets anywhere as `vault:<id>`.
+- **Proactive monitoring**: optional heartbeat watches host health (CPU/mem/swap/disk) and stalled task cards, pinging Telegram on breach, or running an autonomous turn to investigate first. Individual signal types (cpu, mem, swap, disk, stale) can be muted from the panel without disabling the whole heartbeat.
+- **Secret vault**: AES-256-GCM encrypted secrets with the master key in the macOS Keychain (file fallback on Linux). Reference secrets anywhere as `vault:<id>`. The panel Vault view shows **usage badges** on each secret — which workers, providers, tunnel config, or connectors are referencing it — so you can see at a glance whether a secret is in use before deleting it.
 - **Multi-agent task delegation**: task board cards can be delegated to an autonomous run. The agent can break cards into subtasks, complete them, and move the card to Done. When a delegated run breaks a card into subtasks, the parent card is auto-archived to keep the backlog clean.
 - **Tasks board ergonomics**: an "+ Add card" button at the top of each column so you can prepend without scrolling. Bulk select mode lets you select multiple cards and Delete, Delegate, or "Run as one task" (combines their titles and notes into a single delegated run) in one shot. Columns auto-archive cards once they exceed 20 items.
 - **Custom task columns**: the Kanban board starts with Planned / In Progress / Done but you can rename any column and add as many as you need. Columns are managed from the board header with a single click.
@@ -344,6 +346,7 @@ Lead bots default to standard mode with the same approve/deny prompts.
 | `/model [name]` | Show the model menu or switch directly: `/model claude-opus-4-8` |
 | `/lang [code]` | Show or set the agent's response language (e.g. `/lang hu`) |
 | `/council <idea>` | Put a proposal to a vote of all enabled Leads |
+| `/inbox` | Review pending agent suggestions with Park / Delegate / Dismiss buttons |
 | `/help` | Show help |
 
 Lead bots support `/status`, `/stop`, `/mode`, `/lang`, and `/help`.

@@ -33,6 +33,42 @@ The same agents, two front doors:
 
 **MyHQ Panel**: an optional web dashboard served in the same process. Chat with Atlas in the browser, see your full crew hierarchy, watch live system health, run and schedule agents, delegate task-board cards to autonomous runs, browse memory and skills, manage secrets, and tune proactive monitoring.
 
+## Quick Install
+
+### Linux / macOS
+
+On a fresh machine, the wizard installs everything (Node 20+, git, the Claude CLI), clones the repo, builds it, walks you through `.env`, and optionally sets up a background service:
+
+```bash
+curl -fsSL https://gyorgy.sh/myhq-install.sh | bash
+```
+
+### Windows
+
+**First, open PowerShell as Administrator:**
+
+1. Press the **Windows** key.
+2. Type `powershell`.
+3. Right-click **Windows PowerShell** in the results and choose **Run as administrator**.
+4. Click **Yes** on the User Account Control prompt.
+
+The title bar should read **Administrator: Windows PowerShell**.
+
+**Then paste these two lines and press Enter:**
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+irm https://gyorgy.sh/myhq-install.ps1 | iex
+```
+
+The first line lets PowerShell run the `npm`/`claude` script shims for this session only (Windows blocks them by default); it isn't persisted and needs no admin. The Windows installer uses `winget` for Node.js and Git, and creates a NSSM service (with Task Scheduler as a fallback). To update later, run `.\scripts\windows\update.ps1` or use the panel's Updates view.
+
+If you run it **without** administrator rights, the installer prints these same steps and waits for a keypress before closing, so the window won't vanish on you.
+
+You will need a [bot token](#setup-manual) and your numeric Telegram user id. The wizard prompts for both. Prefer to read before you run? The scripts are [`scripts/myhq-install.sh`](scripts/myhq-install.sh) and [`scripts/windows/myhq-install.ps1`](scripts/windows/myhq-install.ps1).
+
+> For an unattended run, set `MYHQ_TOKEN`, `MYHQ_USER_IDS`, and `MYHQ_MODE=service|manual` (and `MYHQ_YES=1`) in the environment before running.
+
 ## The Panel
 
 | | |
@@ -44,7 +80,7 @@ The same agents, two front doors:
 | ![Memory panel: tier-based fact store](images/v01_memory.webp) | ![Settings: main agent model picker and local model providers](images/v01_llm.webp) |
 | **Memory**: a tier-based fact store (hot/warm/cold) that agents write to and recall from automatically, with optional semantic search. Search, edit, promote, demote, and delete entries from the panel. | **Settings**: choose the model and provider for the main agent and every sub-agent, add local model servers (LM Studio, Ollama) or proxies, and tune semantic-memory embeddings. See [Bring Your Own Model](#bring-your-own-model). |
 
-Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (tier-based fact store with hot/warm/cold recall plus optional semantic search), **Vault** (AES-256-GCM secrets), **Skills** (reusable workflows), **Prompt** (playbook editor), **Logs** (a human-readable activity feed, raw searchable history with 72h rotation, and usage analytics), **Terminal** (a live shell session in the browser, off by default), **Connectors** (external-service catalogue), **Updates** (check, apply, and roll back versions in place), **Remote Access** (expose the panel over a secure tunnel for phone access), **Settings** (main agent, plan and budget tracker, language, model providers with live local-backend status), and more.
+Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (tier-based fact store with hot/warm/cold recall plus optional semantic search), **Vault** (AES-256-GCM secrets), **Skills** (reusable workflows), **Prompt** (playbook editor), **Logs** (a human-readable activity feed, raw searchable history with 72h rotation, and usage analytics), **Terminal** (a live shell session in the browser, off by default), **Connectors** (live Notion, Google Calendar, Gmail, Google Drive, Apple Calendar, and Apple Mail integrations with per-connector read/write scope), **Updates** (check, apply, and roll back versions in place), **Remote Access** (expose the panel over a secure tunnel for phone access), **Feedback** (send a bug report or suggestion straight from the dashboard), **Settings** (main agent, plan and budget tracker, language, model providers with live local-backend status), and more. A sticky connection banner warns when the backend goes away and the dashboard reloads itself once it recovers.
 
 ## In Telegram
 
@@ -97,44 +133,6 @@ MyHQ isn't locked to Anthropic. Point any agent at any model: a hosted Claude ti
 - **Main agent.** Set the model and provider that drives Atlas from Settings (or with `/model` in chat). Switch between Opus, Sonnet, Haiku, or a local model live; the change takes effect on the next message.
 
 Add a provider once (base URL + token, with LM Studio / Ollama prefill presets), and MyHQ lists its available models server-side so you can pick by name. Provider tokens are stored in the encrypted vault.
-
-## Quick Install
-
-### Linux / macOS
-
-On a fresh machine, the wizard installs everything (Node 20+, git, the Claude CLI), clones the repo, builds it, walks you through `.env`, and optionally sets up a background service:
-
-```bash
-curl -fsSL https://gyorgy.sh/myhq-install.sh | bash
-```
-
-### Windows
-
-**First, open PowerShell as Administrator:**
-
-1. Press the **Windows** key.
-2. Type `powershell`.
-3. Right-click **Windows PowerShell** in the results and choose **Run as administrator**.
-4. Click **Yes** on the User Account Control prompt.
-
-The title bar should read **Administrator: Windows PowerShell**.
-
-**Then paste these two lines and press Enter:**
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-irm https://gyorgy.sh/myhq-install.ps1 | iex
-```
-
-The first line lets PowerShell run the `npm`/`claude` script shims for this session only (Windows blocks them by default); it isn't persisted and needs no admin. The Windows installer uses `winget` for Node.js and Git, and creates a NSSM service (with Task Scheduler as a fallback). To update later, run `.\scripts\windows\update.ps1` or use the panel's Updates view.
-
-If you run it **without** administrator rights, the installer prints these same steps and waits for a keypress before closing, so the window won't vanish on you.
-
----
-
-You will need a [bot token](#setup-manual) and your numeric Telegram user id. The wizard prompts for both. Prefer to read before you run? The scripts are [`scripts/myhq-install.sh`](scripts/myhq-install.sh) and [`scripts/windows/myhq-install.ps1`](scripts/windows/myhq-install.ps1).
-
-> For an unattended run, set `MYHQ_TOKEN`, `MYHQ_USER_IDS`, and `MYHQ_MODE=service|manual` (and `MYHQ_YES=1`) in the environment before running.
 
 ## Setup (manual)
 
@@ -229,6 +227,7 @@ On Windows (elevated PowerShell):
 | `PANEL_TERMINAL_ENABLED` | no | `true` to enable the in-browser shell (default `false`; a panel-token holder gets host execution) |
 | `PANEL_TERMINAL_INHERIT_ENV` | no | `true` to give the terminal the full process env instead of a sanitized allow-list (default `false`, risky) |
 | `PANEL_TUNNEL_ENABLED` | no | `true` to allow Remote Access (expose the panel over an ngrok/cloudflared tunnel; default `false`) |
+| `FEEDBACK_URL` | no | Where the panel Feedback form relays reports (default `https://gyorgy.sh/myhq_feedback`) |
 
 ### Streaming modes
 
@@ -273,24 +272,25 @@ Everything the panel does is a REST call you can script. Auth is the same `PANEL
 
 | Group | Endpoints |
 | --- | --- |
-| Main agent | `GET\|PUT /api/agent`, `PUT /api/agent/embeddings`, `PUT /api/agent/embeddings/preferred`, `POST /api/agent/reset`, `POST /api/agent/restart` |
+| Main agent | `GET\|PUT /api/agent`, `PUT /api/agent/embeddings`, `PUT /api/agent/embeddings/preferred`, `POST /api/agent/embeddings/auto`, `POST /api/agent/reset`, `POST /api/agent/restart` |
 | Workers (Leads/Assistants) | `GET\|POST /api/workers`, `GET\|PUT\|DELETE /api/workers/:id`, `POST /api/workers/:id/run\|stop`, `GET /api/workers/:id/runs`, `POST /api/workers/wizard` |
 | Crew | `GET\|POST /api/council`, `DELETE /api/council/:id`, `GET /api/delegations`, `GET /api/runs`, `GET /api/runs/:runId/log` |
 | Suggestions | `GET /api/suggestions`, `POST /api/suggestions/:id/accept\|delegate\|dismiss` |
-| Tasks | `GET\|POST /api/tasks`, `PATCH\|DELETE /api/tasks/:id`, `POST /api/tasks/:id/delegate\|stop\|retry`, `POST /api/tasks/reorder`, `GET\|POST /api/tasks/columns`, `PUT\|DELETE /api/tasks/columns/:id`, `POST /api/tasks/columns/reorder`, `PUT /api/tasks/wip`, `GET\|PUT /api/tasks/run-config` |
+| Tasks | `GET\|POST /api/tasks`, `PATCH\|DELETE /api/tasks/:id`, `POST /api/tasks/:id/delegate\|stop\|retry`, `POST /api/tasks/reorder`, `GET\|POST /api/tasks/columns`, `PUT\|DELETE /api/tasks/columns/:id`, `POST /api/tasks/columns/reorder`, `PUT /api/tasks/wip`, `GET\|PUT /api/tasks/config` |
 | Schedules | `GET\|POST /api/schedules`, `PUT\|DELETE /api/schedules/:id`, `PUT /api/schedules/:id/enabled`, `POST /api/schedules/:id/run` |
-| Memory | `GET\|POST /api/memories`, `PUT\|DELETE /api/memories/:id`, `PATCH /api/memories/:id/tier` |
+| Memory | `GET\|POST /api/memories`, `PUT\|DELETE /api/memories/:id`, `PATCH /api/memories/:id/tier`, `GET /api/memories/stats` |
 | Skills | `GET\|POST /api/skills`, `PUT\|DELETE /api/skills/:id` |
 | Providers and backends | `GET\|POST /api/providers`, `PUT\|DELETE /api/providers/:id`, `GET /api/providers/:id/models`, `POST /api/providers/models`, `GET /api/integrations/ollama\|lmstudio`, `POST /api/integrations/ollama\|lmstudio/connect` |
 | Vault | `GET\|POST /api/vault`, `PUT\|DELETE /api/vault/:id`, `GET /api/vault/:id/reveal`, `POST /api/vault/import`, `POST /api/vault/rotate`, `POST /api/vault/export`, `POST /api/vault/import-backup` |
-| Plan and usage | `GET\|PUT /api/plan`, `POST /api/plan/report-test`, `GET /api/usage`, `GET /api/usage-probe`, `POST /api/usage-probe/run`, `GET /api/claude-usage` |
+| Plan and usage | `GET\|PUT /api/plan`, `POST /api/plan/report-test`, `GET /api/usage`, `GET /api/usage/agents`, `GET /api/usage-probe`, `POST /api/usage-probe/run`, `GET /api/claude-usage` |
 | Monitoring | `GET /api/health`, `GET /api/status`, `GET /api/sessions`, `GET /api/audit`, `GET\|PUT /api/heartbeat`, `POST /api/heartbeat/run`, `GET /api/maintenance`, `POST /api/maintenance/run`, `POST /api/maintenance/preview` |
 | Content and config | `GET\|PUT /api/prompt`, `GET /api/claude-files`, `GET\|PUT /api/claude-files/content`, `GET /api/languages`, `GET /api/connectors`, `PUT /api/connectors/:id` |
 | Logs | `GET /api/logs`, `GET /api/logs/dates`, `GET /api/logs/search`, `GET /api/logs/summary` |
 | Updates | `GET /api/update`, `POST /api/update/check\|run\|restore` |
-| Panel chat and terminal | `GET /api/chat`, `POST /api/chat/send\|stop\|clear\|approve`, `PUT /api/chat/settings`, `GET /api/terminal`, `POST /api/terminal/spawn\|resize` |
+| Panel chat and terminal | `GET /api/chat`, `POST /api/chat/send\|stop\|clear\|approve`, `PUT /api/chat/settings`, `GET /api/agent-chat/:id`, `POST /api/agent-chat/:id/send\|stop\|clear`, `PUT /api/agent-chat/:id/settings`, `GET /api/terminal`, `POST /api/terminal/spawn\|resize` |
 | Remote access (tunnel) | `GET\|PUT /api/tunnel`, `POST /api/tunnel/start\|stop`, `GET\|POST /api/tunnel/password` (all `PUT`/`start`/`stop`/`password` are 403 unless `PANEL_TUNNEL_ENABLED`) |
-| Realtime | `GET /ws` (worker, chat, task, health, tunnel, and log frames) |
+| Misc | `GET /api/me` (deployment facts), `POST /api/feedback` (relay a bug report / suggestion) |
+| Realtime | `GET /ws` (worker, chat, agent-chat, task, health, tunnel, suggestion, and log frames) |
 
 ## Permissions
 
@@ -330,6 +330,9 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Custom task columns**: the Kanban board starts with Planned / In Progress / Done but you can rename any column and add as many as you need. Columns are managed from the board header with a single click.
 - **Live Claude usage**: the System and Usage panels pull real 5-hour session and 7-day weekly limit percentages from `GET /api/oauth/usage` using the OAuth token the Claude Code CLI stores in your Keychain. No extra credentials needed. Subscription type auto-detected. Configurable auto-refresh (default 30 min) and a "Check now" button. Historical stats (message counts, token breakdown, 14-day sparkline) from `~/.claude/stats-cache.json`.
 - **Budget tracking**: API users can set a monthly cap and billing day. Usage panel shows period spend vs cap with a progress bar, daily average, and estimated monthly total. Telegram alerts at any threshold, configurable spend report schedule.
+- **Per-agent usage breakdown**: the Usage panel attributes cost and tokens to each agent (Atlas, every Lead/Assistant, the panel chat) and charts daily spend grouped by role, on top of the input/output token-category card (`GET /api/usage/agents`).
+- **Per-agent chat**: talk to a specific Lead or worker directly in the panel, each with its own session, working directory, and model, separate from the main Atlas chat (`GET /api/agent-chat/:id`).
+- **In-panel feedback**: send a bug report or suggestion straight from the dashboard. The Feedback view posts to a central collector with version and platform context; bug reports point you at the Logs view for detail. Set the endpoint with `FEEDBACK_URL`.
 - **Operator playbook (`work.md`)**: define once how recurring jobs should be done. Re-read every turn, so edits apply instantly.
 - **Session continuity**: context carries across messages; `/new` resets it. Sessions (resume token, cwd, autonomy, language, allow-lists, usage) survive restarts.
 - **Git review from chat**: `/diff` shows the diff with inline Commit / Discard buttons; `/commit <message>` stages and commits.
@@ -346,7 +349,7 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Agentic loop detection**: a per-turn guard hashes each tool call and, after `LOOP_THRESHOLD` identical repeats (default 3), prompts you to Skip / Approve once / Continue (interactive turns) or aborts a runaway autonomous turn, so a stuck retry loop can't burn tokens overnight.
 - **Security hardening**: the panel token is rate-limited against brute force, enforced to a 16-char minimum (a weak or missing token is auto-healed on startup and the new one DM'd to you), and only accepted as a Bearer header for REST (never a query string). Provider auth tokens are never returned in plaintext. Server-side outbound fetches are SSRF-guarded (cloud-metadata and link-local IPs blocked) and DNS rebinding is closed by resolving the host immediately before every HTTP connection and pinning to the validated IP. A per-chat token-bucket rate limiter caps how many new agent turns a single user can start in a rolling window (`TURN_RATE_LIMIT`, default 5 per 60s; autonomous turns are exempt). All Telegram callback data is validated for structure and ID format before dispatch. Uploaded filenames are sanitised against path traversal before writing. Lead bots enforce private-chat-only auth. The `.claude` file editor is locked to known directories with symlink-escape protection. The data dir is `chmod 0700`, store reads are protected against prototype pollution, and Telegram-added group members can't read agent output.
 - **In-panel updates**: the Updates view checks for a new version, applies it, and can roll back, mirroring `scripts/update.sh` without leaving the dashboard.
-- **Connectors**: external-service integrations, each with a vault-backed credential slot. **Notion** and **Google Calendar** are live (real MCP tool calls: `notion_search`, `notion_get_page`, `notion_create_page`, `gcal_list_events`, `gcal_create_event`); Gmail, Google Drive, Apple Calendar, and Apple Mail are placeholders. Connector tools run through the normal approval flow in interactive mode and freely in autonomous (`full`) mode.
+- **Connectors**: external-service integrations, each with a vault-backed credential slot and a per-connector read / write scope. Six are live with real MCP tool calls: **Notion** (search, read, create pages/databases), **Google Calendar** (list, create events), **Gmail** (list, read, send, draft, label, delete), **Google Drive** (list, read, create, update, move, share, delete), **Apple Calendar** (iCloud CalDAV: list, create, update, delete events), and **Apple Mail** (iCloud IMAP/SMTP: list, read, search, send, delete). Read scope exposes only the read tools; write tools appear when you flip a connector to write scope. Connector tools run through the normal approval flow in interactive mode and freely in autonomous (`full`) mode.
 
 ## Commands (Atlas)
 
@@ -398,7 +401,9 @@ src/
     health.ts         system-health snapshot (CPU/mem/swap/disk/IO)
     status.ts         public Claude status + provider/local-backend probes
     snapshot.ts       read-only session/usage views
-    chat.ts           the panel's dedicated Claude chat session
+    chat.ts           the panel's dedicated Claude chat session (Atlas)
+    agentChat.ts      per-worker/Lead interactive chat sessions
+    agentUsage.ts     per-agent cost + token attribution and daily-by-role rollup
     memory.ts         tiered fact store (hot/warm/cold, decay, recall)
     embeddings.ts     optional local embedding client for semantic recall
     vault.ts          AES-256-GCM secrets (keychain/file master key, key rotation, encrypted backup)
@@ -408,7 +413,7 @@ src/
     maintenance.ts    daily memory compaction and skill pruning
     autoSkill.ts      async skill extraction from expensive turns
     crewAsk.ts        pending president-reply state for crew_ask_president
-    connectors.ts     external-connector catalog (placeholders)
+    connectors.ts     external-connector catalog (Notion, GCal, Gmail, Drive, Apple Cal/Mail) + read/write scope
     languages.ts      BCP 47 language catalogue (30 languages)
     planSettings.ts   subscription plan and monthly budget configuration (Pro / Max / API)
     claudeUsage.ts    reads ~/.claude/stats-cache.json + claude auth status for historical stats
@@ -467,7 +472,8 @@ panel/                MyHQ Panel frontend (React + Vite + Tailwind v4)
     Settings.tsx      main agent config + language settings + model providers
     Health.tsx        live system health + maintenance status card
     Memory.tsx        tiered memory view with promote/demote controls
-    ...               Chat, Terminal, Tasks, Schedules, Vault, Skills, Logs, Status, Updates, Connectors, ...
+    ...               Chat, Terminal, Tasks, Schedules, Vault, Skills, Logs, Status,
+                      Updates, Connectors, Usage, Feedback, Setup, ConnectionBanner, ...
 ```
 
 Built on [`telegraf`](https://github.com/telegraf/telegraf) and [`@anthropic-ai/claude-agent-sdk`](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk); the panel uses [`fastify`](https://fastify.dev) + [`systeminformation`](https://systeminformation.io) on the server and React + Vite + Tailwind on the client.

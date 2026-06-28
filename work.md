@@ -224,8 +224,8 @@ curl -X POST -H "$AUTH" $BASE/api/tasks/<id>/stop
 curl -X POST -H "$AUTH" $BASE/api/tasks/<id>/retry
 
 # Get / update delegation run settings (timeoutMs, maxConcurrent)
-curl -H "$AUTH" $BASE/api/tasks/run-config
-curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/tasks/run-config \
+curl -H "$AUTH" $BASE/api/tasks/config
+curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/tasks/config \
   -d '{ "timeoutMs": 600000, "maxConcurrent": 3 }'
 
 # Delete a task
@@ -572,8 +572,14 @@ A few more endpoints exist, mostly mirroring panel views:
 - `GET /api/logs/search`: cross-file event search over every retained file (`?q=&level=&hours=72&limit=`), merged into one oldest-first timeline.
 - `GET /api/logs/summary`: usage insights (`?hours=72`) — most-used tools and shell commands tallied from persisted "Tool use" entries.
 - `GET /api/update`, `POST /api/update/check|run|restore`: in-panel update check, apply, and rollback.
-- `GET /api/connectors`, `PUT /api/connectors/<id>`: the external-connector catalogue (placeholders for now).
-- `GET /api/chat`, `POST /api/chat/send|stop|clear|approve`, `PUT /api/chat/settings`: the panel's own Claude chat session.
+- `GET /api/connectors`, `PUT /api/connectors/<id>`: the external-connector catalogue. All six (Notion, Google Calendar, Gmail, Google Drive, Apple Calendar, Apple Mail) are live; `PUT` takes `{ enabled, secretId, scope }` where `scope` is `read` (default) or `write` (gates the write tools).
+- `GET /api/chat`, `POST /api/chat/send|stop|clear|approve`, `PUT /api/chat/settings`: the panel's own Claude chat session (talks to Atlas).
+- `GET /api/agent-chat/<id>`, `POST /api/agent-chat/<id>/send|stop|clear`, `PUT /api/agent-chat/<id>/settings`: an interactive chat with a specific worker/Lead by id.
+- `GET /api/usage/agents`: per-agent token + cost totals and a daily-by-role breakdown.
+- `GET /api/memories/stats`: counts by tier and embedding coverage.
+- `POST /api/agent/embeddings/auto`: re-enter embeddings auto-mode (clears the pin and re-probes the local backends).
+- `POST /api/feedback`: relay a bug report / suggestion `{ kind, message, email? }` to the central collector (`FEEDBACK_URL`).
+- `GET /api/me`: read-only deployment facts (version, brand/agent name, allowed-user count, panel host/port, tunnel/terminal flags) for the Setup view.
 - `GET /api/terminal`, `POST /api/terminal/spawn|resize`: the panel terminal session.
 
 ## Temporary swap (Linux only)
@@ -592,6 +598,21 @@ is NOT added to `/etc/fstab`; it disappears on reboot even if you forget to run
 `off`. Always remove it after the task to reclaim the disk space.
 
 On macOS the script exits cleanly with a message: macOS manages swap automatically.
+
+## Telegram bot tips
+- **Set bot profile photo**: use `setMyProfilePhoto` (NOT `setMyPhoto`, which 404s).
+  The `photo` param must be an `InputProfilePhoto` JSON object. A bare
+  `-F photo=@file` always fails with "photo isn't specified". Correct form:
+
+  ```bash
+  curl -s -F 'photo={"type":"static","photo":"attach://av"}' \
+    -F "av=@photo.png" \
+    "https://api.telegram.org/bot${TOKEN}/setMyProfilePhoto"
+  ```
+
+  On Windows use the PowerShell byte-stream approach (see skill `set-telegram-bot-photo`).
+- **Image source**: any PNG/JPEG works, download from the web, generate one, or use
+  an existing file. No need to author an SVG first.
 
 ## Conventions
 - Where new files go: for one-off creations (a script you were asked to write, a

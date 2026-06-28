@@ -149,11 +149,12 @@ const CHEVRON_SVG =
  *  plus a custom chevron that follows the muted text token via currentColor. */
 export function Select({
   className = "",
+  wrapperClassName = "w-full",
   children,
   ...props
-}: React.SelectHTMLAttributes<HTMLSelectElement>) {
+}: React.SelectHTMLAttributes<HTMLSelectElement> & { wrapperClassName?: string }) {
   return (
-    <div className="relative w-full">
+    <div className={`relative ${wrapperClassName}`}>
       <select
         {...props}
         className={`${fieldClass} h-[38px] cursor-pointer appearance-none pr-9 ${className}`}

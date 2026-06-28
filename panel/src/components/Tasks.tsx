@@ -95,6 +95,10 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
   const [dragId, setDragId] = useState<string | null>(null);
   // Column currently under the dragged card, for drop-target highlighting.
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  // Insertion indicator: the card id the dragged card would land *before*, or
+  // the sentinel "__end__" when it would land at the bottom of the column. null
+  // hides the indicator (not hovering a valid slot).
+  const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
   const [renamingCol, setRenamingCol] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
   // Inline WIP-limit editor: which column's count is being edited + the draft value.
@@ -534,16 +538,20 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
               onDragOver={(e) => {
                 e.preventDefault();
                 if (dragId && dragOverCol !== col.id) setDragOverCol(col.id);
+                // Hovering the column chrome (not a card) targets the end slot.
+                if (dragId && dropBeforeId !== "__end__") setDropBeforeId("__end__");
               }}
               onDragLeave={(e) => {
                 // Only clear when the pointer actually leaves the column box, not
                 // when it crosses onto a child card inside the same column.
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                   setDragOverCol((c) => (c === col.id ? null : c));
+                  setDropBeforeId(null);
                 }
               }}
               onDrop={() => {
                 setDragOverCol(null);
+                setDropBeforeId(null);
                 void drop(col.id, null);
               }}
               className={`flex-col rounded-xl border bg-surface p-3 transition-colors md:flex ${
@@ -653,12 +661,23 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
                       allTasks={tasks}
                       live={live[tk.id]}
                       isDragging={dragId === tk.id}
+                      dragActive={dragId != null && dragId !== tk.id}
+                      showDropLine={dragId != null && dragId !== tk.id && dropBeforeId === tk.id}
                       onDragStart={() => setDragId(tk.id)}
                       onDragEnd={() => {
                         setDragId(null);
                         setDragOverCol(null);
+                        setDropBeforeId(null);
                       }}
-                      onDropBefore={() => drop(col.id, tk.id)}
+                      onDragOverCard={() => {
+                        if (dragId && dragId !== tk.id && dropBeforeId !== tk.id) {
+                          setDropBeforeId(tk.id);
+                        }
+                      }}
+                      onDropBefore={() => {
+                        setDropBeforeId(null);
+                        void drop(col.id, tk.id);
+                      }}
                       onChange={load}
                       onAuthError={onAuthError}
                       selectMode={selectMode}
@@ -666,6 +685,11 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
                       onToggleSelect={() => toggleSelect(tk.id)}
                     />
                   ))
+                )}
+                {/* End-of-column insertion indicator: shown when the dragged
+                    card would land below the last card. */}
+                {dragId && dragOverCol === col.id && dropBeforeId === "__end__" && cards.length > 0 && (
+                  <div className="h-0.5 rounded-full bg-accent" aria-hidden />
                 )}
               </div>
 
@@ -791,8 +815,11 @@ function Card({
   allTasks,
   live,
   isDragging,
+  dragActive,
+  showDropLine,
   onDragStart,
   onDragEnd,
+  onDragOverCard,
   onDropBefore,
   onChange,
   onAuthError,
@@ -804,8 +831,13 @@ function Card({
   allTasks: Task[];
   live?: LiveTask;
   isDragging: boolean;
+  /** A drag is in progress for some *other* card. */
+  dragActive: boolean;
+  /** Show the insertion line above this card (the dragged card lands here). */
+  showDropLine: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
+  onDragOverCard: () => void;
   onDropBefore: () => void;
   onChange: () => void;
   onAuthError: () => void;
@@ -917,19 +949,28 @@ function Card({
   }
 
   return (
-    <div
-      draggable={!running && !selectMode}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        e.stopPropagation();
-        onDropBefore();
-      }}
-      className={`rounded-lg border bg-input p-2.5 transition-opacity ${ageBorder(task)} ${selected ? "ring-1 ring-accent/60" : ""} ${
-        isDragging ? "opacity-40" : ""
-      } ${!running && !selectMode ? "cursor-grab active:cursor-grabbing" : ""}`}
-    >
+    <div className="relative">
+      {/* Insertion indicator: a thin accent line above the card the dragged
+          card will land before, so the drop position is unambiguous. */}
+      {showDropLine && (
+        <div className="absolute -top-1 left-0 right-0 z-10 h-0.5 rounded-full bg-accent" aria-hidden />
+      )}
+      <div
+        draggable={!running && !selectMode}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (dragActive) onDragOverCard();
+        }}
+        onDrop={(e) => {
+          e.stopPropagation();
+          onDropBefore();
+        }}
+        className={`rounded-lg border bg-input p-2.5 transition-opacity ${ageBorder(task)} ${selected ? "ring-1 ring-accent/60" : ""} ${
+          isDragging ? "opacity-40" : ""
+        } ${!running && !selectMode ? "cursor-grab active:cursor-grabbing" : ""}`}
+      >
       <div className="flex items-start gap-2">
         {selectMode ? (
           // Invisible 44px hit area around the compact checkbox (WCAG 2.5.5).
@@ -1142,6 +1183,7 @@ function Card({
           {t("tasks_delegate")}
         </button>
       )}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { api, AuthError, openHealthSocket, type LogEntry, type LogUsageSummary } from "../api.ts";
-import { Button, Empty } from "./ui.tsx";
+import { Button, Empty, Select } from "./ui.tsx";
 import { LogsArt } from "./onboarding.tsx";
 import { useI18n } from "../lib/useI18n.ts";
 
@@ -766,10 +766,12 @@ function RawLogs({
     <>
       {/* Toolbar row 1: date + search */}
       <div className="flex flex-wrap items-center gap-2">
-        <select
+        <Select
           value={selectedDate}
           onChange={(e) => handleDateChange(e.target.value)}
-          className="rounded border border-line bg-input px-2 py-1 text-xs text-fg"
+          aria-label={t("logs_date_today")}
+          wrapperClassName="w-auto"
+          className="h-auto min-w-[8rem] py-1 text-xs"
         >
           <option value="">{t("logs_date_today")}</option>
           <option value={ALL_FILES}>{t("logs_all_files")}</option>
@@ -778,7 +780,7 @@ function RawLogs({
               {d}
             </option>
           ))}
-        </select>
+        </Select>
         <input
           type="text"
           value={search}

@@ -648,7 +648,10 @@ function ActivityFeed({
                       </span>
                     )}
                     {a.taskId && (
-                      <span className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] text-fg-faint bg-surface-2 border border-line">
+                      <span
+                        title={a.taskTitle || a.taskId}
+                        className="shrink-0 cursor-help rounded px-1.5 py-0.5 font-mono text-[10px] text-fg-faint bg-surface-2 border border-line"
+                      >
                         #{a.taskId}
                       </span>
                     )}

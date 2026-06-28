@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, AuthError, type Column, type ColumnDef, type Priority, type Task, type TaskRunConfig, type Wip } from "../api.ts";
+import { api, AuthError, type Column, type ColumnDef, type Priority, type QueueState, type Task, type TaskRunConfig, type Wip } from "../api.ts";
 import { useTaskEvents, type LiveTask } from "../lib/useTaskEvents.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import { toast } from "../lib/useToast.ts";
@@ -48,6 +48,36 @@ function formatDate(ts: number): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+/** Compact elapsed-time label for the live run timer: "8s", "2m 05s", "1h 03m". */
+function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rs = s % 60;
+  if (m < 60) return `${m}m ${String(rs).padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return `${h}h ${String(rm).padStart(2, "0")}m`;
+}
+
+/** Persisted preference: show newest-added cards at the top of each column. */
+const NEWEST_FIRST_KEY = "myhq.tasks.newestFirst";
+
+/**
+ * Live elapsed label that re-renders once a second while `running` is true.
+ * Returns null when not running or the start time is unknown.
+ */
+function useElapsed(startedAt: number | undefined, running: boolean): string | null {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!running || !startedAt) return;
+    const id = window.setInterval(() => tick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [running, startedAt]);
+  if (!running || !startedAt) return null;
+  return formatElapsed(Date.now() - startedAt);
+}
+
 export function TasksView({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -56,6 +86,12 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
   const [wip, setWip] = useState<Wip>({});
   const [runConfig, setRunConfig] = useState<TaskRunConfig | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [queue, setQueue] = useState<QueueState>({ paused: false, queued: 0 });
+  // Newest-added cards at the top of each column (display only; drag order is
+  // still authoritative when off). Persisted across sessions.
+  const [newestFirst, setNewestFirst] = useState<boolean>(
+    () => localStorage.getItem(NEWEST_FIRST_KEY) === "1",
+  );
   const [dragId, setDragId] = useState<string | null>(null);
   // Column currently under the dragged card, for drop-target highlighting.
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
@@ -88,6 +124,7 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
         setColumns(r.columns);
         setWip(r.wip);
         setRunConfig(r.config);
+        if (r.queue) setQueue(r.queue);
       })
       .catch((e) => (e instanceof AuthError ? onAuthError() : setError(String(e))))
       .finally(() => setLoaded(true));
@@ -102,10 +139,21 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
     setTasks((prev) => prev.map((tk) => (tk.id === taskId ? { ...tk, column } : tk)));
   };
 
-  const live = useTaskEvents(load, moveCard);
+  const live = useTaskEvents(load, moveCard, (paused) =>
+    setQueue((q) => ({ ...q, paused })),
+  );
+
+  // Persist the newest-first preference whenever it flips.
+  useEffect(() => {
+    localStorage.setItem(NEWEST_FIRST_KEY, newestFirst ? "1" : "0");
+  }, [newestFirst]);
 
   const inColumn = (c: Column) =>
-    tasks.filter((tk) => tk.column === c).sort((a, b) => a.order - b.order);
+    tasks
+      .filter((tk) => tk.column === c)
+      // Default: explicit drag order (ascending). Newest-first overrides for
+      // display, showing the most recently created cards at the top.
+      .sort((a, b) => (newestFirst ? b.createdAt - a.createdAt : a.order - b.order));
 
   const drop = async (target: Column, beforeId: string | null): Promise<void> => {
     if (!dragId) return;
@@ -317,6 +365,69 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
           onToggle={() => setConfigOpen((o) => !o)}
           onSave={saveConfig}
         />
+      )}
+
+      {/* Queue control + sort toolbar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setNewestFirst((v) => !v)}
+          className={`flex min-h-[44px] items-center gap-1.5 rounded border px-2.5 text-xs transition-colors ${
+            newestFirst
+              ? "border-accent/40 bg-accent/10 text-accent"
+              : "border-line text-fg-dim hover:bg-surface-2"
+          }`}
+          title={t("tasks_sort_label")}
+        >
+          <span className="opacity-60">↕</span>
+          {newestFirst ? t("tasks_sort_newest") : t("tasks_sort_order")}
+        </button>
+        {queue.queued > 0 && (
+          <span className="rounded bg-warn-subtle px-2 py-1 text-xs text-warn-fg">
+            {t("tasks_queue_waiting").replace("{n}", String(queue.queued))}
+          </span>
+        )}
+        {queue.paused ? (
+          <button
+            onClick={async () => {
+              const r = await api.resumeQueue().catch(() => null);
+              if (r) setQueue(r);
+            }}
+            className="flex min-h-[44px] items-center rounded border border-accent/40 bg-accent/10 px-2.5 text-xs text-accent hover:bg-accent/20 transition-colors"
+          >
+            {t("tasks_queue_resume")}
+          </button>
+        ) : (
+          <button
+            onClick={async () => {
+              const r = await api.pauseQueue().catch(() => null);
+              if (r) setQueue(r);
+            }}
+            className="flex min-h-[44px] items-center rounded border border-line px-2.5 text-xs text-fg-dim hover:bg-surface-2 transition-colors"
+          >
+            {t("tasks_queue_pause")}
+          </button>
+        )}
+        {queue.queued > 0 && (
+          <button
+            onClick={async () => {
+              if (!confirm(t("tasks_queue_clear_confirm").replace("{n}", String(queue.queued)))) return;
+              const r = await api.clearQueue().catch(() => null);
+              if (r) {
+                setQueue((q) => ({ ...q, queued: 0, paused: r.paused }));
+                toast.success(t("tasks_queue_cleared").replace("{n}", String(r.cleared)));
+                void load();
+              }
+            }}
+            className="flex min-h-[44px] items-center rounded border border-critical/30 px-2.5 text-xs text-critical-fg hover:bg-critical-subtle transition-colors"
+          >
+            {t("tasks_queue_clear")}
+          </button>
+        )}
+      </div>
+      {queue.paused && (
+        <div className="rounded-xl border border-warn/30 bg-warn-subtle px-3 py-2 text-xs text-warn-fg">
+          {t("tasks_queue_paused")}
+        </div>
       )}
 
       {/* Bulk action toolbar */}
@@ -713,6 +824,10 @@ function Card({
 
   const running = live?.status === "running" || task.delegate?.status === "running";
   const dstatus = live?.status ?? task.delegate?.status;
+  // Wall-clock since the run started: the WS "start" event carries startedAt;
+  // fall back to the persisted delegate timestamp so a reload mid-run keeps it.
+  const startedAt = live?.startedAt ?? task.delegate?.startedAt;
+  const elapsed = useElapsed(startedAt, running);
 
   // Keep the live log pinned to the latest output as it streams in.
   useEffect(() => {
@@ -883,11 +998,18 @@ function Card({
                   : t("tasks_delegated").replace("{status}", String(dstatus))}
               {!running && <span className="ml-1 opacity-50">{delegateOpen ? "▲" : "▼"}</span>}
             </button>
-            {running && (
-              <button onClick={stop} className="text-xs text-critical-fg hover:underline">
-                {t("stop")}
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {running && elapsed && (
+                <span className="tabular text-xs text-fg-faint" title={t("tasks_running")}>
+                  {t("tasks_running_for").replace("{t}", elapsed)}
+                </span>
+              )}
+              {running && (
+                <button onClick={stop} className="text-xs text-critical-fg hover:underline">
+                  {t("stop")}
+                </button>
+              )}
+            </div>
           </div>
           {delegateOpen && (
             <>

@@ -936,7 +936,13 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       ...t,
       createdByName: t.createdBy ? creatorName(t.createdBy) : undefined,
     }));
-    return { tasks, columns: listColumns(), wip: getWip(), config: getTaskRunConfig() };
+    return {
+      tasks,
+      columns: listColumns(),
+      wip: getWip(),
+      config: getTaskRunConfig(),
+      queue: { paused: taskDelegator.isQueuePaused(), queued: taskDelegator.queuedCount() },
+    };
   });
   // Column config CRUD
   app.get("/api/tasks/columns", async () => ({ columns: listColumns() }));
@@ -980,6 +986,24 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   });
   app.post("/api/tasks/:id/stop", async (req) => ({
     ok: taskDelegator.stop((req.params as { id: string }).id),
+  }));
+  // Queue controls: pause holds dispatch of queued cards (in-flight runs keep
+  // going); resume fills free slots again; clear drops all waiting cards.
+  app.get("/api/tasks/queue", async () => ({
+    paused: taskDelegator.isQueuePaused(),
+    queued: taskDelegator.queuedCount(),
+  }));
+  app.post("/api/tasks/queue/pause", async () => {
+    taskDelegator.pauseQueue();
+    return { paused: true, queued: taskDelegator.queuedCount() };
+  });
+  app.post("/api/tasks/queue/resume", async () => {
+    taskDelegator.resumeQueue();
+    return { paused: false, queued: taskDelegator.queuedCount() };
+  });
+  app.post("/api/tasks/queue/clear", async () => ({
+    cleared: taskDelegator.clearQueue(),
+    paused: taskDelegator.isQueuePaused(),
   }));
   // Retry a failed card: reset to backlog (clear error, bump retryCount) and
   // re-delegate in one click.

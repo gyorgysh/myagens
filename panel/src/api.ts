@@ -182,6 +182,12 @@ export interface Task {
 }
 export type Wip = Record<string, number | undefined>;
 
+/** Delegation queue state: whether dispatch is paused and how many cards wait. */
+export interface QueueState {
+  paused: boolean;
+  queued: number;
+}
+
 export interface Worker {
   id: string;
   name: string;
@@ -719,7 +725,8 @@ export const api = {
   saveClaudeFile: (path: string, content: string) =>
     req<{ ok: boolean }>("PUT", "/api/claude-files/content", { path, content }),
 
-  tasks: () => get<{ tasks: Task[]; columns: ColumnDef[]; wip: Wip; config: TaskRunConfig }>("/api/tasks"),
+  tasks: () =>
+    get<{ tasks: Task[]; columns: ColumnDef[]; wip: Wip; config: TaskRunConfig; queue: QueueState }>("/api/tasks"),
   saveTasksConfig: (c: Partial<TaskRunConfig>) =>
     req<{ config: TaskRunConfig }>("PUT", "/api/tasks/config", c),
   createTask: (t: { title: string; notes?: string; column?: Column; priority?: Priority }) =>
@@ -734,6 +741,9 @@ export const api = {
   stopTask: (id: string) => req<{ ok: boolean }>("POST", `/api/tasks/${id}/stop`),
   retryTask: (id: string) =>
     req<{ ok: boolean; retryCount?: number }>("POST", `/api/tasks/${id}/retry`),
+  pauseQueue: () => req<QueueState>("POST", "/api/tasks/queue/pause"),
+  resumeQueue: () => req<QueueState>("POST", "/api/tasks/queue/resume"),
+  clearQueue: () => req<{ cleared: number; paused: boolean }>("POST", "/api/tasks/queue/clear"),
   addColumn: (name: string) => req<ColumnDef>("POST", "/api/tasks/columns", { name }),
   renameColumn: (id: string, name: string) => req<ColumnDef>("PUT", `/api/tasks/columns/${id}`, { name }),
   removeColumn: (id: string) => req<{ ok: boolean }>("DELETE", `/api/tasks/columns/${id}`),

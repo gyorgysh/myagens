@@ -6,30 +6,37 @@ export interface LiveTask {
   status: TaskDelegation["status"];
   output: string;
   tool?: string;
+  /** Epoch ms when this run started, captured from the "start" event (for the live timer). */
+  startedAt?: number;
 }
 
 type TaskMsg =
   | { type: "task"; event: "start"; taskId: string; runId: string; column?: string }
   | { type: "task"; event: "delta"; taskId: string; runId: string; delta: string }
   | { type: "task"; event: "tool"; taskId: string; runId: string; tool: string }
+  | { type: "task"; event: "queued"; taskId: string; column?: string }
+  | { type: "task"; event: "queue"; paused: boolean }
   | { type: "task"; event: "end"; taskId: string; runId: string; delegate?: TaskDelegation; column?: string };
 
 /**
  * Track live delegated-task runs over the shared /ws, keyed by task id.
  * onColumnMove is called on start and end when the server moved the card to a
  * different column, enabling the board to update optimistically without a
- * full reload.
+ * full reload. onQueuePaused fires when the queue is paused/resumed globally.
  */
 export function useTaskEvents(
   onEnd: () => void,
   onColumnMove?: (taskId: string, column: string) => void,
+  onQueuePaused?: (paused: boolean) => void,
 ): Record<string, LiveTask> {
   const [byTask, setByTask] = useState<Record<string, LiveTask>>({});
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
   const onEndRef = useRef(onEnd);
   const onMoveRef = useRef(onColumnMove);
+  const onQueueRef = useRef(onQueuePaused);
   onEndRef.current = onEnd;
   onMoveRef.current = onColumnMove;
+  onQueueRef.current = onQueuePaused;
 
   useEffect(() => {
     let closed = false;
@@ -49,8 +56,17 @@ export function useTaskEvents(
         } catch {
           return;
         }
+        if (m.event === "queue") {
+          onQueueRef.current?.(m.paused);
+          return;
+        }
+        if (m.event === "queued") {
+          set(m.taskId, () => ({ runId: "", status: "queued", output: "" }));
+          if (m.column) onMoveRef.current?.(m.taskId, m.column);
+          return;
+        }
         if (m.event === "start") {
-          set(m.taskId, () => ({ runId: m.runId, status: "running", output: "" }));
+          set(m.taskId, () => ({ runId: m.runId, status: "running", output: "", startedAt: Date.now() }));
           if (m.column) onMoveRef.current?.(m.taskId, m.column);
         } else if (m.event === "delta") {
           set(m.taskId, (p) => ({
@@ -58,6 +74,7 @@ export function useTaskEvents(
             status: "running",
             output: (p?.runId === m.runId ? p.output : "") + m.delta,
             tool: p?.runId === m.runId ? p.tool : undefined,
+            startedAt: p?.runId === m.runId ? p.startedAt : Date.now(),
           }));
         } else if (m.event === "tool") {
           set(m.taskId, (p) => ({
@@ -65,6 +82,7 @@ export function useTaskEvents(
             status: "running",
             output: p?.runId === m.runId ? p.output : "",
             tool: m.tool,
+            startedAt: p?.runId === m.runId ? p.startedAt : Date.now(),
           }));
         } else if (m.event === "end") {
           set(m.taskId, (p) => ({

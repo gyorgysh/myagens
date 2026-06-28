@@ -136,6 +136,8 @@ Add a provider once (base URL + token, with LM Studio / Ollama prefill presets),
 
 ## Setup (manual)
 
+> **New here? Start with the setup wizard instead.** The one-line installer in [Quick Install](#quick-install) (↑ top of this README) handles Node, git, the Claude CLI, the clone, the build, your `.env`, and an optional background service for you. The manual steps below are for when you already have a checkout or want full control.
+
 > No background services installed: full functionality is available. Install as a service later without touching your checkout or data.
 
 1. **Create a bot**: message [@BotFather](https://t.me/BotFather), run `/newbot`, copy the token.

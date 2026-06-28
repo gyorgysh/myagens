@@ -92,11 +92,55 @@ export class TaskDelegator {
   private active = new Map<string, AbortController>();
   /** Cards waiting for a free slot when maxConcurrent is reached. */
   private queue: QueuedRun[] = [];
+  /**
+   * When true, no queued card is dispatched even if a slot is free. In-flight
+   * runs continue, but the queue is held (e.g. to test, or when close to a
+   * token limit and we want some time off). Resets on restart since the queue
+   * itself is in-memory.
+   */
+  private paused = false;
   private broadcast: Broadcaster = () => {};
   private notify: Notifier = () => {};
 
   start(broadcast: Broadcaster): void {
     this.broadcast = broadcast;
+  }
+
+  /** Hold the queue: stop dispatching new runs until resumed. */
+  pauseQueue(): void {
+    if (this.paused) return;
+    this.paused = true;
+    this.broadcast({ type: "task", event: "queue", paused: true });
+    audit("task.queue.pause", { queued: this.queue.length });
+  }
+
+  /** Resume the queue and immediately fill any free slots. */
+  resumeQueue(): void {
+    if (!this.paused) return;
+    this.paused = false;
+    this.broadcast({ type: "task", event: "queue", paused: false });
+    audit("task.queue.resume", { queued: this.queue.length });
+    this.pump();
+  }
+
+  isQueuePaused(): boolean {
+    return this.paused;
+  }
+
+  /** Number of cards currently parked in the wait queue. */
+  queuedCount(): number {
+    return this.queue.length;
+  }
+
+  /** Drop every queued card without aborting in-flight runs. */
+  clearQueue(): number {
+    const dropped = this.queue.splice(0, this.queue.length);
+    for (const q of dropped) {
+      setDelegate(q.id, { status: "stopped", runId: "", startedAt: Date.now(), endedAt: Date.now() });
+      this.broadcast({ type: "task", event: "end", taskId: q.id, runId: "", delegate: getTask(q.id)?.delegate, column: getTask(q.id)?.column });
+    }
+    if (dropped.length) audit("task.queue.clear", { count: dropped.length });
+    return dropped.length;
   }
 
   /** Register a Telegram reporter, called when a delegated run settles. */
@@ -144,10 +188,11 @@ export class TaskDelegator {
     if (this.active.has(id)) return { ok: false, error: "already running" };
     if (this.isQueued(id)) return { ok: false, error: "already queued" };
 
-    // Respect the global concurrency limit: if all slots are full, park the
-    // card in the queue and mark it "queued" so the panel can show it waiting.
+    // Respect the global concurrency limit: if all slots are full — or the
+    // queue is paused — park the card in the queue and mark it "queued" so the
+    // panel can show it waiting.
     const { maxConcurrent } = getTaskRunConfig();
-    if (maxConcurrent > 0 && this.active.size >= maxConcurrent) {
+    if (this.paused || (maxConcurrent > 0 && this.active.size >= maxConcurrent)) {
       this.queue.push({ id, leadId });
       setDelegate(id, { status: "queued", runId: "", startedAt: Date.now() });
       this.broadcast({ type: "task", event: "queued", taskId: id, column: task.column });
@@ -180,6 +225,7 @@ export class TaskDelegator {
 
   /** After a run finishes, start the next queued card if a slot is free. */
   private pump(): void {
+    if (this.paused) return;
     const { maxConcurrent } = getTaskRunConfig();
     while (this.queue.length > 0 && (maxConcurrent <= 0 || this.active.size < maxConcurrent)) {
       const next = this.queue.shift()!;

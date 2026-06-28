@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useConnection } from "../lib/useConnection.ts";
 import { useI18n } from "../lib/useI18n.ts";
+import { reloadFresh } from "../lib/reload.ts";
 
 // After the backend has been fully offline (a restart/update/crash, not a brief
 // blip) and comes back, the page often has stale view state and never recovers
@@ -37,8 +38,10 @@ export function ConnectionBanner() {
       if (sawOutage.current) {
         // The backend actually went down (restart/update/crash). Reload so every
         // view re-inits against the fresh server instead of hanging on stale state.
+        // Drop the asset cache first: a restart is usually an update, and the
+        // rebuilt panel bundle must not be served from a stale cache.
         setReloading(true);
-        const id = setTimeout(() => location.reload(), RELOAD_AFTER_RECOVERY_MS);
+        const id = setTimeout(() => void reloadFresh(), RELOAD_AFTER_RECOVERY_MS);
         prev.current = status;
         return () => clearTimeout(id);
       }

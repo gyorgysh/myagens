@@ -3,6 +3,7 @@ import { api, AuthError, openHealthSocket, type UpdateStatus } from "../api.ts";
 import { Badge, Button, Callout, Card } from "./ui.tsx";
 import { useI18n } from "../lib/useI18n.ts";
 import { relTime } from "../lib/format.ts";
+import { reloadFresh } from "../lib/reload.ts";
 
 export function UpdatesView({
   onAuthError,
@@ -89,8 +90,9 @@ export function UpdatesView({
           stop = true;
           clearInterval(id);
           // The backend is still alive (this fetch just succeeded), so the
-          // banner won't reload us — do it here to load the new assets.
-          setTimeout(() => location.reload(), 1200);
+          // banner won't reload us — do it here to load the new assets, dropping
+          // the asset cache first so we don't reload a stale bundle.
+          setTimeout(() => void reloadFresh(), 1200);
         }
       } catch (e) {
         if (e instanceof AuthError) {

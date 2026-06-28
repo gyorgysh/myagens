@@ -21,8 +21,6 @@
 .NOTES
     Non-interactive overrides (set before running):
       MYHQ_REPO         Git repository URL
-      MYHQ_INSTALLER_URL  URL to re-download this script from when self-elevating
-                          a piped (irm | iex) run (default: gyorgy.sh copy)
       MYHQ_DIR          Install directory (default: $HOME\myhq)
       MYHQ_BRANCH       Branch to clone (default: main)
       MYHQ_TOKEN        Telegram bot token
@@ -92,42 +90,43 @@ function Confirm {
 }
 
 # ---------------------------------------------------------------------------
-# Self-elevation
+# Admin check
 # ---------------------------------------------------------------------------
 function Ensure-Admin {
     $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { return }
 
-    Warn "Not running as Administrator. Re-launching elevated…"
+    # Self-elevation via UAC is unreliable when the script is piped through
+    # `irm … | iex` (there is no file to relaunch), so instead give clear, plain
+    # instructions and stop. Installing the service needs admin rights.
+    Write-Host ""
+    Err "MyHQ must be installed from an Administrator PowerShell."
+    Write-Host ""
+    Write-Host "  How to open one:" -ForegroundColor Cyan
+    Write-Host "    1. Press the Windows key"
+    Write-Host "    2. Type:  powershell"
+    Write-Host "    3. Right-click 'Windows PowerShell' and choose 'Run as administrator'"
+    Write-Host ""
+    Write-Host "  Then run these two lines:" -ForegroundColor Cyan
+    Write-Host "    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force"
+    Write-Host "    irm https://gyorgy.sh/myhq-install.ps1 | iex"
+    Write-Host ""
+    exit 1
+}
 
-    # Find a runnable copy of this script. When invoked via `irm … | iex` there
-    # is no file on disk ($PSCommandPath is empty), so download a copy to TEMP
-    # and elevate that — otherwise the elevated PowerShell would have nothing to
-    # run and the install would silently do nothing.
-    $scriptPath = $PSCommandPath
-    if (-not $scriptPath) {
-        $url = if ($env:MYHQ_INSTALLER_URL) { $env:MYHQ_INSTALLER_URL } else { "https://gyorgy.sh/myhq-install.ps1" }
-        $scriptPath = Join-Path $env:TEMP "myhq-install.ps1"
-        Say "Downloading installer for elevation → $scriptPath"
-        try {
-            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $scriptPath
-        } catch {
-            Die "Couldn't download the installer to elevate ($url). Save it to a .ps1 file and run it from an elevated PowerShell."
-        }
-    }
-
-    # Forward MYHQ_* overrides across the elevation boundary — UAC starts a fresh
-    # process that does NOT inherit env vars set in the current session, so without
-    # this an elevated run would lose MYHQ_YES and any other non-interactive flags.
-    $fwd = Get-ChildItem Env: | Where-Object { $_.Name -like "MYHQ_*" } |
-        ForEach-Object { "`$env:$($_.Name)='$($_.Value -replace "'","''")'" }
-    $inner   = (@($fwd) + "& '$($scriptPath -replace "'","''")'") -join "; "
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
-
-    Start-Process powershell -Verb RunAs -ArgumentList @(
-        "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encoded
-    )
-    exit 0
+# ---------------------------------------------------------------------------
+# Native command helper
+# ---------------------------------------------------------------------------
+function Invoke-Quiet {
+    # Run a native command and swallow its output. Many CLIs (npm, winget, …)
+    # write warnings/progress to stderr; under $ErrorActionPreference = "Stop"
+    # a `2>&1` merge turns that into a terminating NativeCommandError. Drop to
+    # "Continue" for the call so only a real non-zero exit code is treated as a
+    # failure by the caller (via $LASTEXITCODE).
+    param([scriptblock]$Cmd)
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { & $Cmd 2>&1 | Out-Null } finally { $ErrorActionPreference = $old }
 }
 
 # ---------------------------------------------------------------------------
@@ -175,7 +174,7 @@ function Ensure-Git {
 function Ensure-ClaudeCLI {
     if (Get-Command claude -ErrorAction SilentlyContinue) { Ok "Claude Code CLI found."; return }
     Say "Installing Claude Code CLI (npm install -g @anthropic-ai/claude-code)…"
-    npm.cmd install -g "@anthropic-ai/claude-code" 2>&1 | Out-Null
+    Invoke-Quiet { npm.cmd install -g "@anthropic-ai/claude-code" }
     if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
         Warn "Claude CLI not in PATH yet — you may need to re-open your terminal after setup."
     } else {
@@ -213,7 +212,8 @@ function Ensure-Ollama {
     }
     Say "Pulling nomic-embed-text (~275MB)…"
     try {
-        ollama pull nomic-embed-text 2>&1 | Out-Null
+        Invoke-Quiet { ollama pull nomic-embed-text }
+        if ($LASTEXITCODE -ne 0) { throw "ollama pull exited $LASTEXITCODE" }
         Ok "Embedding model ready — semantic memory will auto-enable."
     } catch {
         Warn "Couldn't pull nomic-embed-text — run 'ollama pull nomic-embed-text' once the daemon is up."

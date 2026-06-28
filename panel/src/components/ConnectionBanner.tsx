@@ -12,16 +12,22 @@ export function ConnectionBanner() {
   const { status, retryIn, retryNow } = useConnection();
   const { t } = useI18n();
   const prev = useRef(status);
+  // Have we actually been live once and then lost it? Only then is reaching
+  // "live" a genuine recovery worth flashing — not the initial connect on a
+  // fresh page load (the hook starts in "reconnecting").
+  const everLive = useRef(false);
   const [flashOk, setFlashOk] = useState(false);
 
   useEffect(() => {
-    // Show a short "Reconnected" confirmation when we recover from a drop.
-    if (status === "live" && prev.current !== "live") {
+    // Show a short "Reconnected" confirmation only when we recover from a real
+    // drop: we'd previously been live, then went non-live, and are now back.
+    if (status === "live" && prev.current !== "live" && everLive.current) {
       setFlashOk(true);
       const id = setTimeout(() => setFlashOk(false), 2500);
       prev.current = status;
       return () => clearTimeout(id);
     }
+    if (status === "live") everLive.current = true;
     prev.current = status;
   }, [status]);
 

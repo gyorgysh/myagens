@@ -7,6 +7,8 @@ import {
   type UsageLimitWindow,
   type UsageSummary,
   type AgentUsageEntry,
+  type AgentDailyByRole,
+  type AgentRole,
 } from "../api.ts";
 import { usePoll } from "../lib/usePoll.ts";
 import { Card, Button, Empty, Metric } from "./ui.tsx";
@@ -32,13 +34,17 @@ export function UsageView({ onAuthError }: { onAuthError: () => void }) {
   const [probe, setProbe] = useState<ProbeResult | null>(null);
   const [claude, setClaude] = useState<ClaudeUsageSnapshot | null>(null);
   const [agentEntries, setAgentEntries] = useState<AgentUsageEntry[] | null>(null);
+  const [agentDaily, setAgentDaily] = useState<AgentDailyByRole>({});
   const [probeRunning, setProbeRunning] = useState(false);
 
   useEffect(() => {
     api.plan().then(setPlan).catch(() => {});
     api.usageProbe().then(setProbe).catch(() => {});
     api.claudeUsage().then(setClaude).catch(() => {});
-    api.usageAgents().then((r) => setAgentEntries(r.agents)).catch(() => {});
+    api.usageAgents().then((r) => {
+      setAgentEntries(r.agents);
+      setAgentDaily(r.dailyByRole);
+    }).catch(() => {});
   }, []);
 
   if (error) return <Empty>{t("usage_failed_load").replace("{error}", error)}</Empty>;
@@ -91,7 +97,7 @@ export function UsageView({ onAuthError }: { onAuthError: () => void }) {
       {myhq && <TokenUsageCard myhq={myhq} />}
 
       {/* Per-agent breakdown — always rendered so empty state is visible. */}
-      <AgentBreakdownCard agents={agentEntries ?? []} />
+      <AgentBreakdownCard agents={agentEntries ?? []} dailyByRole={agentDaily} />
 
       {/* MyHQ session metrics — cost is meaningless on a subscription plan, so omit it */}
       {myhq && (
@@ -393,18 +399,44 @@ function CostChart({
 }
 
 // ---------------------------------------------------------------------------
-// Per-agent token breakdown
+// Per-agent token breakdown (grouped by category)
 // ---------------------------------------------------------------------------
 
-const ROLE_LABEL: Record<string, string> = {
-  atlas: "Atlas",
-  lead: "Lead",
-  worker: "Worker",
-  task: "Task",
-};
+/** Display order and labels for the role categories. */
+const CATEGORIES: Array<{ role: AgentRole; label: string; color: string }> = [
+  { role: "atlas",     label: "Atlas",       color: "bg-accent/70" },
+  { role: "lead",      label: "Leads",       color: "bg-violet-400/70" },
+  { role: "worker",    label: "Workers",     color: "bg-sky-400/70" },
+  { role: "task",      label: "Tasks",       color: "bg-emerald-400/70" },
+  { role: "schedule",  label: "Schedules",   color: "bg-amber-400/70" },
+  { role: "agentchat", label: "Agent Chat",  color: "bg-rose-400/70" },
+];
 
-function AgentBreakdownCard({ agents }: { agents: AgentUsageEntry[] }) {
+function sumAgents(agents: AgentUsageEntry[]) {
+  const s = { turns: 0, costUsd: 0, durationMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  for (const a of agents) {
+    s.turns += a.total.turns;
+    s.costUsd += a.total.costUsd;
+    s.durationMs += a.total.durationMs;
+    s.inputTokens += a.total.inputTokens;
+    s.outputTokens += a.total.outputTokens;
+    s.cacheReadTokens += a.total.cacheReadTokens;
+    s.cacheWriteTokens += a.total.cacheWriteTokens;
+  }
+  return s;
+}
+
+function AgentBreakdownCard({
+  agents,
+  dailyByRole,
+}: {
+  agents: AgentUsageEntry[];
+  dailyByRole: AgentDailyByRole;
+}) {
   const { t } = useI18n();
+
+  const hasDailyData = Object.values(dailyByRole).some((d) => (d?.length ?? 0) > 0);
+
   if (agents.length === 0)
     return (
       <Card title={t("usage_agents_title")}>
@@ -412,41 +444,148 @@ function AgentBreakdownCard({ agents }: { agents: AgentUsageEntry[] }) {
       </Card>
     );
 
+  // Group agents by role, keeping only categories that have data.
+  const grouped = CATEGORIES.map((cat) => ({
+    ...cat,
+    agents: agents.filter((a) => a.role === cat.role),
+  })).filter((g) => g.agents.length > 0);
+
+  const COL = "grid grid-cols-[1fr_80px_80px_72px_52px] gap-2 px-1";
+
   return (
     <Card title={t("usage_agents_title")}>
-      <div className="overflow-x-auto">
-        <div className="min-w-[480px]">
-          {/* Header row */}
-          <div className="mb-1 grid grid-cols-[1fr_80px_80px_72px_52px] gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-fg-dim">
-            <span>{t("usage_agents_col_agent")}</span>
-            <span className="text-right">{t("usage_agents_col_input")}</span>
-            <span className="text-right">{t("usage_agents_col_output")}</span>
-            <span className="text-right">{t("usage_agents_col_cost")}</span>
-            <span className="text-right">{t("usage_agents_col_turns")}</span>
-          </div>
-          {/* Data rows */}
-          {agents.map((a) => (
-            <div
-              key={a.name}
-              className="grid grid-cols-[1fr_80px_80px_72px_52px] gap-2 rounded px-1 py-1 text-sm even:bg-bg-surface/40"
-            >
-              <span className="flex items-center gap-1.5 font-medium text-fg truncate">
-                {a.name}
-                <span className="shrink-0 rounded bg-accent/10 px-1 py-0.5 text-[10px] font-semibold text-accent">
-                  {ROLE_LABEL[a.role] ?? a.role}
-                </span>
-              </span>
-              <span className="text-right font-mono text-fg-dim">{tokens(a.total.inputTokens)}</span>
-              <span className="text-right font-mono text-fg-dim">{tokens(a.total.outputTokens)}</span>
-              <span className="text-right font-mono text-fg-dim">
-                {a.total.costUsd > 0 ? usd(a.total.costUsd) : "—"}
-              </span>
-              <span className="text-right font-mono text-fg-dim">{a.total.turns}</span>
+      <div className="space-y-5">
+        {/* All-categories stacked daily token chart */}
+        {hasDailyData && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-fg-dim">
+                {t("usage_tokens_per_day")}
+              </p>
+              <div className="flex flex-wrap items-center gap-3 text-[10px] text-fg-faint">
+                {grouped.map((g) => (
+                  <span key={g.role} className="flex items-center gap-1">
+                    <span className={`inline-block h-2 w-2 rounded-sm ${g.color}`} />
+                    {g.label}
+                  </span>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+            <AgentTokenChart dailyByRole={dailyByRole} />
+          </div>
+        )}
+
+        {/* Per-category tables */}
+        {grouped.map((cat) => {
+          const sub = sumAgents(cat.agents);
+          return (
+            <div key={cat.role}>
+              {/* Category header with subtotal */}
+              <div className={`${COL} mb-0.5 text-xs font-semibold uppercase tracking-wider`}>
+                <span className="flex items-center gap-1.5 text-fg-dim">
+                  <span className={`inline-block h-2 w-2 rounded-sm ${cat.color}`} />
+                  {cat.label}
+                </span>
+                <span className="text-right font-mono text-fg-dim">{tokens(sub.inputTokens)}</span>
+                <span className="text-right font-mono text-fg-dim">{tokens(sub.outputTokens)}</span>
+                <span className="text-right font-mono text-fg-dim">
+                  {sub.costUsd > 0 ? usd(sub.costUsd) : "—"}
+                </span>
+                <span className="text-right font-mono text-fg-dim">{sub.turns}</span>
+              </div>
+
+              {/* Column header (only shown once per group when >1 agent) */}
+              {cat.agents.length > 1 && (
+                <div className={`${COL} mb-0.5 text-[10px] text-fg-faint`}>
+                  <span className="pl-3">{t("usage_agents_col_agent")}</span>
+                  <span className="text-right">{t("usage_agents_col_input")}</span>
+                  <span className="text-right">{t("usage_agents_col_output")}</span>
+                  <span className="text-right">{t("usage_agents_col_cost")}</span>
+                  <span className="text-right">{t("usage_agents_col_turns")}</span>
+                </div>
+              )}
+
+              {/* Agent rows */}
+              {cat.agents.length > 1 && cat.agents.map((a) => (
+                <div
+                  key={a.name}
+                  className={`${COL} rounded py-0.5 text-sm even:bg-surface/40`}
+                >
+                  <span className="truncate pl-3 text-fg-dim">{a.name}</span>
+                  <span className="text-right font-mono text-xs text-fg-faint">{tokens(a.total.inputTokens)}</span>
+                  <span className="text-right font-mono text-xs text-fg-faint">{tokens(a.total.outputTokens)}</span>
+                  <span className="text-right font-mono text-xs text-fg-faint">
+                    {a.total.costUsd > 0 ? usd(a.total.costUsd) : "—"}
+                  </span>
+                  <span className="text-right font-mono text-xs text-fg-faint">{a.total.turns}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </Card>
+  );
+}
+
+/**
+ * Stacked daily bar chart for all agent categories. Each bar is segmented by
+ * role category (Atlas at bottom, then Leads, Workers, Tasks, Schedules,
+ * Agent Chat at top). Height represents total input+output tokens that day.
+ */
+function AgentTokenChart({ dailyByRole }: { dailyByRole: AgentDailyByRole }) {
+  // Collect all days across all roles, union them.
+  const daySet = new Set<string>();
+  for (const series of Object.values(dailyByRole)) {
+    for (const d of series ?? []) daySet.add(d.day);
+  }
+  const days = [...daySet].sort();
+  const recent = days.slice(-30);
+  if (recent.length === 0) return null;
+
+  // For each day, compute total tokens per role.
+  type DaySlice = { day: string; slices: Array<{ role: AgentRole; tokens: number }> };
+  const rows: DaySlice[] = recent.map((day) => ({
+    day,
+    slices: CATEGORIES.map((cat) => {
+      const entry = (dailyByRole[cat.role] ?? []).find((d) => d.day === day);
+      return { role: cat.role, tokens: (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0) };
+    }).filter((s) => s.tokens > 0),
+  }));
+
+  const maxTotal = Math.max(1, ...rows.map((r) => r.slices.reduce((s, x) => s + x.tokens, 0)));
+  const colorMap = Object.fromEntries(CATEGORIES.map((c) => [c.role, c.color]));
+
+  return (
+    <div className="relative flex h-40 items-end gap-1">
+      {rows.map((row) => {
+        const total = row.slices.reduce((s, x) => s + x.tokens, 0);
+        const totalPct = (total / maxTotal) * 100;
+        const tip = row.slices.map((s) => `${CATEGORIES.find((c) => c.role === s.role)?.label}: ${tokens(s.tokens)}`).join(" | ");
+        return (
+          <div key={row.day} className="group flex flex-1 flex-col items-center justify-end">
+            <div
+              className="flex w-full flex-col-reverse justify-end overflow-hidden rounded-t"
+              style={{ height: `${totalPct}%` }}
+              title={`${row.day}: ${tokens(total)} — ${tip}`}
+            >
+              {row.slices.map((s) => {
+                const pct = total > 0 ? (s.tokens / total) * 100 : 0;
+                const base = colorMap[s.role] ?? "bg-fg-faint/30";
+                const hover = base.replace("/70", "");
+                return (
+                  <div
+                    key={s.role}
+                    className={`w-full transition-all ${base} group-hover:${hover}`}
+                    style={{ height: `${pct}%` }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

@@ -16,6 +16,7 @@
 import { randomBytes } from "node:crypto";
 import { config } from "../config.js";
 import { runTurn } from "../claude/runner.js";
+import { agentUsage } from "./agentUsage.js";
 import { workers, type Worker } from "./workers.js";
 import { getSkill, recordSkillUse } from "./skills.js";
 import { getProvider } from "./providers.js";
@@ -198,6 +199,15 @@ export class AgentChatManager {
           if (id) s.resume = id;
         },
       });
+      const turnUsage = {
+        costUsd: res.costUsd ?? 0,
+        durationMs: res.durationMs ?? 0,
+        inputTokens: res.tokens?.inputTokens ?? 0,
+        outputTokens: res.tokens?.outputTokens ?? 0,
+        cacheReadTokens: res.tokens?.cacheReadTokens ?? 0,
+        cacheWriteTokens: res.tokens?.cacheWriteTokens ?? 0,
+      };
+      agentUsage.record(w.name, "agentchat", turnUsage);
       const assistantMsg: AgentChatMessage = {
         id: streamId,
         role: "assistant",

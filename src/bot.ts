@@ -701,7 +701,13 @@ async function handleUserPrompt(
       cacheWriteTokens: res.tokens?.cacheWriteTokens ?? 0,
     };
     sessions.recordUsage(chatId, turnUsage);
-    agentUsage.record(config.ATLAS_NAME, "atlas", turnUsage);
+    // Schedule-triggered autonomous turns are attributed to a "Schedule" category
+    // so they appear separately from interactive Atlas turns in the usage view.
+    if (webhook?.source === "schedule") {
+      agentUsage.record("Schedule", "schedule", turnUsage);
+    } else {
+      agentUsage.record(config.ATLAS_NAME, "atlas", turnUsage);
+    }
     log.info("Turn complete", {
       chatId,
       ms: Date.now() - startedAt,

@@ -557,7 +557,10 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     return { ok: true };
   });
   app.get("/api/usage", async () => usageSummary());
-  app.get("/api/usage/agents", async () => ({ agents: agentUsage.list() }));
+  app.get("/api/usage/agents", async () => ({
+    agents: agentUsage.list(),
+    dailyByRole: agentUsage.dailyByRole(),
+  }));
   app.get("/api/audit", async () => ({ events: recentAudit() }));
   // GET /api/logs
   //   ?date=YYYY-MM-DD  — read from the persisted file for that date

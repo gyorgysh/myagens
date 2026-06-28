@@ -107,12 +107,15 @@ export interface UsageSummary {
   daily: Array<{ day: string } & UsageStat>;
 }
 
-export type AgentRole = "atlas" | "lead" | "worker" | "task";
+export type AgentRole = "atlas" | "lead" | "worker" | "task" | "schedule" | "agentchat";
 export interface AgentUsageEntry {
   name: string;
   role: AgentRole;
   total: UsageStat;
+  daily: Record<string, UsageStat>;
 }
+
+export type AgentDailyByRole = Partial<Record<AgentRole, Array<{ day: string } & UsageStat>>>;
 
 export interface PromptView {
   personality: string;
@@ -680,7 +683,7 @@ export const api = {
     req<{ ok: boolean; schedules: ScheduleView[] }>("POST", `/api/schedules/${id}/run`, {}),
   deleteSchedule: (id: string) => req<{ ok: boolean }>("DELETE", `/api/schedules/${id}`),
   usage: () => get<UsageSummary>("/api/usage"),
-  usageAgents: () => get<{ agents: AgentUsageEntry[] }>("/api/usage/agents"),
+  usageAgents: () => get<{ agents: AgentUsageEntry[]; dailyByRole: AgentDailyByRole }>("/api/usage/agents"),
 
   prompt: () => get<PromptView>("/api/prompt"),
   savePrompt: (content: string) => req<PromptView>("PUT", "/api/prompt", { content }),

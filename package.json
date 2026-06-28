@@ -1,6 +1,6 @@
 {
   "name": "myhq",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Remote access to Claude Code over Telegram — stream a real Claude Code agent to your phone.",
   "license": "AGPL-3.0-only",
   "type": "module",

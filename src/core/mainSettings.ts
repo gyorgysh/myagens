@@ -3,6 +3,8 @@ import { loadJson, saveJson } from "./jsonStore.js";
 import { getProvider, listProviders } from "./providers.js";
 import { resolveSecret } from "./vault.js";
 import { audit } from "./audit.js";
+import { loadProbeResult } from "./usageProbe.js";
+import { log } from "../logger.js";
 import type { Autonomy } from "../session/manager.js";
 
 const FILE = "mainAgent.json";
@@ -47,6 +49,17 @@ interface MainSettings {
    * interactive turn (forces the permission gate on even in full autonomy).
    */
   dryRun?: boolean;
+  /**
+   * Provider to fail over to when the Anthropic plan is rate-limited. When set,
+   * autonomous/background turns (schedules, delegated tasks, heartbeat) switch to
+   * this provider while usage is over `fallbackThreshold`, then switch back once
+   * the limit resets. "" / undefined = no fallback. Typically a local model.
+   */
+  fallbackProviderId?: string;
+  /** Optional model id to use on the fallback provider ("" = the provider default). */
+  fallbackModel?: string;
+  /** Usage percent (any window) at/above which fallback engages (default 95). */
+  fallbackThreshold?: number;
 }
 
 /** Mutating tools intercepted by dry-run (echoed, not executed). */
@@ -99,6 +112,10 @@ export function mainSettingsView() {
     autonomy: s.autonomy ?? "standard",
     defaultLanguage: s.defaultLanguage ?? config.DEFAULT_LANGUAGE,
     dryRun: s.dryRun === true,
+    fallbackProviderId: s.fallbackProviderId ?? "",
+    fallbackModel: s.fallbackModel ?? "",
+    fallbackThreshold: s.fallbackThreshold ?? DEFAULT_FALLBACK_THRESHOLD,
+    degraded: degradedState(),
     botUsername: botUsername ?? "",
   };
 }
@@ -110,6 +127,9 @@ export function setMainSettings(patch: {
   autonomy?: Autonomy;
   defaultLanguage?: string;
   dryRun?: boolean;
+  fallbackProviderId?: string;
+  fallbackModel?: string;
+  fallbackThreshold?: number;
 }): void {
   const s = load();
   if (patch.model !== undefined) s.model = patch.model.trim() || undefined;
@@ -118,8 +138,20 @@ export function setMainSettings(patch: {
   if (patch.autonomy !== undefined) s.autonomy = patch.autonomy || undefined;
   if (patch.defaultLanguage !== undefined) s.defaultLanguage = patch.defaultLanguage || undefined;
   if (patch.dryRun !== undefined) s.dryRun = patch.dryRun || undefined;
+  if (patch.fallbackProviderId !== undefined)
+    s.fallbackProviderId = patch.fallbackProviderId || undefined;
+  if (patch.fallbackModel !== undefined) s.fallbackModel = patch.fallbackModel.trim() || undefined;
+  if (patch.fallbackThreshold !== undefined) {
+    const n = Math.round(patch.fallbackThreshold);
+    s.fallbackThreshold = Number.isFinite(n) ? Math.min(100, Math.max(50, n)) : undefined;
+  }
   saveJson<MainFile>(FILE, { version: 1, settings: s });
-  audit("mainAgent.update", { model: s.model, providerId: s.providerId, dryRun: s.dryRun });
+  audit("mainAgent.update", {
+    model: s.model,
+    providerId: s.providerId,
+    dryRun: s.dryRun,
+    fallbackProviderId: s.fallbackProviderId,
+  });
 }
 
 /** Per-turn overrides for a main (bot) turn: model + provider env + persona, if set.
@@ -147,5 +179,89 @@ export function resolveMainRun(): {
     persona: s.persona || undefined,
     autonomy: s.autonomy ?? "standard",
     defaultLanguage: s.defaultLanguage || undefined,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rate-limit auto-fallback
+// ---------------------------------------------------------------------------
+
+/** Default usage-percent threshold at which fallback engages. */
+const DEFAULT_FALLBACK_THRESHOLD = 95;
+
+/** Transient flag: whether the last autonomous resolve actually fell back. Drives
+ *  the panel "degraded mode" banner. Not persisted (it's a live runtime state). */
+let degraded: { active: boolean; since?: string; reason?: string; provider?: string } = {
+  active: false,
+};
+
+/** Current degraded-mode state (for the panel banner / status command). */
+export function degradedState(): { active: boolean; since?: string; reason?: string; provider?: string } {
+  return degraded;
+}
+
+/** True if the cached usage probe shows any window at/above `threshold` percent. */
+function overUsageLimit(threshold: number): { over: boolean; label?: string; percent?: number } {
+  const probe = loadProbeResult();
+  if (!probe || !probe.limits.length) return { over: false };
+  let worst: { label: string; percent: number } | undefined;
+  for (const lim of probe.limits) {
+    if (lim.percent >= threshold && (!worst || lim.percent > worst.percent)) {
+      worst = { label: lim.label, percent: lim.percent };
+    }
+  }
+  return worst ? { over: true, label: worst.label, percent: worst.percent } : { over: false };
+}
+
+/**
+ * Resolve a main run, honouring rate-limit auto-fallback for autonomous turns.
+ * When `autonomous` and a fallback provider is configured and the cached usage
+ * probe shows we're at/over the threshold, swap to the fallback provider/model
+ * (typically a local model) so background work keeps running; otherwise this is
+ * exactly `resolveMainRun()`. Updates the degraded-mode flag as a side effect.
+ */
+export function resolveMainRunFor(opts: { autonomous: boolean }): ReturnType<typeof resolveMainRun> {
+  const base = resolveMainRun();
+  const s = load();
+  // Only autonomous turns fail over, and only when a fallback provider is set.
+  // Interactive turns never change degraded state (it tracks background work).
+  if (!opts.autonomous || !s.fallbackProviderId) return base;
+  const threshold = s.fallbackThreshold ?? DEFAULT_FALLBACK_THRESHOLD;
+  const { over, label, percent } = overUsageLimit(threshold);
+  if (!over) {
+    if (degraded.active) {
+      log.info("Rate-limit fallback cleared — back on primary model");
+      degraded = { active: false };
+    }
+    return base;
+  }
+  const provider = getProvider(s.fallbackProviderId);
+  if (!provider) {
+    log.warn("Fallback provider configured but not found", { id: s.fallbackProviderId });
+    return base;
+  }
+  if (!degraded.active) {
+    log.warn("Rate-limit fallback engaged — switching to fallback provider", {
+      provider: provider.name,
+      limit: label,
+      percent,
+    });
+  }
+  degraded = {
+    active: true,
+    since: degraded.since ?? new Date().toISOString(),
+    reason: label ? `${label} at ${percent}%` : "rate limit",
+    provider: provider.name,
+  };
+  return {
+    model: s.fallbackModel || base.model,
+    env: {
+      ANTHROPIC_BASE_URL: provider.baseUrl,
+      ANTHROPIC_AUTH_TOKEN: resolveSecret(provider.authToken),
+      ANTHROPIC_API_KEY: undefined,
+    },
+    persona: base.persona,
+    autonomy: base.autonomy,
+    defaultLanguage: base.defaultLanguage,
   };
 }

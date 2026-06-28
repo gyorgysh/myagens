@@ -352,6 +352,9 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const [persona, setPersona] = useState("");
   const [autonomy, setAutonomy] = useState<Autonomy>("standard");
   const [dryRun, setDryRun] = useState(false);
+  const [fallbackProviderId, setFallbackProviderId] = useState("");
+  const [fallbackModel, setFallbackModel] = useState("");
+  const [fallbackThreshold, setFallbackThreshold] = useState(95);
   const [fetched, setFetched] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -365,6 +368,9 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         setPersona(a.persona ?? "");
         setAutonomy(a.autonomy ?? "standard");
         setDryRun(a.dryRun === true);
+        setFallbackProviderId(a.fallbackProviderId ?? "");
+        setFallbackModel(a.fallbackModel ?? "");
+        setFallbackThreshold(a.fallbackThreshold ?? 95);
       })
       .catch((e) => e instanceof AuthError && onAuthError());
 
@@ -379,7 +385,10 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
       providerId !== agent.providerId ||
       persona !== (agent.persona ?? "") ||
       autonomy !== (agent.autonomy ?? "standard") ||
-      dryRun !== (agent.dryRun === true));
+      dryRun !== (agent.dryRun === true) ||
+      fallbackProviderId !== (agent.fallbackProviderId ?? "") ||
+      fallbackModel !== (agent.fallbackModel ?? "") ||
+      fallbackThreshold !== (agent.fallbackThreshold ?? 95));
 
   // Warn before leaving (tab close / reload) while there are unsaved edits.
   useEffect(() => {
@@ -416,7 +425,16 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const save = async () => {
     setBusy("save");
     try {
-      const next = await api.saveAgent({ model, providerId, persona, autonomy, dryRun });
+      const next = await api.saveAgent({
+        model,
+        providerId,
+        persona,
+        autonomy,
+        dryRun,
+        fallbackProviderId,
+        fallbackModel,
+        fallbackThreshold,
+      });
       setAgent(next);
       toast.success(t("saved"));
     } catch (e) {
@@ -577,6 +595,55 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
               <p className="mt-2 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-warn-fg">
                 {t("settings_dryrun_active")}
               </p>
+            )}
+          </div>
+
+          <div className="mt-4 border-t border-line pt-4">
+            <span className="text-sm font-medium text-fg">{t("settings_fallback")}</span>
+            <p className="mt-0.5 mb-2 text-xs text-fg-dim">{t("settings_fallback_desc")}</p>
+            {agent.degraded?.active && (
+              <p className="mb-2 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-warn-fg">
+                {t("settings_fallback_active")
+                  .replace("{provider}", agent.degraded.provider ?? "")
+                  .replace("{reason}", agent.degraded.reason ?? "")}
+              </p>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label>{t("settings_fallback_provider")}</Label>
+                <Select
+                  value={fallbackProviderId}
+                  onChange={(e) => setFallbackProviderId(e.target.value)}
+                >
+                  <option value="">{t("settings_fallback_none")}</option>
+                  {agent.providers.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label>{t("model")}</Label>
+                <Input
+                  value={fallbackModel}
+                  onChange={(e) => setFallbackModel(e.target.value)}
+                  placeholder={t("settings_fallback_model_ph")}
+                  disabled={!fallbackProviderId}
+                />
+              </div>
+            </div>
+            {fallbackProviderId && (
+              <div className="mt-3">
+                <Label>{t("settings_fallback_threshold")}</Label>
+                <Input
+                  type="number"
+                  min={50}
+                  max={100}
+                  value={fallbackThreshold}
+                  onChange={(e) => setFallbackThreshold(Number(e.target.value))}
+                  className="max-w-[7rem]"
+                />
+                <p className="mt-0.5 text-xs text-fg-dim">{t("settings_fallback_threshold_desc")}</p>
+              </div>
             )}
           </div>
         </Accordion>

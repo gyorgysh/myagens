@@ -38,7 +38,7 @@ import { heartbeat } from "./core/heartbeat.js";
 import { taskDelegator } from "./core/taskRunner.js";
 import { push } from "./core/push.js";
 import { fireWebhook, type WebhookSource } from "./core/webhook.js";
-import { resolveMainRun, isDryRun, dryRunDescription, DRY_RUN_TOOLS } from "./core/mainSettings.js";
+import { resolveMainRunFor, isDryRun, dryRunDescription, DRY_RUN_TOOLS } from "./core/mainSettings.js";
 import { TokenBucketLimiter } from "./core/rateLimiter.js";
 import { workers } from "./core/workers.js";
 import { suggestions } from "./core/suggestions.js";
@@ -582,7 +582,9 @@ async function handleUserPrompt(
     return { behavior: "deny", message: "User denied this action." };
   };
 
-  const mainRun = resolveMainRun();
+  // Autonomous/background turns fail over to a configured local provider while
+  // the Anthropic plan is rate-limited (Feature: rate-limit auto-fallback).
+  const mainRun = resolveMainRunFor({ autonomous: Boolean(autonomous) });
 
   const leads = workers.list().filter((w) => w.role === "lead" && w.enabled);
   const crew =

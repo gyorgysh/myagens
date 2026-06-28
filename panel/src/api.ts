@@ -599,6 +599,14 @@ export interface MainAgent {
   defaultLanguage: string;
   /** Global dry-run: mutating tools are echoed, not executed. */
   dryRun: boolean;
+  /** Provider to fail over to when the plan is rate-limited ("" = off). */
+  fallbackProviderId: string;
+  /** Model id to use on the fallback provider ("" = provider default). */
+  fallbackModel: string;
+  /** Usage percent at/above which fallback engages. */
+  fallbackThreshold: number;
+  /** Live degraded-mode state when autonomous turns are running on the fallback. */
+  degraded: { active: boolean; since?: string; reason?: string; provider?: string };
   /** The main bot's @username (from getMe), for a t.me link. */
   botUsername?: string;
   embeddings: EmbeddingConfig;
@@ -778,7 +786,7 @@ export const api = {
   runProbe: () => req<{ ok: boolean; message: string }>("POST", "/api/usage-probe/run"),
 
   agent: () => get<MainAgent>("/api/agent"),
-  saveAgent: (s: { model?: string; providerId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean }) =>
+  saveAgent: (s: { model?: string; providerId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; fallbackProviderId?: string; fallbackModel?: string; fallbackThreshold?: number }) =>
     req<MainAgent>("PUT", "/api/agent", s),
   resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),

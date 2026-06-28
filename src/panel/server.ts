@@ -419,6 +419,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     chatEnabled: chat.isEnabled(),
     version: VERSION,
     updateAvailable: getUpdateStatus().available,
+    updateCount: getUpdateStatus().behindBy,
     atlasName: config.ATLAS_NAME,
     brandName: config.BRAND_NAME,
     defaultLanguage: config.DEFAULT_LANGUAGE,

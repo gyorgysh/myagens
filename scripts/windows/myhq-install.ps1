@@ -28,6 +28,8 @@
       MYHQ_API_KEY      Anthropic API key
       MYHQ_MODEL        Default Claude model id (skips the model menu)
       MYHQ_MODE         service | manual (default: prompt)
+      MYHQ_SVC_PASSWORD Windows password to run the service as the current user
+                        (blank/unset = run as LocalSystem)
       MYHQ_PANEL        y | n  (enable the web dashboard)
       MYHQ_PANEL_PORT   Panel port number (default: 8787)
       MYHQ_PANEL_TOKEN  Panel access token (auto-generated if empty)
@@ -179,6 +181,13 @@ function Ensure-ClaudeCLI {
     if (Get-Command claude -ErrorAction SilentlyContinue) { Ok "Claude Code CLI found."; return }
     Say "Installing Claude Code CLI (npm install -g @anthropic-ai/claude-code)…"
     Invoke-Quiet { npm.cmd install -g "@anthropic-ai/claude-code" }
+    # npm installs global bins to %APPDATA%\npm, which is often NOT on the current
+    # session PATH yet — so without adding it here, `Get-Command claude` fails and
+    # the later login step silently skips, leaving the bot with no credentials.
+    $npmBin = Join-Path $env:APPDATA "npm"
+    if ((Test-Path $npmBin) -and ($env:Path -notlike "*$npmBin*")) {
+        $env:Path = "$env:Path;$npmBin"
+    }
     if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
         Warn "Claude CLI not in PATH yet — you may need to re-open your terminal after setup."
     } else {
@@ -491,7 +500,41 @@ function Install-Service {
         Say "Installing NSSM service '$svcName'…"
         & nssm install $svcName $nodeBin $entryPoint
         & nssm set $svcName AppDirectory $InstallDir
-        & nssm set $svcName AppEnvironmentExtra "NODE_ENV=production"
+
+        # PATH so `node`/`claude` resolve in the service session (node in Program
+        # Files, the Claude CLI in the npm global bin).
+        $nodeDir = Split-Path $nodeBin -Parent
+        $npmBin  = Join-Path $env:APPDATA "npm"
+        $svcPath = "$nodeDir;$npmBin;$env:SystemRoot\System32;$env:SystemRoot"
+
+        # Run the service as the installing user (not LocalSystem) so it inherits
+        # their profile and Claude login — the OAuth token lives in their
+        # %USERPROFILE%\.claude. Windows needs the account password to register a
+        # service under a user account; with no password we fall back to
+        # LocalSystem and point it at the user's profile (LocalSystem can read the
+        # plaintext token file) so it still works.
+        $svcUser = "$env:USERDOMAIN\$env:USERNAME"
+        $plainPw = ""
+        if ($env:MYHQ_SVC_PASSWORD) {
+            $plainPw = $env:MYHQ_SVC_PASSWORD
+        } elseif (-not $AutoYes) {
+            Write-Host "  The service can run as your account ($svcUser) so it uses your Claude login." -ForegroundColor Cyan
+            $pw = Read-Host "  Windows password for $svcUser (leave blank to run as LocalSystem)" -AsSecureString
+            $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw)
+            $plainPw = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        }
+
+        if ($plainPw) {
+            & nssm set $svcName ObjectName $svcUser $plainPw
+            & nssm set $svcName AppEnvironmentExtra "NODE_ENV=production" "PATH=$svcPath"
+            Ok "Service will run as $svcUser."
+        } else {
+            & nssm set $svcName AppEnvironmentExtra "NODE_ENV=production" "PATH=$svcPath" "USERPROFILE=$env:USERPROFILE"
+            Warn "No password given — running as LocalSystem, pointed at your profile for the Claude login."
+        }
+        $plainPw = $null
+
         & nssm set $svcName AppStdout (Join-Path $InstallDir "logs\myhq.log")
         & nssm set $svcName AppStderr (Join-Path $InstallDir "logs\myhq-err.log")
         & nssm set $svcName AppRotateFiles 1
@@ -518,25 +561,6 @@ function Install-Service {
         Ok "Task Scheduler entry '$taskName' created and started."
         Write-Host "  Control: Task Scheduler → $taskName" -ForegroundColor Cyan
     }
-}
-
-# ---------------------------------------------------------------------------
-# Update script (scripts\windows\myhq-update.ps1 sibling)
-# ---------------------------------------------------------------------------
-function Write-UpdateScript {
-    $updatePath = Join-Path $InstallDir "scripts\windows\myhq-update.ps1"
-    $content = @"
-# Auto-generated update script for MyHQ
-try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch {}
-Set-Location '$InstallDir'
-git pull origin $Branch
-npm.cmd install
-npm.cmd run build
-nssm restart myhq 2>`$null; Start-ScheduledTask -TaskName 'MyHQ Bot' 2>`$null
-Write-Host '✓ MyHQ updated and restarted.' -ForegroundColor Green
-"@
-    $content | Set-Content $updatePath -Encoding UTF8
-    Ok "Update script written to $updatePath"
 }
 
 # ---------------------------------------------------------------------------
@@ -612,7 +636,6 @@ Configure-Env
 Configure-RemoteAccess
 Claude-Login
 Install-Service
-Write-UpdateScript
 Open-Panel
 
 Write-Host "`n"
@@ -629,6 +652,6 @@ if ($Script:PanelPortChosen) {
     Write-Host ""
 }
 Write-Host "  Tutorial    : $Tutorial" -ForegroundColor Cyan
-Write-Host "  To update   : .\scripts\windows\myhq-update.ps1" -ForegroundColor Cyan
+Write-Host "  To update   : .\scripts\windows\update.ps1  (or use the panel's Updates view)" -ForegroundColor Cyan
 Write-Host "  If not logged in / no API key: claude setup-token  (needs a Pro/Max plan)" -ForegroundColor Cyan
 Write-Host ""

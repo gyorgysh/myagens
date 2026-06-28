@@ -8,6 +8,7 @@ import { loadJson, saveJson } from "./jsonStore.js";
 
 const pexec = promisify(execFile);
 const UPDATE_SH = join(repoRoot, "scripts", "update.sh");
+const UPDATE_PS1 = join(repoRoot, "scripts", "windows", "update.ps1");
 const FILE = "update.json";
 
 export interface UpdateStatus {
@@ -123,11 +124,19 @@ async function runScript(
   }
   updating = true;
   audit(mode === "restore" ? "update.restore" : "update.run", {});
-  log.warn(
-    `${mode === "restore" ? "Restore" : "Update"} requested — running scripts/update.sh`,
-  );
+  // Windows has no bash; run the PowerShell counterpart. Both update and restore
+  // hard-reset the checkout to the remote, so one script covers both modes.
+  const isWin = process.platform === "win32";
+  const script = isWin ? UPDATE_PS1 : UPDATE_SH;
+  log.warn(`${mode === "restore" ? "Restore" : "Update"} requested — running ${script}`);
   return new Promise((resolve) => {
-    const child = spawn("bash", [UPDATE_SH], { cwd: repoRoot, detached: true });
+    const child = isWin
+      ? spawn(
+          "powershell.exe",
+          ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", UPDATE_PS1],
+          { cwd: repoRoot, detached: true },
+        )
+      : spawn("bash", [UPDATE_SH], { cwd: repoRoot, detached: true });
     const handle = (buf: Buffer) => {
       for (const line of buf.toString().split("\n")) {
         if (line.length) {

@@ -126,7 +126,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 irm https://gyorgy.sh/myhq-install.ps1 | iex
 ```
 
-The first line lets PowerShell run the `npm`/`claude` script shims for this session only (Windows blocks them by default); it isn't persisted and needs no admin. The Windows installer uses `winget` for Node.js and Git, creates a NSSM service (with Task Scheduler as a fallback), and writes a sibling `myhq-update.ps1` for future updates.
+The first line lets PowerShell run the `npm`/`claude` script shims for this session only (Windows blocks them by default); it isn't persisted and needs no admin. The Windows installer uses `winget` for Node.js and Git, and creates a NSSM service (with Task Scheduler as a fallback). To update later, run `.\scripts\windows\update.ps1` or use the panel's Updates view.
 
 If you run it **without** administrator rights, the installer prints these same steps and waits for a keypress before closing, so the window won't vanish on you.
 

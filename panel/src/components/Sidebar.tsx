@@ -152,6 +152,7 @@ export function Sidebar({
   onSignOut,
   chatEnabled = true,
   updateAvailable = false,
+  updateCount = 0,
   inboxPending = 0,
   expanded = false,
   brandName = "MyHQ",
@@ -163,6 +164,7 @@ export function Sidebar({
   onSignOut: () => void;
   chatEnabled?: boolean;
   updateAvailable?: boolean;
+  updateCount?: number;
   inboxPending?: number;
   expanded?: boolean;
   brandName?: string;
@@ -197,8 +199,10 @@ export function Sidebar({
             {group.items.map((it) => {
               const active = it.id === tab;
               const inboxBadge = it.id === "inbox" && inboxPending > 0;
-              const badge = (it.id === "updates" && updateAvailable) || inboxBadge;
-              const badgeText = inboxBadge ? (inboxPending > 99 ? "99+" : String(inboxPending)) : "1";
+              const updateBadge = it.id === "updates" && updateAvailable;
+              const badge = updateBadge || inboxBadge;
+              const count = inboxBadge ? inboxPending : updateCount;
+              const badgeText = count > 99 ? "99+" : String(count || 1);
               return (
                 <button
                   key={it.id}

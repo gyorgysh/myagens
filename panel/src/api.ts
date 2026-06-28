@@ -621,7 +621,7 @@ export interface TunnelPassword {
 
 export const api = {
   me: () =>
-    get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; atlasName: string; brandName: string; defaultWorkdir: string; allowedUserCount: number; panelHost: string; panelPort: number; tunnelEnabled: boolean; terminalEnabled: boolean }>("/api/me"),
+    get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; updateCount: number; atlasName: string; brandName: string; defaultWorkdir: string; allowedUserCount: number; panelHost: string; panelPort: number; tunnelEnabled: boolean; terminalEnabled: boolean }>("/api/me"),
   sessions: () => get<{ sessions: SessionView[] }>("/api/sessions"),
   logs: (params?: { date?: string; q?: string; level?: string; limit?: number }) => {
     const qs = new URLSearchParams();

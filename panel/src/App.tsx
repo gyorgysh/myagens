@@ -44,6 +44,7 @@ export function App() {
   const [chatEnabled, setChatEnabled] = useState(true);
   const [brandName, setBrandName] = useState("MyHQ");
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updateCount, setUpdateCount] = useState(0);
   const [inboxPending, setInboxPending] = useState(0);
   const { theme, toggle, set } = useTheme();
   const { t } = useI18n();
@@ -99,6 +100,7 @@ export function App() {
       setChatEnabled(m.chatEnabled);
       if (m.brandName) setBrandName(m.brandName);
       setUpdateAvailable(m.updateAvailable);
+      setUpdateCount(m.updateCount ?? 0);
     }).catch(() => {});
   }, [authed]);
 
@@ -152,6 +154,7 @@ export function App() {
           onSignOut={onAuthError}
           chatEnabled={chatEnabled}
           updateAvailable={updateAvailable}
+          updateCount={updateCount}
           inboxPending={inboxPending}
           brandName={brandName}
         />
@@ -173,6 +176,7 @@ export function App() {
               onSignOut={onAuthError}
               chatEnabled={chatEnabled}
               updateAvailable={updateAvailable}
+              updateCount={updateCount}
               inboxPending={inboxPending}
               expanded
               brandName={brandName}

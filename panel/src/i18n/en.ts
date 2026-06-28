@@ -445,6 +445,12 @@ export const en = {
   breadcrumb_home: "Home",
   app_footer_made_with: "Made open source with Claude & Coffee ☕",
 
+  // Command palette
+  cmd_open: "Open navigation palette",
+  cmd_placeholder: "Search pages…",
+  cmd_no_results: "No pages match.",
+  cmd_hint_open: "⌘K to open",
+
   // Login
   login_title: "Control Panel",
   login_desc: "Enter the panel token to continue.",

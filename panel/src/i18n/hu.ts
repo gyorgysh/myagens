@@ -448,6 +448,12 @@ export const hu: Translations = {
   breadcrumb_home: "Kezdőlap",
   app_footer_made_with: "Nyílt forráskóddal készült Claude-dal és kávéval ☕",
 
+  // Parancskereső
+  cmd_open: "Navigációs kereső megnyitása",
+  cmd_placeholder: "Oldalak keresése…",
+  cmd_no_results: "Nincs találat.",
+  cmd_hint_open: "⌘K a megnyitáshoz",
+
   // Bejelentkezés
   login_title: "Vezérlőpult",
   login_desc: "Add meg a panel tokent a folytatáshoz.",

@@ -32,6 +32,7 @@ import { RemoteAccessView } from "./components/RemoteAccess.tsx";
 import { FeedbackView } from "./components/Feedback.tsx";
 import { ToastViewport, Breadcrumb } from "./components/ui.tsx";
 import { ConnectionBanner } from "./components/ConnectionBanner.tsx";
+import { CommandPalette } from "./components/CommandPalette.tsx";
 
 /** Tab from the URL path (e.g. /status), falling back to health. */
 function tabFromPath(): Tab | "settings" {
@@ -44,6 +45,7 @@ export function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [tab, setTab] = useState<Tab | "settings">(tabFromPath);
   const [drawer, setDrawer] = useState(false);
+  const [palette, setPalette] = useState(false);
   const [chatEnabled, setChatEnabled] = useState(true);
   const [brandName, setBrandName] = useState("MyHQ");
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -113,6 +115,19 @@ export function App() {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+
+  // Cmd+K / Ctrl+K opens the command palette.
+  useEffect(() => {
+    if (!authed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setPalette((p) => !p);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [authed]);
 
   // Don't strand the user on a hidden tab.
   useEffect(() => {
@@ -200,7 +215,7 @@ export function App() {
           </button>
           {/* Mobile breadcrumb / back affordance: the brand returns to the
               dashboard, the trailing segment names the current view. */}
-          <span className="mono text-sm font-medium text-fg">
+          <span className="mono flex-1 text-sm font-medium text-fg">
             <button
               onClick={() => select("health")}
               className="text-accent transition-opacity hover:opacity-80"
@@ -214,6 +229,13 @@ export function App() {
               </span>
             )}
           </span>
+          <button
+            onClick={() => setPalette(true)}
+            aria-label={t("cmd_open")}
+            className="text-base text-fg-dim transition-colors hover:text-fg"
+          >
+            ⌕
+          </button>
         </header>
 
         <ConnectionBanner />
@@ -306,6 +328,14 @@ export function App() {
 
       {/* Global toast stack (success / error / info), shared across all views. */}
       <ToastViewport />
+
+      {/* Cmd+K / Ctrl+K command palette — keyboard-first navigation. */}
+      <CommandPalette
+        open={palette}
+        onClose={() => setPalette(false)}
+        onSelect={(t) => { select(t); setPalette(false); }}
+        chatEnabled={chatEnabled}
+      />
     </div>
   );
 }

@@ -617,7 +617,7 @@ export const en = {
   settings_autonomy_auto_until_error_desc: "Bash/Write/Edit auto-run until one errors, then prompt for a few calls",
   settings_new_context: "New context",
   settings_restart_service: "Restart service",
-  settings_no_service: "No service manager detected",
+  settings_no_service: "Not installed as a system service (e.g. running from a dev environment) — restart manually instead.",
   settings_control: "Control",
   settings_control_desc: "Restart the whole service if something gets stuck. The panel will briefly disconnect, then reconnect.",
   settings_restart_app: "Restart {brand}",

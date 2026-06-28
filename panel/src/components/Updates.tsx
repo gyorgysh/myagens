@@ -9,7 +9,7 @@ export function UpdatesView({
   onStatus,
 }: {
   onAuthError: () => void;
-  onStatus?: (available: boolean) => void;
+  onStatus?: (available: boolean, count: number) => void;
 }) {
   const { t } = useI18n();
   const [version, setVersion] = useState<string>("…");
@@ -21,7 +21,7 @@ export function UpdatesView({
 
   const apply = (s: UpdateStatus) => {
     setStatus(s);
-    onStatus?.(s.available);
+    onStatus?.(s.available, s.behindBy);
   };
 
   useEffect(() => {

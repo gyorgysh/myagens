@@ -211,7 +211,15 @@ export function App() {
           {tab === "crew" && <CrewView onAuthError={onAuthError} />}
           {tab === "health" && <HealthView onGoto={select} />}
           {tab === "status" && <StatusView onAuthError={onAuthError} />}
-          {tab === "updates" && <UpdatesView onAuthError={onAuthError} onStatus={setUpdateAvailable} />}
+          {tab === "updates" && (
+            <UpdatesView
+              onAuthError={onAuthError}
+              onStatus={(available, count) => {
+                setUpdateAvailable(available);
+                setUpdateCount(count);
+              }}
+            />
+          )}
           {tab === "workers" && <WorkersView onAuthError={onAuthError} />}
           {tab === "inbox" && <InboxView onAuthError={onAuthError} />}
           {tab === "tasks" && <TasksView onAuthError={onAuthError} />}

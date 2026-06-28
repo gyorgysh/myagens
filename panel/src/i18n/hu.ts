@@ -621,7 +621,7 @@ export const hu: Translations = {
   settings_autonomy_auto_until_error_desc: "Bash/Write/Edit automatikusan fut, amíg hiba nem történik, utána néhány hívás jóváhagyást kér",
   settings_new_context: "Új kontextus",
   settings_restart_service: "Szolgáltatás újraindítása",
-  settings_no_service: "Nincs észlelt szolgáltatáskezelő",
+  settings_no_service: "Nincs rendszerszolgáltatásként telepítve (pl. fejlesztői környezetből fut) — indítsd újra kézzel.",
   settings_control: "Vezérlés",
   settings_control_desc: "Indítsd újra a teljes szolgáltatást, ha valami elakad. A panel rövid időre lekapcsolódik, majd újracsatlakozik.",
   settings_restart_app: "{brand} újraindítása",

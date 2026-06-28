@@ -66,24 +66,27 @@ export function restartService(): void {
   setTimeout(() => {
     if (process.platform === "win32") {
       const kind = windowsServiceKind();
-      // NSSM: signal the wrapper to restart its child (our process). Task: end
-      // then re-run. Spawn detached so the command survives our process being
-      // killed mid-restart; the service manager brings us back up.
-      const cmd =
-        kind === "nssm"
-          ? "nssm restart myhq"
-          : kind === "task"
-            ? 'schtasks /end /tn "MyHQ Bot" & schtasks /run /tn "MyHQ Bot"'
-            : null;
-      if (!cmd) {
+      // Restart detached so the command survives our process being killed mid-
+      // restart; the service manager brings us back up. Use built-in service
+      // control (Restart-Service / schtasks) — NOT the `nssm` CLI, which usually
+      // isn't on the service's PATH. An NSSM service is a real Windows service.
+      let child;
+      if (kind === "nssm") {
+        child = spawn(
+          "powershell.exe",
+          ["-NoProfile", "-Command", "Restart-Service -Name myhq -Force"],
+          { detached: true, stdio: "ignore", windowsHide: true },
+        );
+      } else if (kind === "task") {
+        child = spawn(
+          "cmd.exe",
+          ["/c", 'schtasks /end /tn "MyHQ Bot" & schtasks /run /tn "MyHQ Bot"'],
+          { detached: true, stdio: "ignore", windowsHide: true },
+        );
+      } else {
         log.error("Service restart failed: no Windows service or scheduled task found");
         return;
       }
-      const child = spawn("cmd.exe", ["/c", cmd], {
-        detached: true,
-        stdio: "ignore",
-        windowsHide: true,
-      });
       child.unref();
       return;
     }

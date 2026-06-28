@@ -76,16 +76,16 @@ Say "Building (panel UI + bot) ..."
 Step "npm run build" { npm.cmd run build }
 
 # Restart the service if one is installed. The bot process IS the service, so this
-# kills the current run near the end; NSSM / Task Scheduler completes the restart.
+# kills the current run near the end; the service manager completes the restart.
+# Use the built-in Get-Service/Restart-Service (an NSSM service is a real Windows
+# service) instead of the `nssm` CLI - nssm is usually NOT on the service's
+# restricted PATH, which is why this step used to silently no-op.
 $restarted = $false
-if (Get-Command nssm -ErrorAction SilentlyContinue) {
-    & nssm status myhq 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        Say "Restarting the service (nssm) ..."
-        & nssm restart myhq 2>$null | Out-Null
-        Ok "Service restarted."
-        $restarted = $true
-    }
+if (Get-Service -Name "myhq" -ErrorAction SilentlyContinue) {
+    Say "Restarting the 'myhq' service ..."
+    Restart-Service -Name "myhq" -Force -ErrorAction SilentlyContinue
+    Ok "Service restarted."
+    $restarted = $true
 }
 if (-not $restarted) {
     $task = Get-ScheduledTask -TaskName "MyHQ Bot" -ErrorAction SilentlyContinue

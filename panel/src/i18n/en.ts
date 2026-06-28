@@ -836,6 +836,11 @@ export const en = {
   usage_agents_col_output: "Output",
   usage_agents_col_cost: "Cost",
   usage_agents_col_turns: "Turns",
+  // Empty / new-install states for token-per-day charts
+  usage_chart_empty_title: "Usage will appear here",
+  usage_chart_empty_desc: "Token data is bucketed by calendar day. Check back once the first full UTC day has passed.",
+  usage_chart_today_label: "Today so far",
+  usage_chart_today_hint: "History builds as each calendar day closes. Come back tomorrow for the first bar.",
 
   // Sessions view
   sessions_desc_1: "One live slot per Telegram chat. Each slot tracks the current working directory, autonomy mode, and allow-lists for that chat. ",

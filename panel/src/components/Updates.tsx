@@ -60,6 +60,55 @@ export function UpdatesView({
     if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
   }, [lines]);
 
+  // After kicking off an update/restore, poll the status until the backend
+  // reports it finished. On a serviced host the process is killed mid-update and
+  // the ConnectionBanner owns the reload (the WS drops). On a non-serviced host
+  // the script completes without restarting us, so the connection never drops —
+  // here we detect `updating` going false and reload to pick up the freshly
+  // built panel assets and the now up-to-date status.
+  useEffect(() => {
+    if (!running) return;
+    let stop = false;
+    // Give the backend a beat to flip `updating` to true before we start
+    // polling, so we don't immediately read a stale "not updating" status.
+    const startedAt = Date.now();
+    let sawUpdating = false;
+    const id = setInterval(async () => {
+      if (stop) return;
+      try {
+        const s = await api.updateStatus();
+        if (stop) return;
+        apply(s);
+        if (s.updating) {
+          sawUpdating = true;
+          return;
+        }
+        // Only treat "not updating" as completion once we've either observed it
+        // running, or waited long enough that it must have finished fast.
+        if (sawUpdating || Date.now() - startedAt > 8000) {
+          stop = true;
+          clearInterval(id);
+          // The backend is still alive (this fetch just succeeded), so the
+          // banner won't reload us — do it here to load the new assets.
+          setTimeout(() => location.reload(), 1200);
+        }
+      } catch (e) {
+        if (e instanceof AuthError) {
+          stop = true;
+          clearInterval(id);
+          onAuthError();
+        }
+        // A network error means the backend went down (serviced restart) —
+        // leave it to the ConnectionBanner to reload on recovery.
+      }
+    }, 2000);
+    return () => {
+      stop = true;
+      clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running]);
+
   const check = async () => {
     setChecking(true);
     try {

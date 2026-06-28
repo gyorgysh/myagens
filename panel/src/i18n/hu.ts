@@ -840,6 +840,11 @@ export const hu: Translations = {
   usage_agents_col_output: "Kimenet",
   usage_agents_col_cost: "Költség",
   usage_agents_col_turns: "Körök",
+  // Üres / új telepítés állapotok a napi token diagramokhoz
+  usage_chart_empty_title: "A használat itt fog megjelenni",
+  usage_chart_empty_desc: "A token-adatok naptári nap szerint vannak összesítve. Térj vissza, miután az első teljes UTC-nap eltelt.",
+  usage_chart_today_label: "Ma eddig",
+  usage_chart_today_hint: "Az előzmények minden záruló naptári nap után bővülnek. Holnap már látszik az első oszlop.",
 
   // Munkamenetek nézet
   sessions_desc_1: "Egy élő hely Telegram csevegésenként. Minden hely követi az aktuális munkakönyvtárat, az autonómia módot és az engedélylistákat az adott csevegéshez. ",

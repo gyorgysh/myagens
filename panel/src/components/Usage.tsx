@@ -435,8 +435,6 @@ function AgentBreakdownCard({
 }) {
   const { t } = useI18n();
 
-  const hasDailyData = Object.values(dailyByRole).some((d) => (d?.length ?? 0) > 0);
-
   if (agents.length === 0)
     return (
       <Card title={t("usage_agents_title")}>
@@ -455,25 +453,23 @@ function AgentBreakdownCard({
   return (
     <Card title={t("usage_agents_title")}>
       <div className="space-y-5">
-        {/* All-categories stacked daily token chart */}
-        {hasDailyData && (
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wider text-fg-dim">
-                {t("usage_tokens_per_day")}
-              </p>
-              <div className="flex flex-wrap items-center gap-3 text-[10px] text-fg-faint">
-                {grouped.map((g) => (
-                  <span key={g.role} className="flex items-center gap-1">
-                    <span className={`inline-block h-2 w-2 rounded-sm ${g.color}`} />
-                    {g.label}
-                  </span>
-                ))}
-              </div>
+        {/* All-categories stacked daily token chart — always shown; AgentTokenChart handles its own empty state */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-fg-dim">
+              {t("usage_tokens_per_day")}
+            </p>
+            <div className="flex flex-wrap items-center gap-3 text-[10px] text-fg-faint">
+              {grouped.map((g) => (
+                <span key={g.role} className="flex items-center gap-1">
+                  <span className={`inline-block h-2 w-2 rounded-sm ${g.color}`} />
+                  {g.label}
+                </span>
+              ))}
             </div>
-            <AgentTokenChart dailyByRole={dailyByRole} />
           </div>
-        )}
+          <AgentTokenChart dailyByRole={dailyByRole} />
+        </div>
 
         {/* Per-category tables */}
         {grouped.map((cat) => {
@@ -534,6 +530,7 @@ function AgentBreakdownCard({
  * Agent Chat at top). Height represents total input+output tokens that day.
  */
 function AgentTokenChart({ dailyByRole }: { dailyByRole: AgentDailyByRole }) {
+  const { t } = useI18n();
   // Collect all days across all roles, union them.
   const daySet = new Set<string>();
   for (const series of Object.values(dailyByRole)) {
@@ -541,7 +538,47 @@ function AgentTokenChart({ dailyByRole }: { dailyByRole: AgentDailyByRole }) {
   }
   const days = [...daySet].sort();
   const recent = days.slice(-30);
-  if (recent.length === 0) return null;
+
+  if (recent.length === 0) {
+    // Ghost skeleton matching the TokenChart empty state style.
+    return (
+      <div className="flex flex-col items-center gap-2 py-4">
+        <div className="relative flex h-20 w-full items-end gap-0.5 opacity-20">
+          {[35, 55, 40, 70, 45, 30, 60, 80, 50, 65, 45, 55, 40, 75, 60, 35, 50, 65, 45, 70, 55, 40, 60, 80, 50, 65, 45, 55, 70, 60].map((h, i) => (
+            <div key={i} className="flex flex-1 flex-col justify-end">
+              <div className="w-full rounded-t bg-fg-dim" style={{ height: `${h}%` }} />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-fg-faint">{t("usage_chart_empty_title")}</p>
+      </div>
+    );
+  }
+
+  if (recent.length === 1) {
+    // Single day: show it centred with a label, skip the full bar chart.
+    const day = recent[0];
+    const colorMap = Object.fromEntries(CATEGORIES.map((c) => [c.role, c.color]));
+    const slices = CATEGORIES.map((cat) => {
+      const entry = (dailyByRole[cat.role] ?? []).find((d) => d.day === day);
+      return { role: cat.role, tokens: (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0) };
+    }).filter((s) => s.tokens > 0);
+    const dayTotal = slices.reduce((s, x) => s + x.tokens, 0);
+    return (
+      <div className="flex flex-col items-center gap-1 py-2">
+        <div className="flex h-20 w-12 flex-col justify-end overflow-hidden rounded-t">
+          {slices.map((s) => {
+            const pct = dayTotal > 0 ? (s.tokens / dayTotal) * 100 : 0;
+            const base = colorMap[s.role] ?? "bg-fg-faint/30";
+            return <div key={s.role} className={`w-full ${base}`} style={{ height: `${pct}%` }} />;
+          })}
+        </div>
+        <p className="text-[10px] text-fg-faint">{day}</p>
+        <p className="text-[10px] text-fg-faint">{tokens(dayTotal)}</p>
+        <p className="text-center text-xs text-fg-faint">{t("usage_chart_today_hint")}</p>
+      </div>
+    );
+  }
 
   // For each day, compute total tokens per role.
   type DaySlice = { day: string; slices: Array<{ role: AgentRole; tokens: number }> };
@@ -671,7 +708,87 @@ function TokenChart({ myhq }: { myhq: UsageSummary }) {
   const recent = myhq.daily.slice(-30);
   const max = Math.max(1, ...recent.map((d) => d.inputTokens + d.outputTokens));
 
-  if (recent.length === 0) return <Empty>{t("usage_no_activity")}</Empty>;
+  const todayIn = myhq.today.inputTokens;
+  const todayOut = myhq.today.outputTokens;
+  const todayTotal = todayIn + todayOut;
+
+  // No finalized days at all — clean empty state.
+  if (recent.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-6">
+        {/* "Today so far" callout when there is activity today */}
+        {todayTotal > 0 && (
+          <div className="flex w-full items-center gap-4 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-accent">
+                {t("usage_chart_today_label")}
+              </p>
+              <p className="mt-0.5 text-xl font-bold tabular text-fg">
+                {tokens(todayTotal)}
+              </p>
+              <p className="text-xs text-fg-dim">
+                {tokens(todayIn)} {t("usage_tokens_legend_input")} · {tokens(todayOut)} {t("usage_tokens_legend_output")}
+              </p>
+            </div>
+            {/* Mini single-bar preview */}
+            <div className="flex h-12 w-6 flex-shrink-0 flex-col justify-end overflow-hidden rounded">
+              <div className="w-full rounded-t bg-emerald-400/60" style={{ height: `${todayTotal > 0 ? (todayOut / todayTotal) * 100 : 0}%` }} />
+              <div className="w-full bg-accent/60" style={{ height: `${todayTotal > 0 ? (todayIn / todayTotal) * 100 : 0}%` }} />
+            </div>
+          </div>
+        )}
+        {/* Placeholder bars (ghost skeleton) */}
+        <div className="relative flex h-24 w-full items-end gap-0.5 opacity-20">
+          {[35, 55, 40, 70, 45, 30, 60, 80, 50, 65, 45, 55, 40, 75, 60, 35, 50, 65, 45, 70, 55, 40, 60, 80, 50, 65, 45, 55, 70, 60].map((h, i) => (
+            <div key={i} className="flex flex-1 flex-col justify-end">
+              <div className="w-full rounded-t bg-fg-dim" style={{ height: `${h}%` }} />
+            </div>
+          ))}
+        </div>
+        <p className="text-center text-xs font-medium text-fg-dim">{t("usage_chart_empty_title")}</p>
+        <p className="max-w-xs text-center text-xs text-fg-faint">{t("usage_chart_empty_desc")}</p>
+      </div>
+    );
+  }
+
+  // Single finalized day — show a "today so far" callout + the one bar, labelled.
+  if (recent.length === 1) {
+    const d = recent[0];
+    const total = d.inputTokens + d.outputTokens;
+    const inPct  = total > 0 ? (d.inputTokens  / total) * 100 : 0;
+    const outPct = total > 0 ? (d.outputTokens / total) * 100 : 0;
+    return (
+      <div className="space-y-3">
+        {todayTotal > 0 && (
+          <div className="flex items-center gap-4 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-accent">
+                {t("usage_chart_today_label")}
+              </p>
+              <p className="mt-0.5 text-xl font-bold tabular text-fg">{tokens(todayTotal)}</p>
+              <p className="text-xs text-fg-dim">
+                {tokens(todayIn)} {t("usage_tokens_legend_input")} · {tokens(todayOut)} {t("usage_tokens_legend_output")}
+              </p>
+            </div>
+            <div className="flex h-12 w-6 flex-shrink-0 flex-col justify-end overflow-hidden rounded">
+              <div className="w-full rounded-t bg-emerald-400/60" style={{ height: `${todayTotal > 0 ? (todayOut / todayTotal) * 100 : 0}%` }} />
+              <div className="w-full bg-accent/60" style={{ height: `${todayTotal > 0 ? (todayIn / todayTotal) * 100 : 0}%` }} />
+            </div>
+          </div>
+        )}
+        {/* Single-bar chart with a date label underneath */}
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex h-24 w-12 flex-col justify-end overflow-hidden rounded-t">
+            <div className="w-full bg-emerald-400/70" style={{ height: `${outPct}%` }} />
+            <div className="w-full bg-accent/70" style={{ height: `${inPct}%` }} />
+          </div>
+          <p className="text-[10px] text-fg-faint">{d.day}</p>
+          <p className="text-[10px] text-fg-faint">{tokens(total)}</p>
+        </div>
+        <p className="text-center text-xs text-fg-faint">{t("usage_chart_today_hint")}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex h-40 items-end gap-1">

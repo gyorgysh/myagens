@@ -630,6 +630,7 @@ export const hu: Translations = {
   settings_no_service: "Nincs rendszerszolgáltatásként telepítve (pl. fejlesztői környezetből fut) — indítsd újra kézzel.",
   settings_control: "Vezérlés",
   settings_control_desc: "Indítsd újra a teljes szolgáltatást, ha valami elakad. A panel rövid időre lekapcsolódik, majd újracsatlakozik.",
+  settings_uptime: "{brand} fut",
   settings_restart_app: "{brand} újraindítása",
   settings_embeddings: "Szemantikus memória (beágyazások)",
   settings_emb_provider: "Szolgáltató",
@@ -723,6 +724,8 @@ export const hu: Translations = {
 
   // Rendszer (Health) nézet
   health_up: "fent",
+  health_process_up: "{brand} fut",
+  health_process_up_desc: "Mennyi ideje fut a {brand} az utolsó újraindítás vagy frissítés óta",
   health_live: "élő",
   health_reconnecting: "újracsatlakozás",
   health_load: "terhelés",
@@ -911,6 +914,8 @@ export const hu: Translations = {
   logs_collapse_diffs: "Diffek összecsukása",
   logs_filter_agent: "Ügynök:",
   logs_filter_system: "Rendszer",
+  logs_filter_task: "Feladat:",
+  logs_filter_task_all: "Minden feladat",
   logs_download: "Letöltés",
 
   // Fő ügynök kártya
@@ -964,6 +969,11 @@ export const hu: Translations = {
   connectors_credential: "Hitelesítő titok",
   connectors_enable: "Engedélyezés az ügynököknek",
   connectors_active: "Aktív — az eszközök elérhetők az ügynökeidnek.",
+  connectors_access: "Hozzáférés",
+  connectors_access_read: "Csak olvasás",
+  connectors_access_write: "Olvasás és írás",
+  connectors_access_read_hint: "Csak listázó, lekérdező és kereső eszközök érhetők el.",
+  connectors_access_write_hint: "Olvasó eszközök, plusz létrehozás, módosítás, küldés és törlés.",
 
   // Prompt (üzemeltetői kézikönyv) nézet
   prompt_playbook_title: "Üzemeltetői kézikönyv",

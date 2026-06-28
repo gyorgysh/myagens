@@ -12,6 +12,14 @@ const FILE = "connectors.json";
  * planned, but no MCP server is wired yet. Telegram is our channel, so Slack is
  * intentionally absent.
  */
+/**
+ * Access scope for a connector's tools:
+ *  - `read`  : only read-only tools (list/get/search) are exposed.
+ *  - `write` : read-only **and** mutating tools (create/update/send/delete).
+ * Lets a user grant e.g. read-only email while keeping send/delete off.
+ */
+export type ConnectorScope = "read" | "write";
+
 export interface ConnectorDef {
   id: string;
   name: string;
@@ -19,21 +27,28 @@ export interface ConnectorDef {
   /** What credential it will need (free text; resolved from the vault later). */
   credential: string;
   status: "live" | "coming-soon";
+  /**
+   * Whether this connector has mutating tools at all. Read-only connectors
+   * ignore the scope toggle (nothing to gate); the panel hides the control.
+   */
+  hasWrite: boolean;
 }
 
 export const CONNECTORS: ConnectorDef[] = [
-  { id: "notion", name: "Notion", description: "Search, read, and create Notion pages/databases.", credential: "Notion integration token", status: "live" },
-  { id: "gcal", name: "Google Calendar", description: "List and create calendar events.", credential: "Google OAuth access token", status: "live" },
-  { id: "gmail", name: "Gmail", description: "List, read, send, draft, label, and delete Gmail messages.", credential: "Google OAuth access token (gmail + gmail.send scope)", status: "live" },
-  { id: "gdrive", name: "Google Drive", description: "List, read, create, update, move, share, and delete Drive files.", credential: "Google OAuth access token (drive scope)", status: "live" },
-  { id: "apple-calendar", name: "Apple Calendar", description: "List calendars and events, create, update, and delete events via iCloud CalDAV.", credential: "iCloud email:app-specific-password", status: "live" },
-  { id: "apple-mail", name: "Apple Mail", description: "List folders, read and search messages, send and delete email via iCloud IMAP/SMTP.", credential: "iCloud email:app-specific-password", status: "live" },
+  { id: "notion", name: "Notion", description: "Search, read, and create Notion pages/databases.", credential: "Notion integration token", status: "live", hasWrite: true },
+  { id: "gcal", name: "Google Calendar", description: "List and create calendar events.", credential: "Google OAuth access token", status: "live", hasWrite: true },
+  { id: "gmail", name: "Gmail", description: "List, read, send, draft, label, and delete Gmail messages.", credential: "Google OAuth access token (gmail + gmail.send scope)", status: "live", hasWrite: true },
+  { id: "gdrive", name: "Google Drive", description: "List, read, create, update, move, share, and delete Drive files.", credential: "Google OAuth access token (drive scope)", status: "live", hasWrite: true },
+  { id: "apple-calendar", name: "Apple Calendar", description: "List calendars and events, create, update, and delete events via iCloud CalDAV.", credential: "iCloud email:app-specific-password", status: "live", hasWrite: true },
+  { id: "apple-mail", name: "Apple Mail", description: "List folders, read and search messages, send and delete email via iCloud IMAP/SMTP.", credential: "iCloud email:app-specific-password", status: "live", hasWrite: true },
 ];
 
 interface ConnectorConfig {
   /** Vault secret id (`vault:<id>`) holding this connector's credential. */
   secretId?: string;
   enabled: boolean;
+  /** Access scope; defaults to read-only when unset. */
+  scope?: ConnectorScope;
 }
 
 interface ConnectorFile {
@@ -44,6 +59,8 @@ interface ConnectorFile {
 export interface ConnectorView extends ConnectorDef {
   secretId?: string;
   enabled: boolean;
+  /** Resolved access scope (defaults to read-only). */
+  scope: ConnectorScope;
 }
 
 function load(): ConnectorFile {
@@ -56,18 +73,30 @@ export function listConnectors(): ConnectorView[] {
     ...c,
     secretId: config[c.id]?.secretId,
     enabled: config[c.id]?.enabled ?? false,
+    scope: config[c.id]?.scope ?? "read",
   }));
 }
 
-export function setConnector(id: string, patch: { secretId?: string; enabled?: boolean }): ConnectorView | undefined {
+export function setConnector(
+  id: string,
+  patch: { secretId?: string; enabled?: boolean; scope?: ConnectorScope },
+): ConnectorView | undefined {
   const def = CONNECTORS.find((c) => c.id === id);
   if (!def) return undefined;
   const file = load();
   const cur = file.config[id] ?? { enabled: false };
   if (patch.secretId !== undefined) cur.secretId = patch.secretId || undefined;
   if (patch.enabled !== undefined) cur.enabled = patch.enabled;
+  if (patch.scope !== undefined && (patch.scope === "read" || patch.scope === "write")) {
+    cur.scope = patch.scope;
+  }
   file.config[id] = cur;
   saveJson<ConnectorFile>(FILE, file);
-  audit("connector.update", { id, enabled: cur.enabled });
+  audit("connector.update", { id, enabled: cur.enabled, scope: cur.scope ?? "read" });
   return listConnectors().find((c) => c.id === id);
+}
+
+/** The resolved access scope for a connector (read-only when unset/unknown). */
+export function connectorScope(id: string): ConnectorScope {
+  return load().config[id]?.scope ?? "read";
 }

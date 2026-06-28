@@ -68,6 +68,7 @@ export interface Health {
   host: string;
   platform: string;
   uptimeSec: number;
+  processUptimeSec: number;
   cpu: { load: number; cores: number[]; loadAvg: [number, number, number]; tempC?: number };
   mem: { total: number; used: number; available: number };
   swap: { total: number; used: number };
@@ -383,14 +384,18 @@ export interface RunLogEvent {
   durationMs?: number;
 }
 
+export type ConnectorScope = "read" | "write";
+
 export interface Connector {
   id: string;
   name: string;
   description: string;
   credential: string;
   status: "live" | "coming-soon";
+  hasWrite: boolean;
   secretId?: string;
   enabled: boolean;
+  scope: ConnectorScope;
 }
 
 export type HeartbeatMode = "off" | "alert" | "active";
@@ -650,6 +655,7 @@ export const api = {
     get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; updateCount: number; atlasName: string; brandName: string; defaultWorkdir: string; allowedUserCount: number; panelHost: string; panelPort: number; tunnelEnabled: boolean; terminalEnabled: boolean }>("/api/me"),
   sendFeedback: (kind: "bug" | "suggestion" | "other", message: string) =>
     req<{ ok: boolean }>("POST", "/api/feedback", { kind, message }),
+  health: () => get<Health>("/api/health"),
   sessions: () => get<{ sessions: SessionView[] }>("/api/sessions"),
   logs: (params?: { date?: string; q?: string; level?: string; limit?: number }) => {
     const qs = new URLSearchParams();
@@ -767,7 +773,7 @@ export const api = {
   status: () => get<StatusSnapshot>("/api/status"),
 
   connectors: () => get<{ connectors: Connector[] }>("/api/connectors"),
-  saveConnector: (id: string, c: { secretId?: string; enabled?: boolean }) =>
+  saveConnector: (id: string, c: { secretId?: string; enabled?: boolean; scope?: ConnectorScope }) =>
     req<Connector>("PUT", `/api/connectors/${id}`, c),
 
   heartbeat: () => get<HeartbeatView>("/api/heartbeat"),

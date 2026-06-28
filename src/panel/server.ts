@@ -781,10 +781,15 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     return updated;
   });
 
-  // --- external connectors (placeholders) ---
+  // --- external connectors ---
   app.get("/api/connectors", async () => ({ connectors: listConnectors() }));
   app.put("/api/connectors/:id", async (req, reply) => {
-    const updated = setConnector((req.params as { id: string }).id, (req.body ?? {}) as never);
+    const body = (req.body ?? {}) as { secretId?: string; enabled?: boolean; scope?: string };
+    const updated = setConnector((req.params as { id: string }).id, {
+      secretId: body.secretId,
+      enabled: body.enabled,
+      scope: body.scope === "write" ? "write" : body.scope === "read" ? "read" : undefined,
+    });
     if (!updated) return reply.code(404).send({ error: "not found" });
     return updated;
   });

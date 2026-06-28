@@ -250,6 +250,8 @@ interface Activity {
   diffSnippet?: string;
   /** Task ID chip, shown on delegating entries from taskRunner. */
   taskId?: string;
+  /** Full task title, used as the per-task filter chip label. */
+  taskTitle?: string;
 }
 
 /** Map a tool name to a friendly icon and verb. */
@@ -378,6 +380,7 @@ function toActivities(source: LogEntry[], t: TFn): Activity[] {
       const diffLines = typeof l.meta.diffLines === "string" ? l.meta.diffLines : undefined;
       const diffSnippet = typeof l.meta.diffSnippet === "string" ? l.meta.diffSnippet : undefined;
       const taskId = typeof l.meta.taskId === "string" ? l.meta.taskId : undefined;
+      const taskTitle = typeof l.meta.taskTitle === "string" ? l.meta.taskTitle : undefined;
       out.push({
         key: `${l.seq}-${l.ts}`,
         ts: l.ts,
@@ -390,6 +393,7 @@ function toActivities(source: LogEntry[], t: TFn): Activity[] {
         diffLines,
         diffSnippet,
         taskId,
+        taskTitle,
       });
       continue;
     }
@@ -449,21 +453,35 @@ function ActivityFeed({
   const [collapseDiffs, setCollapseDiffs] = useState(false);
   // Agent labels the user has hidden (empty = show all).
   const [hiddenAgents, setHiddenAgents] = useState<Set<string>>(new Set());
+  // When set, show only rows belonging to this taskId (null = all tasks).
+  const [taskFilter, setTaskFilter] = useState<string | null>(null);
 
   // Distinct agent labels present in the feed, for the filter buttons.
   const agentKeys: string[] = [];
   let hasUnknown = false;
+  // Distinct tasks present in the feed (id -> friendly label), for the task filter.
+  const taskLabels = new Map<string, string>();
   for (const a of all) {
     if (a.agentLabel) {
       if (!agentKeys.includes(a.agentLabel)) agentKeys.push(a.agentLabel);
     } else {
       hasUnknown = true;
     }
+    if (a.taskId && !taskLabels.has(a.taskId)) {
+      taskLabels.set(a.taskId, a.taskTitle || a.taskId);
+    }
   }
   agentKeys.sort((x, y) => x.localeCompare(y));
+  const taskKeys = [...taskLabels.keys()].sort((x, y) =>
+    (taskLabels.get(x) ?? x).localeCompare(taskLabels.get(y) ?? y),
+  );
+  // If the active task filter no longer appears in the feed, drop it.
+  const activeTask = taskFilter && taskLabels.has(taskFilter) ? taskFilter : null;
 
-  const activities = all.filter((a) =>
-    !hiddenAgents.has(a.agentLabel ?? UNKNOWN_AGENT),
+  const activities = all.filter(
+    (a) =>
+      !hiddenAgents.has(a.agentLabel ?? UNKNOWN_AGENT) &&
+      (!activeTask || a.taskId === activeTask),
   );
 
   const isDiffOpen = (key: string) =>
@@ -488,6 +506,7 @@ function ActivityFeed({
   }, [activities.length, follow]);
 
   const showAgentFilters = agentKeys.length + (hasUnknown ? 1 : 0) > 1;
+  const showTaskFilters = taskKeys.length > 0;
 
   return (
     <>
@@ -568,6 +587,39 @@ function ActivityFeed({
               {t("logs_filter_system")}
             </button>
           )}
+        </div>
+      )}
+
+      {/* Per-task filter: single-select (a task at a time, or all). */}
+      {showTaskFilters && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-fg-faint">
+            {t("logs_filter_task")}
+          </span>
+          <button
+            onClick={() => setTaskFilter(null)}
+            className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+              !activeTask
+                ? "border-accent/30 bg-accent/10 text-accent"
+                : "border-line text-fg-faint opacity-60"
+            }`}
+          >
+            {t("logs_filter_task_all")}
+          </button>
+          {taskKeys.map((id) => (
+            <button
+              key={id}
+              onClick={() => setTaskFilter((cur) => (cur === id ? null : id))}
+              title={taskLabels.get(id)}
+              className={`max-w-[14rem] truncate rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                activeTask === id
+                  ? "border-accent/30 bg-accent/10 text-accent"
+                  : "border-line text-fg-muted opacity-70 hover:opacity-100"
+              }`}
+            >
+              {taskLabels.get(id)}
+            </button>
+          ))}
         </div>
       )}
 

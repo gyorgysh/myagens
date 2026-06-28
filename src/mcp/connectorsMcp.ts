@@ -1,10 +1,53 @@
-import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, tool, type SdkMcpToolDefinition } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
-import { listConnectors } from "../core/connectors.js";
+import { listConnectors, connectorScope, type ConnectorScope } from "../core/connectors.js";
 import { resolveSecret } from "../core/vault.js";
 import { log } from "../logger.js";
+
+/**
+ * Tool names that MUTATE remote state (create/update/send/delete/move/share).
+ * Under a connector's read-only scope these are stripped, so the agent only
+ * ever sees the read-only (list/get/search) tools for that connector.
+ */
+const WRITE_TOOLS = new Set<string>([
+  // Notion
+  "notion_create_page",
+  // Google Calendar
+  "gcal_create_event",
+  // Gmail
+  "gmail_send_message",
+  "gmail_create_draft",
+  "gmail_delete_message",
+  "gmail_modify_labels",
+  // Google Drive
+  "gdrive_create_file",
+  "gdrive_update_file",
+  "gdrive_delete_file",
+  "gdrive_move_file",
+  "gdrive_share_file",
+  // Apple Calendar
+  "applecal_create_event",
+  "applecal_update_event",
+  "applecal_delete_event",
+  // Apple Mail
+  "applemail_send",
+  "applemail_delete_message",
+  "applemail_flag_message",
+]);
+
+/**
+ * Drop mutating tools when the connector is granted read-only access. With a
+ * `write` scope every tool is kept. This is the single chokepoint so a tool can
+ * never be exposed beyond its connector's granted scope. Typed as the SDK's own
+ * `SdkMcpToolDefinition<any>[]` (what `createSdkMcpServer({ tools })` accepts), so
+ * the heterogeneous tool array round-trips through the filter unchanged.
+ */
+function scopeTools(tools: SdkMcpToolDefinition<any>[], scope: ConnectorScope): SdkMcpToolDefinition<any>[] {
+  if (scope === "write") return tools;
+  return tools.filter((tl) => !WRITE_TOOLS.has(tl.name));
+}
 
 /**
  * Live external connectors exposed as in-process MCP servers. Unlike the
@@ -58,7 +101,7 @@ function text(s: string) {
 // Notion
 // ---------------------------------------------------------------------------
 
-function notionMcp(token: string) {
+function notionMcp(token: string, scope: ConnectorScope) {
   const headers = {
     Authorization: `Bearer ${token}`,
     "Notion-Version": NOTION_VERSION,
@@ -67,7 +110,7 @@ function notionMcp(token: string) {
   return createSdkMcpServer({
     name: "notion",
     version: "1.0.0",
-    tools: [
+    tools: scopeTools([
       tool(
         "notion_search",
         "Search Notion pages and databases the integration can access. Returns " +
@@ -158,7 +201,7 @@ function notionMcp(token: string) {
           return text(`Created page ${data.id}.`);
         },
       ),
-    ],
+    ], scope),
   });
 }
 
@@ -191,12 +234,12 @@ function summarizeNotion(o: NotionObject): string {
 // Google Calendar
 // ---------------------------------------------------------------------------
 
-function gcalMcp(token: string) {
+function gcalMcp(token: string, scope: ConnectorScope) {
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   return createSdkMcpServer({
     name: "gcal",
     version: "1.0.0",
-    tools: [
+    tools: scopeTools([
       tool(
         "gcal_list_events",
         "List upcoming Google Calendar events. Defaults to the primary calendar " +
@@ -253,7 +296,7 @@ function gcalMcp(token: string) {
           return text(`Created event ${data.id ?? ""}${data.htmlLink ? ` · ${data.htmlLink}` : ""}.`);
         },
       ),
-    ],
+    ], scope),
   });
 }
 
@@ -333,12 +376,12 @@ function summarizeGmail(msg: GmailMessage): string {
   return `- id ${msg.id} · ${date} · From: ${from} · Subject: ${subject}`;
 }
 
-function gmailMcp(token: string) {
+function gmailMcp(token: string, scope: ConnectorScope) {
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   return createSdkMcpServer({
     name: "gmail",
     version: "1.0.0",
-    tools: [
+    tools: scopeTools([
       tool(
         "gmail_list_messages",
         "List Gmail messages matching a query. Supports Gmail search syntax (e.g. " +
@@ -547,7 +590,7 @@ function gmailMcp(token: string) {
           return text(lines.join("\n") || "No labels.");
         },
       ),
-    ],
+    ], scope),
   });
 }
 
@@ -581,13 +624,13 @@ function summarizeGDriveFile(f: GDriveFile): string {
   return `- ${f.name ?? "(unnamed)"}${size} · id ${f.id} · type ${f.mimeType ?? "?"}${f.modifiedTime ? ` · modified ${f.modifiedTime.slice(0, 10)}` : ""}`;
 }
 
-function gdriveMcp(token: string) {
+function gdriveMcp(token: string, scope: ConnectorScope) {
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   const FIELDS = "id,name,mimeType,size,modifiedTime,webViewLink,parents,description";
   return createSdkMcpServer({
     name: "gdrive",
     version: "1.0.0",
-    tools: [
+    tools: scopeTools([
       tool(
         "gdrive_list_files",
         "List files in Google Drive. Optionally filter by folder, name, or MIME type. " +
@@ -817,7 +860,7 @@ function gdriveMcp(token: string) {
           return text(`Shared. Permission id: ${perm.id ?? "unknown"}.`);
         },
       ),
-    ],
+    ], scope),
   });
 }
 
@@ -867,7 +910,7 @@ function buildVEvent(uid: string, summary: string, dtstart: string, dtend: strin
  * Apple Calendar via iCloud CalDAV. Credential is "username:app-specific-password"
  * (the user's iCloud email + an app-specific password from appleid.apple.com).
  */
-function appleCalendarMcp(credential: string) {
+function appleCalendarMcp(credential: string, scope: ConnectorScope) {
   const [username, ...passParts] = credential.split(":");
   const password = passParts.join(":");
   const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
@@ -941,7 +984,7 @@ function appleCalendarMcp(credential: string) {
   return createSdkMcpServer({
     name: "apple-calendar",
     version: "1.0.0",
-    tools: [
+    tools: scopeTools([
       tool(
         "applecal_list_calendars",
         "List all iCloud CalDAV calendars for this account.",
@@ -1075,7 +1118,7 @@ function appleCalendarMcp(credential: string) {
           return text(`Event ${a.uid} deleted.`);
         },
       ),
-    ],
+    ], scope),
   });
 }
 
@@ -1088,7 +1131,7 @@ function appleCalendarMcp(credential: string) {
  * (iCloud email + app-specific password from appleid.apple.com).
  * Uses ImapFlow for reading, nodemailer for sending.
  */
-function appleMailMcp(credential: string) {
+function appleMailMcp(credential: string, scope: ConnectorScope) {
   const [username, ...passParts] = credential.split(":");
   const password = passParts.join(":");
 
@@ -1115,7 +1158,7 @@ function appleMailMcp(credential: string) {
   return createSdkMcpServer({
     name: "apple-mail",
     version: "1.0.0",
-    tools: [
+    tools: scopeTools([
       tool(
         "applemail_list_folders",
         "List all IMAP folders/mailboxes in the iCloud Mail account.",
@@ -1309,7 +1352,7 @@ function appleMailMcp(credential: string) {
           }
         },
       ),
-    ],
+    ], scope),
   });
 }
 
@@ -1327,19 +1370,21 @@ type McpServer = ReturnType<typeof createSdkMcpServer>;
 export function buildConnectorMcps(): Record<string, McpServer> {
   const out: Record<string, McpServer> = {};
   const notionToken = credentialFor("notion");
-  if (notionToken) out.notion = notionMcp(notionToken);
+  if (notionToken) out.notion = notionMcp(notionToken, connectorScope("notion"));
   const gcalToken = credentialFor("gcal");
-  if (gcalToken) out.gcal = gcalMcp(gcalToken);
+  if (gcalToken) out.gcal = gcalMcp(gcalToken, connectorScope("gcal"));
   const gmailToken = credentialFor("gmail");
-  if (gmailToken) out.gmail = gmailMcp(gmailToken);
+  if (gmailToken) out.gmail = gmailMcp(gmailToken, connectorScope("gmail"));
   const gdriveToken = credentialFor("gdrive");
-  if (gdriveToken) out.gdrive = gdriveMcp(gdriveToken);
+  if (gdriveToken) out.gdrive = gdriveMcp(gdriveToken, connectorScope("gdrive"));
   const appleCalCred = credentialFor("apple-calendar");
-  if (appleCalCred) out["apple-calendar"] = appleCalendarMcp(appleCalCred);
+  if (appleCalCred) out["apple-calendar"] = appleCalendarMcp(appleCalCred, connectorScope("apple-calendar"));
   const appleMailCred = credentialFor("apple-mail");
-  if (appleMailCred) out["apple-mail"] = appleMailMcp(appleMailCred);
+  if (appleMailCred) out["apple-mail"] = appleMailMcp(appleMailCred, connectorScope("apple-mail"));
   if (Object.keys(out).length) {
-    log.debug("Connector MCPs enabled", { connectors: Object.keys(out) });
+    log.debug("Connector MCPs enabled", {
+      connectors: Object.keys(out).map((id) => `${id}:${connectorScope(id)}`),
+    });
   }
   return out;
 }

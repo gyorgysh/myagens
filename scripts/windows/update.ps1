@@ -87,8 +87,15 @@ if ($before -eq $after) {
     Ok "Updated $((git rev-parse --short $before).Trim())..$((git rev-parse --short $after).Trim())."
 }
 
+# Force a dev install. If the service account has NODE_ENV=production set, a
+# bare `npm install` skips devDependencies (typescript/tsx for the bot, vite for
+# the panel), so the following `npm run build` fails with "tsc/vite not found".
+# Clearing NODE_ENV for this process *and* passing --include=dev makes the dev
+# deps install regardless of the inherited environment. (build:panel runs its
+# own `npm install` inside panel/, which inherits this same NODE_ENV.)
+$env:NODE_ENV = "development"
 Say "Installing dependencies ..."
-Step "npm install" { npm.cmd install }
+Step "npm install" { npm.cmd install --include=dev }
 Say "Building (panel UI + bot) ..."
 Step "npm run build" { npm.cmd run build }
 

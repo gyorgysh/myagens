@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, AuthError, type Connector, type SecretView } from "../api.ts";
+import { api, AuthError, type Connector, type ConnectorScope, type SecretView } from "../api.ts";
 import { Badge, Card, Empty, Label, Select } from "./ui.tsx";
 import { useI18n } from "../lib/useI18n.ts";
 
@@ -30,6 +30,11 @@ export function ConnectorsView({ onAuthError }: { onAuthError: () => void }) {
   const setEnabled = async (id: string, enabled: boolean) => {
     setConnectors((cs) => cs.map((c) => (c.id === id ? { ...c, enabled } : c)));
     await api.saveConnector(id, { enabled }).catch(() => void load());
+  };
+
+  const setScope = async (id: string, scope: ConnectorScope) => {
+    setConnectors((cs) => cs.map((c) => (c.id === id ? { ...c, scope } : c)));
+    await api.saveConnector(id, { scope }).catch(() => void load());
   };
 
   return (
@@ -65,6 +70,30 @@ export function ConnectorsView({ onAuthError }: { onAuthError: () => void }) {
                     ))}
                   </Select>
                 </div>
+                {live && c.hasWrite && (
+                  <div className="mt-2">
+                    <Label>{t("connectors_access")}</Label>
+                    <div className="mt-1 inline-flex rounded-md border border-line p-0.5">
+                      {(["read", "write"] as ConnectorScope[]).map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setScope(c.id, s)}
+                          className={`rounded px-2.5 py-1 text-xs font-medium transition ${
+                            c.scope === s
+                              ? "bg-accent/15 text-accent"
+                              : "text-fg-dim hover:text-fg"
+                          }`}
+                        >
+                          {s === "read" ? t("connectors_access_read") : t("connectors_access_write")}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-xs text-fg-faint">
+                      {c.scope === "write" ? t("connectors_access_write_hint") : t("connectors_access_read_hint")}
+                    </p>
+                  </div>
+                )}
                 {live && (
                   <label className="mt-2 flex items-center gap-2 text-sm text-fg-dim">
                     <input

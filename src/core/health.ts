@@ -7,7 +7,10 @@ export interface HealthSnapshot {
   ts: number;
   host: string;
   platform: string;
+  /** System uptime in seconds (os.uptime). */
   uptimeSec: number;
+  /** This bot process's uptime in seconds (process.uptime) — resets on every restart/update. */
+  processUptimeSec: number;
   cpu: {
     /** Overall load 0–100. */
     load: number;
@@ -45,6 +48,7 @@ export async function getHealth(): Promise<HealthSnapshot> {
     host: os.hostname(),
     platform: `${os.type()} ${os.release()}`,
     uptimeSec: Math.round(os.uptime()),
+    processUptimeSec: Math.round(process.uptime()),
     cpu: {
       load: round(load?.currentLoad ?? 0),
       cores,

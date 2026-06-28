@@ -5,6 +5,7 @@ import { useI18n, INTERFACE_LANGUAGES } from "../lib/useI18n.ts";
 import { toast } from "../lib/useToast.ts";
 import type { TranslationKey } from "../i18n/en.ts";
 import { AGENT_LANGUAGES } from "../i18n/languages.ts";
+import { uptime } from "../lib/format.ts";
 
 const MODEL_SUGGESTIONS = ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-8"];
 
@@ -49,6 +50,7 @@ function ServiceControl({ onAuthError }: { onAuthError: () => void }) {
   const [serviceInstalled, setServiceInstalled] = useState(false);
   const [brand, setBrand] = useState("MyHQ");
   const [busy, setBusy] = useState(false);
+  const [processUptimeSec, setProcessUptimeSec] = useState<number | null>(null);
 
   useEffect(() => {
     api
@@ -56,6 +58,12 @@ function ServiceControl({ onAuthError }: { onAuthError: () => void }) {
       .then((a) => setServiceInstalled(a.serviceInstalled))
       .catch((e) => e instanceof AuthError && onAuthError());
     api.me().then((m) => m.brandName && setBrand(m.brandName)).catch(() => {});
+    // Refresh uptime on mount and every 30s so it ticks up live and a restart is visible.
+    const loadUptime = () =>
+      api.health().then((h) => setProcessUptimeSec(h.processUptimeSec)).catch(() => {});
+    void loadUptime();
+    const id = setInterval(loadUptime, 30_000);
+    return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -75,6 +83,12 @@ function ServiceControl({ onAuthError }: { onAuthError: () => void }) {
   return (
     <Card title={t("settings_control")}>
       <p className="mb-4 text-sm text-fg-dim">{t("settings_control_desc")}</p>
+      {processUptimeSec != null && (
+        <div className="mb-4 flex items-baseline gap-2 text-sm">
+          <span className="text-fg-faint">{t("settings_uptime").replace("{brand}", brand)}</span>
+          <span className="font-medium text-fg tabular">{uptime(processUptimeSec)}</span>
+        </div>
+      )}
       <Button
         variant="danger"
         onClick={restart}

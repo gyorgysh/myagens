@@ -10,7 +10,7 @@ import {
   type UsageLimitWindow,
 } from "../api.ts";
 import { Bar, Card, Button, Empty, Metric } from "./ui.tsx";
-import { bytes, bytesPerSec, duration, relTime, friendlyProbeError } from "../lib/format.ts";
+import { bytes, bytesPerSec, duration, uptime, relTime, friendlyProbeError } from "../lib/format.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import type { TranslationKey } from "../i18n/en.ts";
 import { GettingStarted, HowItConnects } from "./onboarding.tsx";
@@ -33,7 +33,12 @@ export function HealthView({ onGoto }: { onGoto?: (t: Tab) => void }) {
   const { t } = useI18n();
   const [health, setHealth] = useState<Health | null>(null);
   const [status, setStatus] = useState<ConnStatus>("connecting");
+  const [brand, setBrand] = useState("MyHQ");
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    api.me().then((m) => m.brandName && setBrand(m.brandName)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let closed = false;
@@ -82,6 +87,10 @@ export function HealthView({ onGoto }: { onGoto?: (t: Tab) => void }) {
         <span>{health.platform}</span>
         <span className="text-fg-faint">·</span>
         <span>{t("health_up")} {duration(health.uptimeSec)}</span>
+        <span className="text-fg-faint">·</span>
+        <span title={t("health_process_up_desc").replace("{brand}", brand)}>
+          {t("health_process_up").replace("{brand}", brand)} {uptime(health.processUptimeSec)}
+        </span>
         <span className="ml-auto flex items-center gap-1.5 text-xs">
           <span className={`inline-block h-2 w-2 rounded-full ${status === "live" ? "bg-emerald-500" : "bg-amber-500"}`} />
           {status === "live" ? t("health_live") : t("health_reconnecting")}

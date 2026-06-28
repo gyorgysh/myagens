@@ -587,6 +587,26 @@ function Install-Service {
         & nssm set $svcName AppRotateFiles 1
         & nssm set $svcName AppRotateOnline 1
         New-Item -ItemType Directory -Path (Join-Path $InstallDir "logs") -Force | Out-Null
+
+        # --- Crash recovery: auto-restart the service if the process exits. ---
+        # NSSM's own restart engine (independent of the SCM recovery tab):
+        #   AppExit Default Restart  -> on any exit code, restart the app.
+        #   AppRestartDelay 5000     -> wait 5s before relaunching (ms).
+        #   AppThrottle 5000         -> if it dies within 5s of starting, NSSM
+        #                               treats it as a crash loop and backs off
+        #                               (paused/throttled) instead of hammering.
+        # This keeps the bot up across transient crashes without a fast respawn
+        # storm. Also mirror it onto the Windows SCM recovery actions so the
+        # Services snap-in shows "Restart the Service" on first/second/subsequent
+        # failures (reset the failure counter after a day of stability).
+        & nssm set $svcName AppExit Default Restart
+        & nssm set $svcName AppRestartDelay 5000
+        & nssm set $svcName AppThrottle 5000
+        try {
+            & sc.exe failure $svcName reset= 86400 actions= restart/5000/restart/5000/restart/30000 | Out-Null
+            & sc.exe failureflag $svcName 1 | Out-Null
+        } catch { Warn "Could not set SCM recovery actions (NSSM auto-restart is still active)." }
+
         & nssm start $svcName
 
         # Confirm it actually started (a bad 'log on as a service' right or an

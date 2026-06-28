@@ -19,6 +19,23 @@ export function duration(sec: number): string {
   return `${m}m`;
 }
 
+/**
+ * Human-readable uptime, two units deep, with seconds granularity for short
+ * spans so a just-restarted process reads "2m 5s" instead of "0m".
+ * e.g. 90061 → "1d 1h", 4210 → "1h 10m", 125 → "2m 5s", 8 → "8s".
+ */
+export function uptime(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const rem = s % 60;
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${rem}s`;
+  return `${rem}s`;
+}
+
 export function ms(n: number): string {
   if (n < 1000) return `${Math.round(n)}ms`;
   const s = n / 1000;

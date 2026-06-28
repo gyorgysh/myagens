@@ -60,12 +60,20 @@ else
   ok "Updated $(git rev-parse --short "$BEFORE")..$(git rev-parse --short "$AFTER")."
 fi
 
+# Force a dev install. If the service account (or a parent shell) has
+# NODE_ENV=production set, a bare `npm install` skips devDependencies —
+# typescript/tsx for the bot, vite for the panel — so the `npm run build` step
+# below then fails with "tsc: not found" / "vite: not found". Clearing NODE_ENV
+# for the install step *and* passing --include=dev makes the dev deps install
+# regardless of the inherited environment.
 say "Installing dependencies…"
-npm install
+NODE_ENV=development npm install --include=dev
 # `npm run build` builds the panel UI first (panel/ deps + vite build) then the
-# bot (tsc), so the management panel is always rebuilt alongside the bot.
+# bot (tsc), so the management panel is always rebuilt alongside the bot. The
+# panel's own `npm install` (in package.json's build:panel) needs the same
+# dev-deps treatment, so keep NODE_ENV cleared for the build too.
 say "Building (panel UI + bot)…"
-npm run build
+NODE_ENV=development npm run build
 
 # Probe the optional node-pty native addon (powers the panel Terminal tab). It's
 # an optionalDependency, so a missing build toolchain doesn't fail the install —

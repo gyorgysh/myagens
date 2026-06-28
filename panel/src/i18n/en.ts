@@ -626,6 +626,7 @@ export const en = {
   settings_no_service: "Not installed as a system service (e.g. running from a dev environment) — restart manually instead.",
   settings_control: "Control",
   settings_control_desc: "Restart the whole service if something gets stuck. The panel will briefly disconnect, then reconnect.",
+  settings_uptime: "{brand} up for",
   settings_restart_app: "Restart {brand}",
   settings_embeddings: "Semantic memory (embeddings)",
   settings_emb_provider: "Provider",
@@ -719,6 +720,8 @@ export const en = {
 
   // System (Health) view
   health_up: "up",
+  health_process_up: "{brand} up",
+  health_process_up_desc: "How long {brand} has been running since its last restart or update",
   health_live: "live",
   health_reconnecting: "reconnecting",
   health_load: "load",
@@ -907,6 +910,8 @@ export const en = {
   logs_collapse_diffs: "Collapse diffs",
   logs_filter_agent: "Agent:",
   logs_filter_system: "System",
+  logs_filter_task: "Task:",
+  logs_filter_task_all: "All tasks",
   logs_download: "Download",
 
   // Main Agent card
@@ -959,6 +964,11 @@ export const en = {
   connectors_credential: "Credential secret",
   connectors_enable: "Enable for agents",
   connectors_active: "Active — tools available to your agents.",
+  connectors_access: "Access",
+  connectors_access_read: "Read only",
+  connectors_access_write: "Read & write",
+  connectors_access_read_hint: "Only list, get, and search tools are exposed.",
+  connectors_access_write_hint: "Read tools plus create, update, send, and delete.",
 
   // Prompt (operator playbook) view
   prompt_playbook_title: "Operator playbook",

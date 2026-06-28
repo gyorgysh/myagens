@@ -131,8 +131,9 @@ const COMMAND_CHILDREN: Tab[] = ["chat", "terminal"];
 export function isCommandChild(tab: Tab | "settings"): boolean {
   return COMMAND_CHILDREN.includes(tab as Tab);
 }
-/** The four config destinations now hosted as accordion sections in Settings. */
-const SETTINGS_CHILDREN: Tab[] = ["vault", "connectors", "prompt", "skills"];
+/** Tabs that resolve to the Settings highlight. Currently none — vault,
+ *  connectors, prompt, and skills are top-level nav items in Configure. */
+const SETTINGS_CHILDREN: Tab[] = [];
 export function isSettingsChild(tab: Tab | "settings"): boolean {
   return SETTINGS_CHILDREN.includes(tab as Tab);
 }

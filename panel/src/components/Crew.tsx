@@ -621,7 +621,7 @@ function CrewNode({
         <div className="flex items-center gap-2">
           <span className="font-medium text-fg">{title}</span>
           {paused && <Badge tone="zinc">{t("crew_paused")}</Badge>}
-          {/* Telegram status + Web Chat: icon-only pills, fixed visual weight */}
+          {/* Telegram + Chat: fixed-width slots so badges always align */}
           <span className="flex items-center gap-1.5">
             {extra &&
               (extraHref ? (
@@ -632,16 +632,16 @@ function CrewNode({
                   title={t("crew_listening_hint")}
                   className="transition-opacity hover:opacity-80"
                 >
-                  <Badge tone="green" className="w-7 justify-center">⦿</Badge>
+                  <Badge tone="green" className="min-w-[4.5rem] justify-center">{t("crew_listening")}</Badge>
                 </a>
               ) : (
                 <span title={t("crew_listening_hint")}>
-                  <Badge tone="green" className="w-7 justify-center">⦿</Badge>
+                  <Badge tone="green" className="min-w-[4.5rem] justify-center">{t("crew_listening")}</Badge>
                 </span>
               ))}
             {warn && (
               <span title={t("crew_no_token_hint")} className="opacity-40">
-                <Badge tone="zinc" className="w-7 justify-center">⦾</Badge>
+                <Badge tone="zinc" className="min-w-[4.5rem] justify-center">{t("crew_no_token")}</Badge>
               </span>
             )}
             {onWebChat && (
@@ -651,7 +651,7 @@ function CrewNode({
                 title={t("crew_web_chat_hint")}
                 className="transition-opacity hover:opacity-80"
               >
-                <Badge tone="violet" className="w-7 justify-center">⌨</Badge>
+                <Badge tone="violet" className="min-w-[4.5rem] justify-center">{t("crew_web_chat")}</Badge>
               </button>
             )}
           </span>

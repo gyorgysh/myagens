@@ -278,7 +278,7 @@ function WorkerRow({
         {worker.model && <Badge>{shortModel(worker.model)}</Badge>}
         {providerName && <Badge tone="blue">⌂ {providerName}</Badge>}
         {!worker.enabled && <Badge tone="amber">{t("disabled")}</Badge>}
-        {/* Telegram + Chat: icon-only pills grouped together, fixed visual weight */}
+        {/* Telegram + Chat: fixed-width slots so badges always align */}
         <span className="flex items-center gap-1.5">
           {worker.listening &&
             (worker.botUsername ? (
@@ -289,16 +289,16 @@ function WorkerRow({
                 title={t("crew_listening_hint")}
                 className="transition-opacity hover:opacity-80"
               >
-                <Badge tone="green" className="w-7 justify-center">⦿</Badge>
+                <Badge tone="green" className="min-w-[4.5rem] justify-center">{t("crew_listening")}</Badge>
               </a>
             ) : (
               <span title={t("crew_listening_hint")}>
-                <Badge tone="green" className="w-7 justify-center">⦿</Badge>
+                <Badge tone="green" className="min-w-[4.5rem] justify-center">{t("crew_listening")}</Badge>
               </span>
             ))}
           {worker.role === "lead" && worker.enabled && !worker.telegramToken && (
             <span title={t("crew_no_token_hint")} className="opacity-40">
-              <Badge tone="zinc" className="w-7 justify-center">⦾</Badge>
+              <Badge tone="zinc" className="min-w-[4.5rem] justify-center">{t("crew_no_token")}</Badge>
             </span>
           )}
           {onChat && (
@@ -308,7 +308,7 @@ function WorkerRow({
               title={t("crew_web_chat_hint")}
               className="transition-opacity hover:opacity-80"
             >
-              <Badge tone="violet" className="w-7 justify-center">⌨</Badge>
+              <Badge tone="violet" className="min-w-[4.5rem] justify-center">{t("crew_web_chat")}</Badge>
             </button>
           )}
         </span>

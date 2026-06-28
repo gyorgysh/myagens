@@ -42,6 +42,15 @@ export interface SdkStreamEvent {
   };
 }
 
+/** Per-turn token counts from the SDK result's `usage` block. All optional so a
+ *  shape change in the SDK degrades gracefully to "no token data". */
+export interface SdkUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
 export interface SdkResultMessage {
   type: "result";
   subtype?: string;
@@ -51,6 +60,7 @@ export interface SdkResultMessage {
   duration_ms?: number;
   num_turns?: number;
   session_id?: string;
+  usage?: SdkUsage;
 }
 
 export type SdkMessage =

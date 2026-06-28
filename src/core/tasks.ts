@@ -51,13 +51,13 @@ export interface Task {
 
 /** Global delegation controls for autonomous task runs. */
 export interface TaskRunConfig {
-  /** Abort a delegated run after this many ms (0 = no timeout). Default 600000 (10 min). */
+  /** Abort a delegated run after this many ms (0 = no timeout). Default 1800000 (30 min). */
   timeoutMs: number;
   /** Max delegated runs allowed to execute at once; the rest queue (0 = unlimited). Default 3. */
   maxConcurrent: number;
 }
 
-export const DEFAULT_TASK_CONFIG: TaskRunConfig = { timeoutMs: 600_000, maxConcurrent: 3 };
+export const DEFAULT_TASK_CONFIG: TaskRunConfig = { timeoutMs: 1_800_000, maxConcurrent: 3 };
 
 interface TaskFile {
   version: 1;
@@ -278,7 +278,7 @@ export function pruneArchive(): void {
 
 /**
  * Auto-archive candidates:
- * - Any non-archive column that has >10 cards: archive the oldest (lowest updatedAt) ones to stay at 10.
+ * - Any non-archive column that has >50 cards: archive the oldest (lowest updatedAt) ones to stay at 50.
  * - Done cards older than 1 day move to archive.
  */
 export function autoArchive(): void {
@@ -305,9 +305,9 @@ export function autoArchive(): void {
     (byCols[t.column] ??= []).push(t);
   }
   for (const [col, cards] of Object.entries(byCols)) {
-    if (cards.length <= 20) continue;
+    if (cards.length <= 50) continue;
     const sorted = [...cards].sort((a, b) => a.updatedAt - b.updatedAt);
-    const toArchive = sorted.slice(0, cards.length - 20);
+    const toArchive = sorted.slice(0, cards.length - 50);
     const ids = new Set(toArchive.map((t) => t.id));
     for (const t of tasks) {
       if (ids.has(t.id)) {

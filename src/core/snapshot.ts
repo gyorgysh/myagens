@@ -2,7 +2,7 @@ import { sessions } from "../session/manager.js";
 import type { Autonomy } from "../session/manager.js";
 import { schedules } from "../schedule/manager.js";
 import { describeSpec, specToWhen } from "../schedule/manager.js";
-import type { UsageStat } from "../session/store.js";
+import { zeroStat, type UsageStat } from "../session/store.js";
 
 /** Panel-facing view of one chat session (no abort controllers / secrets). */
 export interface SessionView {
@@ -36,8 +36,6 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-const ZERO: UsageStat = { turns: 0, costUsd: 0, durationMs: 0 };
-
 export function listSessions(): SessionView[] {
   const day = today();
   return sessions.all().map((s) => ({
@@ -49,7 +47,7 @@ export function listSessions(): SessionView[] {
     projects: s.projects,
     allowedTools: [...s.sessionAllowedTools],
     allowedBashCmds: [...s.allowedBashCmds],
-    usage: { total: s.usage.total, today: s.usage.daily[day] ?? ZERO },
+    usage: { total: s.usage.total, today: s.usage.daily[day] ?? zeroStat() },
   }));
 }
 
@@ -76,15 +74,15 @@ export function usageSummary(): {
   daily: Array<{ day: string } & UsageStat>;
 } {
   const day = today();
-  const total: UsageStat = { ...ZERO };
-  const todayStat: UsageStat = { ...ZERO };
+  const total: UsageStat = zeroStat();
+  const todayStat: UsageStat = zeroStat();
   const byDay = new Map<string, UsageStat>();
 
   for (const s of sessions.all()) {
     add(total, s.usage.total);
-    add(todayStat, s.usage.daily[day] ?? ZERO);
+    add(todayStat, s.usage.daily[day] ?? zeroStat());
     for (const [d, stat] of Object.entries(s.usage.daily)) {
-      const acc = byDay.get(d) ?? { ...ZERO };
+      const acc = byDay.get(d) ?? zeroStat();
       add(acc, stat);
       byDay.set(d, acc);
     }
@@ -101,4 +99,8 @@ function add(into: UsageStat, from: UsageStat): void {
   into.turns += from.turns;
   into.costUsd += from.costUsd;
   into.durationMs += from.durationMs;
+  into.inputTokens += from.inputTokens;
+  into.outputTokens += from.outputTokens;
+  into.cacheReadTokens += from.cacheReadTokens;
+  into.cacheWriteTokens += from.cacheWriteTokens;
 }

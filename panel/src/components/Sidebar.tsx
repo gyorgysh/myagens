@@ -23,6 +23,7 @@ export type Tab =
   | "schedules"
   | "heartbeat"
   | "remote"
+  | "feedback"
   | "usage";
 
 type Item = { id: Tab; labelKey: TranslationKey; icon: string; hintKey?: TranslationKey };
@@ -68,6 +69,7 @@ export const NAV: Group[] = [
       { id: "status", labelKey: "nav_status", icon: "◉", hintKey: "nav_status_hint" },
       { id: "updates", labelKey: "nav_updates", icon: "⤓", hintKey: "nav_updates_hint" },
       { id: "remote", labelKey: "nav_remote", icon: "⇆", hintKey: "nav_remote_hint" },
+      { id: "feedback", labelKey: "nav_feedback", icon: "✍", hintKey: "nav_feedback_hint" },
     ],
   },
 ];

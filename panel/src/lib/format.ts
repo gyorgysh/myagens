@@ -30,6 +30,14 @@ export function usd(n: number): string {
   return `$${n.toFixed(n < 1 ? 4 : 2)}`;
 }
 
+/** Compact token count: 1234 → "1.2K", 3_400_000 → "3.4M". */
+export function tokens(n: number): string {
+  if (!n) return "0";
+  if (n < 1000) return String(Math.round(n));
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}K`;
+  return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0)}M`;
+}
+
 /**
  * Turn a raw usage-probe error into something readable. A rate-limit (429) is
  * by far the most common, so collapse its noisy "URL → 429: {json}" form into a

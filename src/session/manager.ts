@@ -4,9 +4,20 @@ import {
   emptyUsage,
   loadState,
   saveState,
+  zeroStat,
   type PersistedSession,
   type Usage,
 } from "./store.js";
+
+/** Per-turn usage folded into the running counters by `recordUsage`. */
+export interface TurnUsage {
+  costUsd: number;
+  durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
 
 export type Autonomy = "supervised" | "standard" | "full" | "auto_until_error";
 
@@ -173,15 +184,19 @@ export class SessionManager {
     return { sessions: all.length, aborted };
   }
 
-  /** Fold one turn's cost/duration into the session's lifetime + today buckets. */
-  recordUsage(chatId: number, costUsd: number, durationMs: number): void {
+  /** Fold one turn's cost/duration/tokens into the session's lifetime + today buckets. */
+  recordUsage(chatId: number, u: TurnUsage): void {
     const s = this.get(chatId);
     const day = new Date().toISOString().slice(0, 10);
-    const bucket = (s.usage.daily[day] ??= { turns: 0, costUsd: 0, durationMs: 0 });
+    const bucket = (s.usage.daily[day] ??= zeroStat());
     for (const t of [s.usage.total, bucket]) {
       t.turns += 1;
-      t.costUsd += costUsd;
-      t.durationMs += durationMs;
+      t.costUsd += u.costUsd;
+      t.durationMs += u.durationMs;
+      t.inputTokens += u.inputTokens;
+      t.outputTokens += u.outputTokens;
+      t.cacheReadTokens += u.cacheReadTokens;
+      t.cacheWriteTokens += u.cacheWriteTokens;
     }
     this.save();
   }

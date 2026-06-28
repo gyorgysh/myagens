@@ -58,6 +58,9 @@ const schema = z.object({
   // Branding overrides (allows white-labelling / self-hosting with a different name).
   ATLAS_NAME: z.string().min(1).default("Atlas"),
   BRAND_NAME: z.string().min(1).default("MyHQ"),
+  // Where the panel "Send feedback" form relays bug reports / suggestions. The
+  // project collector handles them server-side; override to point at your own.
+  FEEDBACK_URL: z.string().url().default("https://gyorgy.sh/myhq_feedback"),
   // Default language for agent responses (BCP 47 tag, e.g. "en", "hu", "fr").
   DEFAULT_LANGUAGE: z.string().min(2).default("en"),
   // Auto-generate skills from expensive/long turns (off by default).

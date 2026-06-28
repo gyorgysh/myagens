@@ -28,6 +28,7 @@ import { SettingsView } from "./components/Settings.tsx";
 import { SetupView } from "./components/Setup.tsx";
 import { TerminalView } from "./components/Terminal.tsx";
 import { RemoteAccessView } from "./components/RemoteAccess.tsx";
+import { FeedbackView } from "./components/Feedback.tsx";
 import { ToastViewport } from "./components/ui.tsx";
 
 /** Tab from the URL path (e.g. /status), falling back to health. */
@@ -233,6 +234,7 @@ export function App() {
           {tab === "schedules" && <SchedulesView onAuthError={onAuthError} />}
           {tab === "heartbeat" && <HeartbeatView_ onAuthError={onAuthError} />}
           {tab === "remote" && <RemoteAccessView onAuthError={onAuthError} />}
+          {tab === "feedback" && <FeedbackView onAuthError={onAuthError} />}
           {tab === "usage" && <UsageView onAuthError={onAuthError} />}
           {tab === "settings" && <SettingsView onAuthError={onAuthError} />}
 

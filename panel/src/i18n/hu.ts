@@ -164,6 +164,8 @@ export const hu: Translations = {
   crew_leads: "Vezetők",
   crew_listening: "Elérhető Telegramon",
   crew_no_token: "Nincs Telegramon",
+  crew_web_chat: "Webes chat",
+  crew_web_chat_hint: "Beszélgess ezzel az ügynökkel itt a panelen",
   crew_paused: "szüneteltetve",
   crew_leads_count: "{total} Lead · {active} aktív",
   // Crew "hogyan működik" infókártya

@@ -26,7 +26,15 @@ interface CouncilSession {
   noQuorum?: boolean;
 }
 
-export function CrewView({ onAuthError }: { onAuthError: () => void }) {
+export function CrewView({
+  onAuthError,
+  onChat,
+}: {
+  onAuthError: () => void;
+  /** Jump to the panel Chat view with this agent selected. Absent when web
+   *  chat is disabled, in which case no "Web Chat" badge is shown. */
+  onChat?: (agentId: string) => void;
+}) {
   const { t } = useI18n();
   const [atlas, setAtlas] = useState<MainAgent | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -158,6 +166,7 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
         depth={1}
         extra={t("crew_listening")}
         extraHref={atlas?.botUsername ? `https://t.me/${atlas.botUsername}` : undefined}
+        onWebChat={onChat ? () => onChat("atlas") : undefined}
       />
 
       {/* Skeleton lead rows while the initial fetch is in flight */}
@@ -203,6 +212,7 @@ export function CrewView({ onAuthError }: { onAuthError: () => void }) {
               lead.listening && lead.botUsername ? `https://t.me/${lead.botUsername}` : undefined
             }
             warn={lead.enabled && !lead.telegramToken ? t("crew_no_token") : undefined}
+            onWebChat={onChat ? () => onChat(lead.id) : undefined}
           />
           {assistants
             .filter((a) => a.parentId === lead.id)
@@ -563,6 +573,7 @@ function CrewNode({
   extraHref,
   warn,
   paused,
+  onWebChat,
 }: {
   icon: string;
   title: string;
@@ -575,6 +586,8 @@ function CrewNode({
   warn?: string;
   /** Dim the node and show a "paused" badge when the worker is disabled. */
   paused?: boolean;
+  /** When set, show a neon "Web Chat" badge that opens the panel chat here. */
+  onWebChat?: () => void;
 }) {
   const { t } = useI18n();
   const toneClass: Record<Tone, string> = {
@@ -616,6 +629,16 @@ function CrewNode({
             ) : (
               <Badge tone="green">{extra}</Badge>
             ))}
+          {onWebChat && (
+            <button
+              type="button"
+              onClick={onWebChat}
+              title={t("crew_web_chat_hint")}
+              className="rounded-full transition-opacity hover:opacity-80"
+            >
+              <Badge tone="violet">{t("crew_web_chat")}</Badge>
+            </button>
+          )}
           {warn && <Badge tone="zinc">{warn}</Badge>}
         </div>
         <div className="truncate text-xs text-fg-dim" title={subtitle}>

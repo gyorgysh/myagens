@@ -59,7 +59,15 @@ const AUTONOMY_KEY: Record<Autonomy, TranslationKey> = {
   auto_until_error: "auto_until_error",
 };
 
-export function WorkersView({ onAuthError }: { onAuthError: () => void }) {
+export function WorkersView({
+  onAuthError,
+  onChat,
+}: {
+  onAuthError: () => void;
+  /** Jump to the panel Chat view with this agent selected. Absent when web
+   *  chat is disabled, in which case no "Web Chat" badge is shown. */
+  onChat?: (agentId: string) => void;
+}) {
   const { t } = useI18n();
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [skills, setSkills] = useState<Named[]>([]);
@@ -172,6 +180,7 @@ export function WorkersView({ onAuthError }: { onAuthError: () => void }) {
               live={live[w.id]}
               onChange={load}
               onAuthError={onAuthError}
+              onChat={onChat}
             />
           );
           const parented = new Set<string>();
@@ -205,6 +214,7 @@ function WorkerRow({
   live,
   onChange,
   onAuthError,
+  onChat,
 }: {
   worker: Worker;
   skills: Named[];
@@ -213,6 +223,8 @@ function WorkerRow({
   live?: LiveRun;
   onChange: () => void;
   onAuthError: () => void;
+  /** Open the panel chat with this worker. Absent when web chat is disabled. */
+  onChat?: (agentId: string) => void;
 }) {
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
@@ -281,6 +293,16 @@ function WorkerRow({
           ))}
         {worker.role === "lead" && worker.enabled && !worker.telegramToken && (
           <Badge tone="zinc">{t("crew_no_token")}</Badge>
+        )}
+        {onChat && (
+          <button
+            type="button"
+            onClick={() => onChat(worker.id)}
+            title={t("crew_web_chat_hint")}
+            className="rounded-full transition-opacity hover:opacity-80"
+          >
+            <Badge tone="violet">{t("crew_web_chat")}</Badge>
+          </button>
         )}
         {running && <Badge tone="green">{t("running")}</Badge>}
         <span className="ml-auto flex gap-1.5">

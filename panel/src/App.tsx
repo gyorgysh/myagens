@@ -98,6 +98,15 @@ export function App() {
     if (location.pathname !== `/${t}`) history.pushState(null, "", `/${t}`);
   };
 
+  // Jump to the Chat view with a specific agent pre-selected (used by the
+  // "Web Chat" badges in Crew / Agents). The agent id rides along as a query
+  // param; ChatView reads and then strips it on mount.
+  const chatWith = (agentId: string) => {
+    setTab("chat");
+    setDrawer(false);
+    history.pushState(null, "", `/chat?agent=${encodeURIComponent(agentId)}`);
+  };
+
   // Learn which optional features are on (chat can be disabled via env).
   useEffect(() => {
     if (!authed) return;
@@ -258,7 +267,9 @@ export function App() {
               onAuthError={onAuthError}
             />
           )}
-          {tab === "crew" && <CrewView onAuthError={onAuthError} />}
+          {tab === "crew" && (
+            <CrewView onAuthError={onAuthError} onChat={chatEnabled ? chatWith : undefined} />
+          )}
           {tab === "health" && <HealthView onGoto={select} />}
           {tab === "status" && <StatusView onAuthError={onAuthError} />}
           {tab === "updates" && (
@@ -270,7 +281,9 @@ export function App() {
               }}
             />
           )}
-          {tab === "workers" && <WorkersView onAuthError={onAuthError} />}
+          {tab === "workers" && (
+            <WorkersView onAuthError={onAuthError} onChat={chatEnabled ? chatWith : undefined} />
+          )}
           {tab === "inbox" && <InboxView onAuthError={onAuthError} />}
           {tab === "tasks" && <TasksView onAuthError={onAuthError} />}
           {tab === "skills" && <SkillsView onAuthError={onAuthError} />}

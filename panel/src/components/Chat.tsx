@@ -9,6 +9,18 @@ import { Button } from "./ui.tsx";
 /** Sentinel id for the main Atlas chat (the Telegram-mirrored session). */
 const ATLAS = "atlas";
 
+/** Read a `?agent=<id>` deep-link param once, then strip it from the URL so it
+ *  doesn't stick around on refresh / share. Returns ATLAS when absent. */
+function initialAgentFromUrl(): string {
+  if (typeof location === "undefined") return ATLAS;
+  const url = new URL(location.href);
+  const agent = url.searchParams.get("agent");
+  if (!agent) return ATLAS;
+  url.searchParams.delete("agent");
+  history.replaceState(null, "", url.pathname + url.search + url.hash);
+  return agent;
+}
+
 /**
  * Chat tab. Lets the President pick which agent to talk to via a switcher rail
  * at the top: Atlas (the shared Telegram session) plus every worker / Lead /
@@ -16,7 +28,7 @@ const ATLAS = "atlas";
  */
 export function ChatView({ onAuthError }: { onAuthError: () => void }) {
   const [workers, setWorkers] = useState<Worker[]>([]);
-  const [selected, setSelected] = useState<string>(ATLAS);
+  const [selected, setSelected] = useState<string>(initialAgentFromUrl);
   const [fabOpen, setFabOpen] = useState(false);
   // Bumping this remounts the active pane to start a fresh conversation.
   const [chatNonce, setChatNonce] = useState(0);
@@ -33,8 +45,11 @@ export function ChatView({ onAuthError }: { onAuthError: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // If the selected agent disappears (deleted), fall back to Atlas.
+  // If the selected agent disappears (deleted), fall back to Atlas. Wait for the
+  // roster to load first so a deep-linked agent (?agent=…) isn't reset to Atlas
+  // before the initial fetch resolves.
   useEffect(() => {
+    if (workers.length === 0) return;
     if (selected !== ATLAS && !workers.some((w) => w.id === selected)) {
       setSelected(ATLAS);
     }

@@ -162,6 +162,8 @@ export const en = {
   crew_leads: "Leads",
   crew_listening: "Available on Telegram",
   crew_no_token: "Not on Telegram",
+  crew_web_chat: "Web Chat",
+  crew_web_chat_hint: "Chat with this agent here in the panel",
   crew_paused: "paused",
   crew_leads_count: "{total} Leads · {active} active",
   // Crew "how it works" info card

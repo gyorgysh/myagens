@@ -72,13 +72,16 @@ export function Badge({
   tone = "zinc",
 }: {
   children: ReactNode;
-  tone?: "zinc" | "green" | "amber" | "blue";
+  tone?: "zinc" | "green" | "amber" | "blue" | "violet";
 }) {
   const tones: Record<string, string> = {
     zinc: "bg-surface-2 text-fg-muted",
     green: "bg-ok-subtle text-ok-fg",
     amber: "bg-warn-subtle text-warn-fg",
     blue: "bg-accent/15 text-accent",
+    // Neon violet — the "Private Chat on Web" counterpart to the green Telegram
+    // badge. Fixed violet (not the theme accent) so it reads as a distinct channel.
+    violet: "bg-violet-500/15 text-violet-500 dark:text-violet-300",
   };
   return (
     <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${tones[tone]}`}>

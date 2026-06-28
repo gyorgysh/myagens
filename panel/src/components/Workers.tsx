@@ -278,22 +278,29 @@ function WorkerRow({
         {worker.model && <Badge>{shortModel(worker.model)}</Badge>}
         {providerName && <Badge tone="blue">⌂ {providerName}</Badge>}
         {!worker.enabled && <Badge tone="amber">{t("disabled")}</Badge>}
+        {/* Telegram status badge — green when live, dim when token missing */}
         {worker.listening &&
           (worker.botUsername ? (
             <a
               href={`https://t.me/${worker.botUsername}`}
               target="_blank"
               rel="noreferrer"
-              className="hover:underline"
+              title={t("crew_listening_hint")}
+              className="transition-opacity hover:opacity-80"
             >
-              <Badge tone="green">{t("crew_listening")}</Badge>
+              <Badge tone="green">⦿ {t("crew_listening")}</Badge>
             </a>
           ) : (
-            <Badge tone="green">{t("crew_listening")}</Badge>
+            <span title={t("crew_listening_hint")}>
+              <Badge tone="green">⦿ {t("crew_listening")}</Badge>
+            </span>
           ))}
         {worker.role === "lead" && worker.enabled && !worker.telegramToken && (
-          <Badge tone="zinc">{t("crew_no_token")}</Badge>
+          <span title={t("crew_no_token_hint")} className="opacity-40">
+            <Badge tone="zinc">⦾ {t("crew_no_token")}</Badge>
+          </span>
         )}
+        {/* Web Chat: always last, compact */}
         {onChat && (
           <button
             type="button"
@@ -301,7 +308,7 @@ function WorkerRow({
             title={t("crew_web_chat_hint")}
             className="rounded-full transition-opacity hover:opacity-80"
           >
-            <Badge tone="violet">{t("crew_web_chat")}</Badge>
+            <Badge tone="violet">⌨ {t("crew_web_chat")}</Badge>
           </button>
         )}
         {running && <Badge tone="green">{t("running")}</Badge>}

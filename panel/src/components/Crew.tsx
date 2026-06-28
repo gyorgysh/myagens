@@ -621,14 +621,29 @@ function CrewNode({
         <div className="flex items-center gap-2">
           <span className="font-medium text-fg">{title}</span>
           {paused && <Badge tone="zinc">{t("crew_paused")}</Badge>}
+          {/* Telegram status: green + linked when live, dim + tooltip when no token */}
           {extra &&
             (extraHref ? (
-              <a href={extraHref} target="_blank" rel="noreferrer" className="hover:underline">
-                <Badge tone="green">{extra}</Badge>
+              <a
+                href={extraHref}
+                target="_blank"
+                rel="noreferrer"
+                title={t("crew_listening_hint")}
+                className="transition-opacity hover:opacity-80"
+              >
+                <Badge tone="green">⦿ {t("crew_listening")}</Badge>
               </a>
             ) : (
-              <Badge tone="green">{extra}</Badge>
+              <span title={t("crew_listening_hint")}>
+                <Badge tone="green">⦿ {t("crew_listening")}</Badge>
+              </span>
             ))}
+          {warn && (
+            <span title={t("crew_no_token_hint")} className="opacity-40">
+              <Badge tone="zinc">⦾ {t("crew_no_token")}</Badge>
+            </span>
+          )}
+          {/* Web Chat: compact, always last */}
           {onWebChat && (
             <button
               type="button"
@@ -636,10 +651,9 @@ function CrewNode({
               title={t("crew_web_chat_hint")}
               className="rounded-full transition-opacity hover:opacity-80"
             >
-              <Badge tone="violet">{t("crew_web_chat")}</Badge>
+              <Badge tone="violet">⌨ {t("crew_web_chat")}</Badge>
             </button>
           )}
-          {warn && <Badge tone="zinc">{warn}</Badge>}
         </div>
         <div className="truncate text-xs text-fg-dim" title={subtitle}>
           {subtitle}

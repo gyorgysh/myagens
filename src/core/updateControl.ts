@@ -130,13 +130,22 @@ async function runScript(
   const script = isWin ? UPDATE_PS1 : UPDATE_SH;
   log.warn(`${mode === "restore" ? "Restore" : "Update"} requested — running ${script}`);
   return new Promise((resolve) => {
+    // Full path to powershell.exe — the service's PATH may not include
+    // System32\WindowsPowerShell\v1.0, which would make a bare "powershell.exe"
+    // fail to spawn. Fall back to the bare name if SystemRoot is unset.
+    const psExe = process.env.SystemRoot
+      ? join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+      : "powershell.exe";
     const child = isWin
       ? spawn(
-          "powershell.exe",
+          psExe,
           ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", UPDATE_PS1],
           { cwd: repoRoot, detached: true },
         )
       : spawn("bash", [UPDATE_SH], { cwd: repoRoot, detached: true });
+    // Detach from our lifecycle so the build survives the service restart the
+    // script performs near the end.
+    child.unref();
     const handle = (buf: Buffer) => {
       for (const line of buf.toString().split("\n")) {
         if (line.length) {

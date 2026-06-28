@@ -662,16 +662,24 @@ function Open-Panel {
     if ($Script:ServiceMode -ne "service") { return }
     if ($AutoYes) { return }
 
-    Say "Waiting for the panel to come up…"
-    for ($i = 0; $i -lt 20; $i++) {
+    Say "Waiting for the panel to come up..."
+    for ($i = 0; $i -lt 30; $i++) {
         if (-not (Test-PortFree ([int]$Script:PanelPortChosen))) { break }  # not free = listening
         Start-Sleep -Milliseconds 500
     }
-    try {
-        Start-Process (Get-PanelLoginUrl)
-        Ok "Opened the panel in your browser — you're logged in."
-    } catch {
-        Warn "Couldn't auto-open a browser. Open the login link below manually."
+
+    # The installer runs elevated. A plain Start-Process of a URL often fails to
+    # hand off to the user's (non-elevated) default browser, so it silently does
+    # nothing. explorer.exe opens the URL in the user's context reliably; fall
+    # back to Start-Process if explorer isn't available.
+    $url = Get-PanelLoginUrl
+    $opened = $false
+    try { Start-Process "explorer.exe" -ArgumentList $url; $opened = $true } catch {}
+    if (-not $opened) { try { Start-Process $url; $opened = $true } catch {} }
+    if ($opened) {
+        Ok "Opened the panel in your browser - you're logged in."
+    } else {
+        Warn "Couldn't auto-open a browser. Open the login link shown below manually."
     }
 }
 

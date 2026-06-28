@@ -28,15 +28,19 @@ PANEL_PORT_CHOSEN=""
 PANEL_TOKEN_CHOSEN=""
 SERVICE_MODE=""   # "1" once the bot is installed as a running service
 
-# Open a URL in the user's default browser, best-effort. Returns non-zero
-# silently if no opener is available (headless box, SSH session, …).
+# Open a URL in the user's default browser, best-effort. Returns:
+#   0 = opened, 1 = no opener available / failed, 2 = headless (no GUI session).
 open_url() {
   local url="$1"
-  if [ "$OS" = "mac" ] && command -v open >/dev/null 2>&1; then
-    open "$url" >/dev/null 2>&1 && return 0
-  elif command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$url" >/dev/null 2>&1 && return 0
+  if [ "$OS" = "mac" ]; then
+    command -v open >/dev/null 2>&1 && open "$url" >/dev/null 2>&1 && return 0
+    return 1
   fi
+  # Linux: a browser only makes sense with a desktop session. On a headless box
+  # (SSH into a server, no X/Wayland) there's nothing to open — the user reaches
+  # the panel from their own machine, so report that distinctly rather than fail.
+  [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ] || return 2
+  command -v xdg-open >/dev/null 2>&1 && xdg-open "$url" >/dev/null 2>&1 && return 0
   return 1
 }
 
@@ -684,8 +688,12 @@ open_panel() {
   done
 
   local url; url="$(panel_login_url)"
-  if open_url "$url"; then
+  local rc=0
+  open_url "$url" || rc=$?
+  if [ "$rc" -eq 0 ]; then
     ok "Opened the panel in your browser — you're logged in."
+  elif [ "$rc" -eq 2 ]; then
+    say "Headless server — no desktop browser. Use the login link below (over an SSH tunnel or the Remote Access view)."
   else
     warn "Couldn't auto-open a browser. Open the login link below manually."
   fi

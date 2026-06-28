@@ -27,13 +27,30 @@ try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch 
 $AppDir = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent  # scripts\windows -> repo root
 Set-Location $AppDir
 
-function Say { param([string]$m) Write-Host "* $m" }
-function Ok  { param([string]$m) Write-Host "+ $m" }
+# When launched by the background service its PATH can be minimal, so make sure
+# git/node/npm resolve by prepending their standard locations. Without this the
+# update silently no-ops (a missing command never sets $LASTEXITCODE).
+$env:Path = (@(
+    $env:Path,
+    "$env:ProgramFiles\nodejs",
+    "$env:ProgramFiles\Git\cmd",
+    "$env:ProgramFiles\Git\bin",
+    (Join-Path $env:APPDATA "npm")
+) | Where-Object { $_ }) -join ";"
+
+# Use Write-Output (stdout, stream 1) NOT Write-Host (the information stream),
+# because the in-panel updater captures the child's stdout pipe - Write-Host
+# output would never reach it, leaving the panel showing no progress at all.
+function Say { param([string]$m) Write-Output "* $m" }
+function Ok  { param([string]$m) Write-Output "+ $m" }
 function Step {
     param([string]$Name, [scriptblock]$Cmd)
-    & $Cmd
+    $global:LASTEXITCODE = 0
+    # try/catch turns a missing command (CommandNotFoundException) into an honest
+    # failure instead of a silent skip that exits 0 and reports "success".
+    try { & $Cmd } catch { Write-Output "x $Name failed: $($_.Exception.Message)"; exit 1 }
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "x $Name failed (exit $LASTEXITCODE)."
+        Write-Output "x $Name failed (exit $LASTEXITCODE)."
         exit 1
     }
 }

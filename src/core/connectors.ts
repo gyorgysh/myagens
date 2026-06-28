@@ -24,10 +24,10 @@ export interface ConnectorDef {
 export const CONNECTORS: ConnectorDef[] = [
   { id: "notion", name: "Notion", description: "Search, read, and create Notion pages/databases.", credential: "Notion integration token", status: "live" },
   { id: "gcal", name: "Google Calendar", description: "List and create calendar events.", credential: "Google OAuth access token", status: "live" },
-  { id: "gmail", name: "Gmail", description: "Read and send email.", credential: "Google OAuth token", status: "coming-soon" },
-  { id: "gdrive", name: "Google Drive", description: "Browse and fetch files.", credential: "Google OAuth token", status: "coming-soon" },
-  { id: "apple-calendar", name: "Apple Calendar", description: "Read and create events in macOS Calendar.", credential: "macOS Calendar access (EventKit)", status: "coming-soon" },
-  { id: "apple-mail", name: "Apple Mail", description: "Read and send email via iCloud Mail.", credential: "iCloud app-specific password", status: "coming-soon" },
+  { id: "gmail", name: "Gmail", description: "List, read, send, draft, label, and delete Gmail messages.", credential: "Google OAuth access token (gmail + gmail.send scope)", status: "live" },
+  { id: "gdrive", name: "Google Drive", description: "List, read, create, update, move, share, and delete Drive files.", credential: "Google OAuth access token (drive scope)", status: "live" },
+  { id: "apple-calendar", name: "Apple Calendar", description: "List calendars and events, create, update, and delete events via iCloud CalDAV.", credential: "iCloud email:app-specific-password", status: "live" },
+  { id: "apple-mail", name: "Apple Mail", description: "List folders, read and search messages, send and delete email via iCloud IMAP/SMTP.", credential: "iCloud email:app-specific-password", status: "live" },
 ];
 
 interface ConnectorConfig {

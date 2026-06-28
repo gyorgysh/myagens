@@ -286,7 +286,7 @@ clone_repo() {
   elif [ -e "$APP_DIR" ] && [ -n "$(ls -A "$APP_DIR" 2>/dev/null)" ]; then
     die "$APP_DIR exists and isn't empty. Pick another location or remove it."
   else
-    say "Cloning $REPO_URL → $APP_DIR…"
+    say "Cloning $REPO_URL → ${APP_DIR}…"
     git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
   fi
   ok "Repo ready at $APP_DIR."
@@ -473,7 +473,7 @@ install_tunnel_cli() {
   # $1 = ngrok | cloudflared. Returns 0 on success.
   local name="$1"
   if command -v "$name" >/dev/null 2>&1; then ok "$name present."; return 0; fi
-  say "Installing $name…"
+  say "Installing ${name}…"
   if [ "$OS" = "mac" ]; then
     case "$name" in
       ngrok)       brew install ngrok 2>/dev/null || brew install ngrok/ngrok/ngrok 2>/dev/null ;;

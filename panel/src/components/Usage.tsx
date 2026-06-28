@@ -383,7 +383,7 @@ function CostChart({
       {recent.map((d) => {
         const inPeriod = periodStart ? d.day >= periodStart : true;
         return (
-          <div key={d.day} className="group flex flex-1 flex-col items-center justify-end">
+          <div key={d.day} className="group flex h-full flex-1 flex-col items-center justify-end">
             <div
               className={`w-full rounded-t transition-all ${
                 inPeriod ? "bg-accent/70 group-hover:bg-accent" : "bg-fg-faint/20 group-hover:bg-fg-faint/40"
@@ -600,7 +600,7 @@ function AgentTokenChart({ dailyByRole }: { dailyByRole: AgentDailyByRole }) {
         const totalPct = (total / maxTotal) * 100;
         const tip = row.slices.map((s) => `${CATEGORIES.find((c) => c.role === s.role)?.label}: ${tokens(s.tokens)}`).join(" | ");
         return (
-          <div key={row.day} className="group flex flex-1 flex-col items-center justify-end">
+          <div key={row.day} className="group flex h-full flex-1 flex-col items-center justify-end">
             <div
               className="flex w-full flex-col-reverse justify-end overflow-hidden rounded-t"
               style={{ height: `${totalPct}%` }}
@@ -799,7 +799,7 @@ function TokenChart({ myhq }: { myhq: UsageSummary }) {
         const inPct = total > 0 ? (d.inputTokens / total) * 100 : 0;
         const outPct = total > 0 ? (d.outputTokens / total) * 100 : 0;
         return (
-          <div key={d.day} className="group flex flex-1 flex-col items-center justify-end">
+          <div key={d.day} className="group flex h-full flex-1 flex-col items-center justify-end">
             <div
               className="flex w-full flex-col justify-end overflow-hidden rounded-t"
               style={{ height: `${totalPct}%` }}

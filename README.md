@@ -80,7 +80,7 @@ You will need a [bot token](#setup-manual) and your numeric Telegram user id. Th
 | ![Memory panel: tier-based fact store](images/v01_memory.webp) | ![Settings: main agent model picker and local model providers](images/v01_llm.webp) |
 | **Memory**: a tier-based fact store (hot/warm/cold) that agents write to and recall from automatically, with optional semantic search. Search, edit, promote, demote, and delete entries from the panel. | **Settings**: choose the model and provider for the main agent and every sub-agent, add local model servers (LM Studio, Ollama) or proxies, and tune semantic-memory embeddings. See [Bring Your Own Model](#bring-your-own-model). |
 
-Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (tier-based fact store with hot/warm/cold recall plus optional semantic search), **Vault** (AES-256-GCM secrets), **Skills** (reusable workflows), **Prompt** (playbook editor), **Logs** (a human-readable activity feed, raw searchable history with 72h rotation, and usage analytics), **Terminal** (a live shell session in the browser, off by default), **Connectors** (live Notion, Google Calendar, Gmail, Google Drive, Apple Calendar, and Apple Mail integrations with per-connector read/write scope), **Updates** (check, apply, and roll back versions in place), **Remote Access** (expose the panel over a secure tunnel for phone access), **Feedback** (send a bug report or suggestion straight from the dashboard), **Settings** (main agent, plan and budget tracker, language, model providers with live local-backend status), and more. A sticky connection banner warns when the backend goes away and the dashboard reloads itself once it recovers.
+Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (tier-based fact store with hot/warm/cold recall plus optional semantic search), **Vault** (AES-256-GCM secrets), **Skills** (reusable workflows), **Prompt** (playbook editor), **Logs** (a human-readable activity feed, raw searchable history with 72h rotation, and usage analytics), **Terminal** (a live shell session in the browser, off by default), **Connectors** (live Notion, Google Calendar, Gmail, Google Drive, Apple Calendar, and Apple Mail integrations with per-connector read/write scope), **Updates** (check, apply, and roll back versions in place), **Remote Access** (expose the panel over a secure tunnel for phone access), **Approvals** (pending tool-call approvals queued from any chat, resolvable from the browser instead of Telegram), **Web Push** (browser push notifications — tap-to-open on tool approvals, task failures, and test pings — using a VAPID keypair that is auto-generated and stored in the vault), **Feedback** (send a bug report or suggestion straight from the dashboard), **Settings** (main agent, plan and budget tracker, language, model providers with live local-backend status), and more. A sticky connection banner warns when the backend goes away and the dashboard reloads itself once it recovers. On first visit, a **guided setup wizard** helps you pick a quick-start scenario or walk through full crew creation step by step.
 
 ## In Telegram
 
@@ -111,11 +111,11 @@ Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** 
 
 **Autonomy levels.** Three tiers replace the old on/off toggle: *supervised* (every tool call prompts for approval), *standard* (safe read-only tools run freely, risky ones prompt (the default)), and *full* (no prompts, fully autonomous). Set globally per agent, or change per-chat with `/mode`.
 
-**Language.** Choose the language Atlas or any Lead responds in. The panel Settings tab has a global default; individual agents can override it; and per-chat `/lang <code>` overrides them all. Thirty languages available (English, Hungarian, Spanish, French, German, and more). The panel interface itself is available in English and Hungarian.
+**Language.** Choose the language Atlas or any Lead responds in. The panel Settings tab has a global default; individual agents can override it; and per-chat `/lang <code>` overrides them all. Thirty languages available (English, Hungarian, Spanish, French, German, and more). The panel interface itself is available in English and Hungarian. All Telegram bot messages, command responses, and inline button labels are fully translated — every string the bot sends resolves through the same language stack.
 
 **Autonomous delegation.** Task cards on the board can be delegated to an agent run with one button. The agent can break cards into subtasks, complete them, and move the card to Done without you touching it.
 
-**Proactive monitoring.** The heartbeat runs in the background watching host health and stalled task cards. It can alert you, or it can run an autonomous turn to investigate and act first. Individual signal types (cpu, mem, swap, disk, stale cards) can be muted independently from the panel without disabling the whole heartbeat.
+**Proactive monitoring.** The heartbeat runs in the background watching host health and stalled task cards. It can alert you, or it can run an autonomous turn to investigate and act first. Individual signal types (cpu, mem, swap, disk, stale cards) can be muted independently from the panel without disabling the whole heartbeat. **Quiet hours** (`quietStart`/`quietEnd` in HH:MM) suppress all signals during a time window — useful for silencing overnight alerts. **Calendar-aware mode**: when a Google or Apple Calendar connector is enabled, the heartbeat scans upcoming events within a configurable lookahead window and briefs Atlas before each one so he can prepare context, materials, or reminders in advance.
 
 **Scheduled runs.** Set any agent or Lead to run a prompt on a timer: check disk space at 9am, summarize logs every 2 hours, pull a report every Monday. A daily maintenance window can compact memory (a small Haiku model reads the hot and warm tiers, consolidates near-duplicate entries into one clear entry, drops redundant copies, and shortens any entry over 220 characters into a single terse sentence) and auto-archive unused skills older than 14 days. A dry-run preview in the panel Health card shows which entries would be deleted, demoted, or merged before the next run fires.
 
@@ -213,12 +213,18 @@ On Windows (elevated PowerShell):
 | `EMBEDDING_MODEL` | no | Pinned embedding model id (default `nomic-embed-text`) |
 | `EMBEDDING_AUTH_TOKEN` | no | Optional auth token for the embedding endpoint (plain or `vault:<id>`) |
 | `LOG_LEVEL` | no | `error`, `warn`, `info` (default), `debug` |
-| `TRANSCRIBE_PROVIDER` | no | Voice backend: `openai` (default) or `vosk` (local) |
-| `OPENAI_API_KEY` | no | API key for the `openai` voice backend (OpenAI, Groq, ...) |
+| `TRANSCRIBE_PROVIDER` | no | Voice transcription backend: `openai` (default) or `vosk` (local) |
+| `OPENAI_API_KEY` | no | API key for the `openai` transcription backend (OpenAI, Groq, ...) |
 | `TRANSCRIBE_MODEL` | no | Transcription model (default `whisper-1`) |
-| `TRANSCRIBE_BASE_URL` | no | OpenAI-compatible base URL (default `https://api.openai.com/v1`) |
+| `TRANSCRIBE_BASE_URL` | no | OpenAI-compatible base URL for transcription (default `https://api.openai.com/v1`) |
 | `VOSK_MODEL_PATH` | no | Path to an unpacked Vosk model dir |
 | `FFMPEG_PATH` | no | ffmpeg binary for voice note decoding (default `ffmpeg`) |
+| `TTS_PROVIDER` | no | Voice reply (TTS) backend: `openai` (default) or `piper` (fully local) |
+| `TTS_MODEL` | no | TTS model id (default `tts-1`; ignored for piper) |
+| `TTS_VOICE` | no | TTS voice name (default `alloy`; ignored for piper) |
+| `TTS_BASE_URL` | no | OpenAI-compatible TTS base URL (default `https://api.openai.com/v1`) |
+| `PIPER_PATH` | no | Path to the piper binary for local TTS (default `piper`) |
+| `PIPER_MODEL` | no | Path to a `.onnx` Piper voice model |
 | `WORK_FILE` | no | Path to Atlas's operator playbook (default `work.md`) |
 | `PANEL_ENABLED` | no | `true` to start the MyHQ Panel (default `false`) |
 | `PANEL_TOKEN` | when panel on | Shared secret for all panel requests |
@@ -241,7 +247,7 @@ On Windows (elevated PowerShell):
 
 ### Voice
 
-Send a voice note and it is transcribed and run like a typed prompt. Two backends via `TRANSCRIBE_PROVIDER`:
+**Transcription**: send a voice note and it is transcribed and run like a typed prompt. Two backends via `TRANSCRIBE_PROVIDER`:
 
 **`openai`** (default): any OpenAI-compatible `/audio/transcriptions` endpoint. Use OpenAI directly, or **Groq's free tier**: set `TRANSCRIBE_BASE_URL=https://api.groq.com/openai/v1`, `TRANSCRIBE_MODEL=whisper-large-v3-turbo`, and a Groq `OPENAI_API_KEY`.
 
@@ -251,6 +257,12 @@ npm install vosk
 # install ffmpeg, download and unpack a model from https://alphacephei.com/vosk/models
 ```
 Then set `VOSK_MODEL_PATH=/path/to/vosk-model` and `TRANSCRIBE_PROVIDER=vosk`.
+
+**Spoken replies (TTS)**: toggle with `/voice on` / `/voice off`. When on, Atlas speaks its final reply as a Telegram voice message in addition to the text. Two backends via `TTS_PROVIDER`:
+
+**`openai`** (default): any OpenAI-compatible `/audio/speech` endpoint (`TTS_MODEL`, `TTS_VOICE`, `TTS_BASE_URL`).
+
+**`piper`**: fully local, offline TTS. Install the binary and download an `.onnx` voice model, then set `PIPER_PATH` and `PIPER_MODEL`.
 
 ## Enabling the Panel
 
@@ -285,6 +297,8 @@ Everything the panel does is a REST call you can script. Auth is the same `PANEL
 | Providers and backends | `GET\|POST /api/providers`, `PUT\|DELETE /api/providers/:id`, `GET /api/providers/:id/models`, `POST /api/providers/models`, `GET /api/integrations/ollama\|lmstudio`, `POST /api/integrations/ollama\|lmstudio/connect` |
 | Vault | `GET\|POST /api/vault`, `PUT\|DELETE /api/vault/:id`, `GET /api/vault/:id/reveal`, `POST /api/vault/import`, `POST /api/vault/rotate`, `POST /api/vault/export`, `POST /api/vault/import-backup` |
 | Plan and usage | `GET\|PUT /api/plan`, `POST /api/plan/report-test`, `GET /api/usage`, `GET /api/usage/agents`, `GET /api/usage-probe`, `POST /api/usage-probe/run`, `GET /api/claude-usage` |
+| Approvals | `GET /api/approvals`, `POST /api/approvals/:id/resolve` |
+| Web Push | `GET /api/push`, `POST /api/push/subscribe`, `DELETE /api/push/subscribe/:id`, `POST /api/push/test` |
 | Monitoring | `GET /api/health`, `GET /api/status`, `GET /api/sessions`, `GET /api/audit`, `GET\|PUT /api/heartbeat`, `POST /api/heartbeat/run`, `GET /api/maintenance`, `POST /api/maintenance/run`, `POST /api/maintenance/preview` |
 | Content and config | `GET\|PUT /api/prompt`, `GET /api/claude-files`, `GET\|PUT /api/claude-files/content`, `GET /api/languages`, `GET /api/connectors`, `PUT /api/connectors/:id` |
 | Logs | `GET /api/logs`, `GET /api/logs/dates`, `GET /api/logs/search`, `GET /api/logs/summary` |
@@ -327,7 +341,7 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Live streaming**: Telegram Rich Messages (Bot API 10.1) and message drafts (Bot API 9.3): replies animate as previews and land as clean, structured messages.
 - **Proactive monitoring**: optional heartbeat watches host health (CPU/mem/swap/disk) and stalled task cards, pinging Telegram on breach, or running an autonomous turn to investigate first. Individual signal types (cpu, mem, swap, disk, stale) can be muted from the panel without disabling the whole heartbeat.
 - **Secret vault**: AES-256-GCM encrypted secrets with the master key in the macOS Keychain (file fallback on Linux). Reference secrets anywhere as `vault:<id>`. The panel Vault view shows **usage badges** on each secret so you can see at a glance whether a secret is in use before deleting it. **Key rotation** (`POST /api/vault/rotate`) re-encrypts all secrets under a fresh key in one atomic operation. **Encrypted backup** (`POST /api/vault/export`) produces a portable passphrase-protected blob you can import on another machine; `POST /api/vault/import-backup` additively restores without touching existing entries.
-- **Multi-agent task delegation**: task board cards can be delegated to an autonomous run. The agent can break cards into subtasks, complete them, and move the card to Done. When a delegated run breaks a card into subtasks, the parent card is auto-archived to keep the backlog clean. A global concurrency queue (`maxConcurrent`, default 3) prevents simultaneous delegation pile-ups; excess runs show a "queued" status in amber until a slot opens. Failed cards can be retried with one click from the panel or from the inline 🔁 button in Telegram. Per-run transcripts are stored in `data/runs/` and viewable in the panel via `GET /api/runs/:runId/log`.
+- **Multi-agent task delegation**: task board cards can be delegated to an autonomous run. The agent can break cards into subtasks, complete them, and move the card to Done. When a delegated run breaks a card into subtasks, the parent card is auto-archived to keep the backlog clean. A global concurrency queue (`maxConcurrent`, default 3) prevents simultaneous delegation pile-ups; excess runs show a "queued" status in amber until a slot opens. Failed cards can be retried with one click from the panel or from the inline 🔁 button in Telegram — retry resumes the previous Claude session so context is not lost. Per-run transcripts are stored in `data/runs/` and viewable in the panel via `GET /api/runs/:runId/log`. **Blocked-by dependencies**: set `blockedBy` on a card to list prerequisite card ids; a delegated run won't start until all prerequisites have reached the Done column, preventing agents from working on things out of order.
 - **Tasks board ergonomics**: an "+ Add card" button at the top of each column so you can prepend without scrolling. Bulk select mode lets you select multiple cards and Delete, Delegate, or "Run as one task" (combines their titles and notes into a single delegated run) in one shot. Columns auto-archive cards once they exceed 20 items.
 - **Custom task columns**: the Kanban board starts with Planned / In Progress / Done but you can rename any column and add as many as you need. Columns are managed from the board header with a single click.
 - **Live Claude usage**: the System and Usage panels pull real 5-hour session and 7-day weekly limit percentages from `GET /api/oauth/usage` using the OAuth token the Claude Code CLI stores in your Keychain. No extra credentials needed. Subscription type auto-detected. Configurable auto-refresh (default 30 min) and a "Check now" button. Historical stats (message counts, token breakdown, 14-day sparkline) from `~/.claude/stats-cache.json`.
@@ -338,8 +352,12 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Operator playbook (`work.md`)**: define once how recurring jobs should be done. Re-read every turn, so edits apply instantly.
 - **Session continuity**: context carries across messages; `/new` resets it. Sessions (resume token, cwd, autonomy, language, allow-lists, usage) survive restarts.
 - **Git review from chat**: `/diff` shows the diff with inline Commit / Discard buttons; `/commit <message>` stages and commits.
-- **Voice notes**: transcribed and run as prompts via OpenAI-compatible API (OpenAI, Groq) or fully local Vosk.
+- **Voice notes**: transcribed and run as prompts via OpenAI-compatible API (OpenAI, Groq) or fully local Vosk. `/voice on` adds spoken TTS replies (OpenAI TTS or fully local Piper) so Atlas can speak back as well.
+- **Web Push notifications**: the panel registers browser subscriptions (VAPID keypair auto-generated and stored in the vault) and pushes real-time notifications — pending approvals, task failures, test pings — even when the tab is closed. Manage subscriptions and send a test ping via `GET|POST /api/push`.
+- **Panel approval queue**: pending tool-call approvals from any Telegram chat are mirrored to the panel (`GET /api/approvals`, `POST /api/approvals/:id/resolve`). Resolve them from the browser without touching your phone.
 - **Local model support**: point Atlas or any Lead at LM Studio, Ollama, or any Anthropic-compatible proxy, switchable live from the Settings tab.
+- **Rate-limit auto-fallback**: set a `fallbackProviderId` on Atlas (via `PUT /api/agent`); when the cached usage probe shows the Anthropic plan is at or over the rate-limit threshold, autonomous turns automatically switch to the fallback provider and model. Interactive turns are never redirected — only background runs.
+- **Global dry-run mode**: toggle `dryRun` via `PUT /api/agent` or from the Settings tab. In dry-run mode all mutating tools (Bash, Write, Edit, MultiEdit, NotebookEdit) are intercepted and described — "would run X", "would write Y" — without executing. Useful for previewing what an autonomous run would do before committing.
 - **File send/receive**: upload files and photos (agents see images inline); agents can send files back via the built-in `send_file` tool.
 - **Scheduled runs**: timed autonomous prompts on any interval or daily time, per-agent.
 - **Persistent logs**: agent activity is written to dated NDJSON files in `logs/` (one per day, never truncated on restart). Files older than 72 hours rotate automatically. Secrets (bearer tokens, API keys, bot tokens, `key=value` credential pairs) are redacted before any line is written or shown. The panel Logs view has three tabs: an **Activity** feed of human-readable rows (icon + verb + agent identity badge + arg preview, plus lifecycle events like new messages, scheduled runs, and updates; Write/Edit rows show a diff-line count chip and an expandable +/- snippet; filter by agent/Lead/worker with toggle chips; "Collapse diffs" checkbox to default all snippets to closed), the raw **Logs** view (browse and search any past day by date, level, or keyword, including a cross-file 72h search), and **Analytics** (most-used tools and shell commands).

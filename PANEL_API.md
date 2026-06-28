@@ -88,11 +88,13 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/tasks \
     "title": "Check disk usage on prod",
     "notes": "Alert if over 80%",
     "column": "backlog",
-    "priority": "high"
+    "priority": "high",
+    "blockedBy": ["<prerequisite-task-id>"]
   }'
 # priority: "low" | "normal" | "high"
 # column: use column ids from GET /api/tasks (default columns: backlog, doing, done)
 # parentId: id of a parent task for subtasks
+# blockedBy: list of task ids that must reach Done before this card can be delegated
 
 # Update a task (move column, change priority, edit notes)
 curl -X PATCH -H "$AUTH" -H "Content-Type: application/json" $BASE/api/tasks/<id> \
@@ -188,7 +190,19 @@ curl -H "$AUTH" $BASE/api/agent
 
 # Update (all fields optional)
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
-  -d '{ "model": "claude-opus-4-8", "persona": "Concise and direct.", "autonomy": "standard", "defaultLanguage": "en" }'
+  -d '{
+    "model": "claude-opus-4-8",
+    "persona": "Concise and direct.",
+    "autonomy": "standard",
+    "defaultLanguage": "en",
+    "fallbackProviderId": "<provider-id>",
+    "dryRun": false
+  }'
+# fallbackProviderId: when set, autonomous turns switch to this provider/model
+#   automatically when the usage probe shows the Anthropic plan is rate-limited.
+#   Interactive turns are never redirected.
+# dryRun: when true, mutating tools (Bash, Write, Edit, MultiEdit, NotebookEdit)
+#   are intercepted and described ("would run X") without executing.
 
 # Toggle semantic memory embeddings
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent/embeddings \
@@ -269,10 +283,26 @@ curl -H "$AUTH" $BASE/api/heartbeat
 
 # Update config
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/heartbeat \
-  -d '{ "mode": "alert", "intervalMs": 300000, "cpu": 85, "mem": 90, "disk": 85, "mutedSignals": ["swap"] }'
+  -d '{
+    "mode": "alert",
+    "intervalMs": 300000,
+    "cpu": 85, "mem": 90, "disk": 85,
+    "mutedSignals": ["swap"],
+    "quietStart": "23:00",
+    "quietEnd": "07:00",
+    "calendarEnabled": true,
+    "calendarWindowMin": 720,
+    "calendarLeadMin": 30
+  }'
 # mode: "off" | "alert" | "active"
-# mutedSignals: array of signal types to suppress without disabling the heartbeat
-#   valid values: "cpu" | "mem" | "swap" | "disk" | "stale" | "spend"
+# mutedSignals: suppress specific signals without disabling the whole heartbeat
+#   valid values: "cpu" | "mem" | "swap" | "disk" | "stale" | "spend" | "calendar"
+# quietStart / quietEnd: HH:MM (server local time). Signals in this window are
+#   silently dropped. Wraps midnight correctly (e.g. 23:00–07:00).
+# calendarEnabled: scan Google/Apple Calendar for upcoming events and brief
+#   Atlas before each one. Requires at least one Calendar connector to be enabled.
+# calendarWindowMin: how far ahead (minutes) to scan for events (default 720 = 12h)
+# calendarLeadMin: how many minutes before an event to brief Atlas (default 30)
 
 # Trigger a manual heartbeat check now
 curl -X POST -H "$AUTH" $BASE/api/heartbeat/run
@@ -457,6 +487,48 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/tasks/wip \
 # Delete a column (its cards move back to the first column)
 curl -X DELETE -H "$AUTH" $BASE/api/tasks/columns/<id>
 ```
+
+### Web Push notifications
+
+Browser push notifications delivered via the Web Push protocol. A VAPID keypair is auto-generated on first use and stored in the vault (private half) and `push.json` (public key + subscriptions).
+
+```bash
+# View push config: provisioned status, subscriber count, public VAPID key
+curl -H "$AUTH" $BASE/api/push
+
+# Register a browser push subscription (body is the PushSubscription JSON from
+# the browser's PushManager.subscribe())
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/push/subscribe \
+  -d '{ "subscription": { "endpoint": "...", "keys": { "p256dh": "...", "auth": "..." } }, "label": "my laptop" }'
+# Returns { id: "<uuid>" } — store this to unsubscribe later
+
+# Unregister a subscription
+curl -X DELETE -H "$AUTH" $BASE/api/push/subscribe/<id>
+
+# Send a test notification to all registered browsers
+curl -X POST -H "$AUTH" $BASE/api/push/test
+```
+
+The panel UI handles subscription management automatically. Push events are sent for pending tool-call approvals, task failures, and any `push.notify()` call in server code.
+
+### Pending approvals queue
+
+Tool-call approvals from any Telegram chat are mirrored here so they can be resolved from the panel without touching Telegram.
+
+```bash
+# List all pending approvals (each entry has id, chatId, toolName, input, lead)
+curl -H "$AUTH" $BASE/api/approvals
+
+# Resolve an approval
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/approvals/<id>/resolve \
+  -d '{ "action": "allow" }'
+# action: "allow" | "deny" | "always"
+#   allow  — approve this one call
+#   deny   — refuse this one call
+#   always — approve and add to the session's always-allow list
+```
+
+Approvals also broadcast over the `/ws` WebSocket (`{type:"approvals", approvals:[...]}`) so the panel can update live without polling.
 
 ### Other endpoints
 

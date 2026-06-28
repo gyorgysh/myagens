@@ -570,8 +570,16 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
                   />
                 ) : (
                   <h3
+                    role="button"
+                    tabIndex={0}
                     className={`group flex flex-1 items-center gap-1 cursor-text text-xs font-semibold uppercase tracking-wider ${tone} hover:opacity-80`}
                     onClick={() => startRename(col)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        startRename(col);
+                      }
+                    }}
                     title={t("tasks_click_rename")}
                   >
                     {columnName(col, t)}
@@ -998,8 +1006,17 @@ function Card({
           />
         )}
         <div
+          role="button"
+          tabIndex={0}
+          aria-label={selectMode ? t("tasks_select_card") : t("tasks_edit_card")}
           className="min-w-0 flex-1 cursor-pointer"
           onClick={() => (selectMode ? onToggleSelect() : setEditing(true))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              selectMode ? onToggleSelect() : setEditing(true);
+            }
+          }}
         >
           <div className="text-sm text-fg">{task.title}</div>
           {task.notes && isDone && (

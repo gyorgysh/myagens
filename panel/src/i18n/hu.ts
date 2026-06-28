@@ -619,6 +619,8 @@ export const hu: Translations = {
   tasks_notes_placeholder: "Jegyzetek…",
   tasks_notes_toggle: "Megjegyzések",
   tasks_click_rename: "Kattints az átnevezéshez",
+  tasks_edit_card: "Kártya szerkesztése",
+  tasks_select_card: "Kártya kijelölése",
   tasks_set_wip: "WIP limit beállítása",
   tasks_remove_column: "Oszlop eltávolítása (üresnek kell lennie)",
   tasks_priority_label: "{priority} prioritás",

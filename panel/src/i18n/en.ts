@@ -615,6 +615,8 @@ export const en = {
   tasks_notes_placeholder: "Notes…",
   tasks_notes_toggle: "Notes",
   tasks_click_rename: "Click to rename",
+  tasks_edit_card: "Edit card",
+  tasks_select_card: "Select card",
   tasks_set_wip: "Set WIP limit",
   tasks_remove_column: "Remove column (must be empty)",
   tasks_priority_label: "{priority} priority",

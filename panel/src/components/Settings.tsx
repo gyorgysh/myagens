@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { api, AuthError, type MainAgent, type Autonomy, type Provider, type PlanView, type PlanType, type ProbeResult, type EmbeddingConfig, type OllamaStatus, type LmStudioStatus, type PreferredBackend } from "../api.ts";
+import { api, AuthError, type MainAgent, type Autonomy, type Provider, type PlanView, type PlanType, type ProbeResult, type EmbeddingConfig, type OllamaStatus, type LmStudioStatus, type PreferredBackend, type PushView } from "../api.ts";
 import { Accordion, Badge, Button, Card, Input, Label, Select, Skeleton, TextArea } from "./ui.tsx";
 import { useI18n, INTERFACE_LANGUAGES } from "../lib/useI18n.ts";
 import { toast } from "../lib/useToast.ts";
@@ -36,8 +36,194 @@ export function SettingsView({ onAuthError }: { onAuthError: () => void }) {
       <MainAgentSettings onAuthError={onAuthError} />
       <ProvidersSettings onAuthError={onAuthError} />
       <PlanBudgetSettings onAuthError={onAuthError} />
+      <NotificationsSettings onAuthError={onAuthError} />
       <WhitelabelSettings />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Notifications — Web Push (mobile/desktop OS notifications when the tab is closed)
+// ---------------------------------------------------------------------------
+
+/** Decode a base64url VAPID public key into the Uint8Array the PushManager wants. */
+function urlBase64ToUint8Array(base64: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const normalized = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(normalized);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+function NotificationsSettings({ onAuthError }: { onAuthError: () => void }) {
+  const { t } = useI18n();
+  const [view, setView] = useState<PushView | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  // Whether THIS browser's current SW registration is already subscribed.
+  const [localSubscribed, setLocalSubscribed] = useState<boolean | null>(null);
+
+  // Web Push needs a service worker + PushManager + Notification API. In dev
+  // (vite) the SW is disabled, and Safari/older browsers may lack PushManager.
+  const supported =
+    typeof window !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window;
+
+  const load = () =>
+    api
+      .push()
+      .then(setView)
+      .catch((e) => e instanceof AuthError && onAuthError());
+
+  useEffect(() => {
+    void load();
+    if (!supported) {
+      setLocalSubscribed(false);
+      return;
+    }
+    // Detect whether this browser already has a live push subscription.
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => setLocalSubscribed(!!sub))
+      .catch(() => setLocalSubscribed(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const enable = async () => {
+    if (!supported) return;
+    setBusy("enable");
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        toast.error(t("settings_push_denied"));
+        return;
+      }
+      const cfg = view ?? (await api.push());
+      if (!cfg.publicKey) {
+        toast.error(t("settings_push_unconfigured"));
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      const sub =
+        existing ??
+        (await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(cfg.publicKey),
+        }));
+      const label =
+        navigator.userAgent.match(/(iPhone|iPad|Android|Macintosh|Windows|Linux)/)?.[1] ??
+        "This device";
+      await api.pushSubscribe(sub.toJSON() as PushSubscriptionJSON, label);
+      setLocalSubscribed(true);
+      toast.success(t("settings_push_enabled"));
+      await load();
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      toast.error(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeDevice = async (id: string) => {
+    setBusy(id);
+    try {
+      await api.pushUnsubscribe(id);
+      toast.success(t("settings_push_removed"));
+      await load();
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      toast.error(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const sendTest = async () => {
+    setBusy("test");
+    try {
+      const r = await api.pushTest();
+      toast.success(t("settings_push_test_sent").replace("{n}", String(r.subscribers)));
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      toast.error(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const configured = view?.configured ?? false;
+  const devices = view?.subscriptions ?? [];
+
+  return (
+    <Card
+      title={t("settings_push")}
+      right={
+        configured ? (
+          devices.length > 0 ? (
+            <Badge tone="green">{t("settings_push_active")}</Badge>
+          ) : (
+            <Badge tone="zinc">{t("settings_push_off")}</Badge>
+          )
+        ) : (
+          <Badge tone="amber">{t("settings_push_unconfigured_badge")}</Badge>
+        )
+      }
+    >
+      <p className="mb-4 text-sm text-fg-dim">{t("settings_push_desc")}</p>
+
+      {!supported && (
+        <p className="mb-3 rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs text-fg-faint">
+          {t("settings_push_unsupported")}
+        </p>
+      )}
+
+      {devices.length > 0 && (
+        <ul className="mb-4 space-y-2">
+          {devices.map((d) => (
+            <li
+              key={d.id}
+              className="flex items-center justify-between rounded-lg border border-line bg-surface-2 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm text-fg">{d.label || t("settings_push_device")}</p>
+                <p className="text-xs text-fg-faint">
+                  {new Date(d.createdAt).toLocaleString()}
+                </p>
+              </div>
+              <Button
+                variant="danger"
+                disabled={busy === d.id}
+                onClick={() => removeDevice(d.id)}
+              >
+                {t("remove")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
+        <Button
+          variant="primary"
+          disabled={!supported || !configured || busy === "enable" || localSubscribed === true}
+          onClick={enable}
+        >
+          {localSubscribed === true
+            ? t("settings_push_this_device_on")
+            : t("settings_push_enable")}
+        </Button>
+        <Button
+          disabled={devices.length === 0 || busy === "test"}
+          onClick={sendTest}
+        >
+          {t("settings_push_test")}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

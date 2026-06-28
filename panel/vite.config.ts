@@ -11,6 +11,15 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      // injectManifest: we ship our own service worker (src/sw.ts) so it can
+      // handle Web Push (push / notificationclick) on top of the workbox-based
+      // offline caching. The plugin injects the precache manifest into it.
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
+      injectManifest: {
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+      },
       // Don't enable the SW in `vite dev`. It would cache the dev server and
       // fight the /api + /ws proxy, so it only ships in the production build.
       devOptions: { enabled: false },
@@ -36,41 +45,9 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        // Precache the static app shell (hashed JS/CSS/HTML + icons/fonts).
-        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
-        // SPA navigation fallback to the cached shell, but never hijack the
-        // panel API or the WebSocket handshake.
-        navigateFallback: "index.html",
-        navigateFallbackDenylist: [/^\/api/, /^\/ws/],
-        runtimeCaching: [
-          {
-            // API: always try the network first so data stays fresh; fall back
-            // to the last cached response only when offline.
-            urlPattern: ({ url }) => url.pathname.startsWith("/api"),
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "api-cache",
-              networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 64, maxAgeSeconds: 60 * 60 * 24 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            // Static assets (anything not /api, /ws): serve from cache first.
-            urlPattern: ({ url, request }) =>
-              !url.pathname.startsWith("/api") &&
-              !url.pathname.startsWith("/ws") &&
-              request.method === "GET",
-            handler: "CacheFirst",
-            options: {
-              cacheName: "static-cache",
-              expiration: { maxEntries: 128, maxAgeSeconds: 60 * 60 * 24 * 30 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
-      },
+      // Runtime caching + navigation fallback now live inside src/sw.ts (the
+      // injectManifest source), since `workbox.runtimeCaching` only applies in
+      // generateSW mode.
     }),
   ],
   server: {

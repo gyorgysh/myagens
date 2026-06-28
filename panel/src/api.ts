@@ -658,6 +658,12 @@ export interface TunnelPassword {
   password: string | null;
 }
 
+export interface PushView {
+  configured: boolean;
+  publicKey?: string;
+  subscriptions: Array<{ id: string; label?: string; createdAt: number }>;
+}
+
 export const api = {
   me: () =>
     get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; updateCount: number; atlasName: string; brandName: string; subscriptionPlan: boolean; defaultWorkdir: string; allowedUserCount: number; panelHost: string; panelPort: number; tunnelEnabled: boolean; terminalEnabled: boolean }>("/api/me"),
@@ -893,4 +899,11 @@ export const api = {
   // No password → rotate to a fresh random one; a password → set it.
   setTunnelPassword: (password?: string) =>
     req<TunnelPassword>("POST", "/api/tunnel/password", password ? { password } : {}),
+
+  // Web Push (PWA notifications).
+  push: () => get<PushView>("/api/push"),
+  pushSubscribe: (subscription: PushSubscriptionJSON, label?: string) =>
+    req<{ ok: boolean; id: string }>("POST", "/api/push/subscribe", { subscription, label }),
+  pushUnsubscribe: (id: string) => req<{ ok: boolean }>("DELETE", `/api/push/subscribe/${id}`),
+  pushTest: () => req<{ ok: boolean; subscribers: number }>("POST", "/api/push/test"),
 };

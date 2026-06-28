@@ -35,6 +35,7 @@ import { transcribeAudio, voiceEnabled, voiceSetupHint } from "./telegram/voice.
 import { schedules, type ScheduleRunner } from "./schedule/manager.js";
 import { heartbeat } from "./core/heartbeat.js";
 import { taskDelegator } from "./core/taskRunner.js";
+import { push } from "./core/push.js";
 import { fireWebhook, type WebhookSource } from "./core/webhook.js";
 import { resolveMainRun } from "./core/mainSettings.js";
 import { TokenBucketLimiter } from "./core/rateLimiter.js";
@@ -279,6 +280,8 @@ export function buildBot(): Telegraf {
   });
   heartbeat.start({
     notify: async (text) => {
+      // Mirror the alert to any subscribed browsers as an OS-level push.
+      void push.notify({ title: "MyHQ heartbeat", body: text, kind: "heartbeat", tag: "heartbeat" });
       for (const chatId of alertTargets) {
         await bot.telegram
           .sendMessage(chatId, `<i>${escapeHtml(text)}</i>`, { parse_mode: "HTML" })
@@ -299,6 +302,15 @@ export function buildBot(): Telegraf {
     const chatId = alertTargets[0];
     if (chatId === undefined) return;
     const by = r.leadName ? ` (${r.leadName})` : "";
+    // Mirror the outcome to subscribed browsers as an OS-level push.
+    void push.notify({
+      title:
+        r.status === "ok" ? "Task done" : r.status === "stopped" ? "Task stopped" : "Task failed",
+      body: `${r.title}${by}${r.status === "error" && r.error ? `: ${r.error}` : ""}`,
+      kind: "task",
+      tag: `task-${r.taskId}`,
+      url: "/tasks",
+    });
     if (r.status === "ok" && r.res) {
       await sendSummaryReport(bot.telegram, chatId, r.res, `Task${by}: ${r.title}`).catch(() => {});
       return;

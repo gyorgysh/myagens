@@ -104,14 +104,26 @@ export class PermissionManager {
       this.pending.set(id, { id, resolve, timeout, chatId, toolName, input, lead });
     });
 
+    const previewText = describeInput(toolName, input);
+
     // Mirror the request into the panel Approvals queue.
     approvalQueue.add({
       id,
       chatId,
       toolName,
-      preview: describeInput(toolName, input),
+      preview: previewText,
       lead,
       ts: Date.now(),
+    });
+
+    // Nudge any subscribed browsers so an approval isn't missed when the tab is
+    // closed. Fire-and-forget; tagged so a burst collapses into one notification.
+    void push.notify({
+      title: "Approval needed",
+      body: `${toolName}: ${previewText}`,
+      kind: "approval",
+      tag: "approval",
+      url: "/",
     });
 
     // Attach to (or open) this chat's batch and (re)arm the debounce flush.

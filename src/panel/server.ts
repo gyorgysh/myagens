@@ -84,6 +84,8 @@ import { serviceInstalled, restartService } from "../core/agentControl.js";
 import { isActive } from "../core/activity.js";
 import { getUpdateStatus, checkForUpdate, runUpdate, runRestore } from "../core/updateControl.js";
 import { recentAudit } from "../core/audit.js";
+import { approvalQueue, APPROVAL_ACTIONS } from "../core/approvals.js";
+import { push } from "../core/push.js";
 import { sessions } from "../session/manager.js";
 import { ptyManager } from "../core/ptyManager.js";
 import { tunnelManager, BASIC_AUTH_USER } from "../core/tunnelManager.js";
@@ -125,6 +127,8 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
   agentChat.start((m) => hub.broadcast(m));
   // Wire delegated-task run streams to all clients.
   taskDelegator.start((m) => hub.broadcast(m));
+  // Wire approval queue updates to all panel clients.
+  approvalQueue.start((m) => hub.broadcast(m));
   // Wire the PTY terminal session to all clients.
   ptyManager.start((m) => hub.broadcast(m));
   // Wire remote-access tunnel state changes to all clients.
@@ -567,6 +571,53 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     dailyByRole: agentUsage.dailyByRole(),
   }));
   app.get("/api/audit", async () => ({ events: recentAudit() }));
+  app.get("/api/approvals", async () => ({ approvals: approvalQueue.list() }));
+  app.post("/api/approvals/resolve", async (req, reply) => {
+    const { id, action } = (req.body ?? {}) as { id?: string; action?: string };
+    if (!id || !action) return reply.code(400).send({ error: "id and action required" });
+    if (!APPROVAL_ACTIONS.has(action)) return reply.code(400).send({ error: "invalid action" });
+    const ok = approvalQueue.resolve(id, action);
+    if (!ok) return reply.code(409).send({ error: "approval expired or unknown" });
+    return { ok: true };
+  });
+
+  // --- Web Push: VAPID key, browser subscriptions, test send ---
+  // The public VAPID key is generated lazily on first read so an install that
+  // never opens the Notifications card never provisions a keypair.
+  app.get("/api/push", async () => ({ ...push.view(), publicKey: push.publicKey() }));
+  app.post("/api/push/subscribe", async (req, reply) => {
+    const body = (req.body ?? {}) as {
+      subscription?: { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+      label?: string;
+    };
+    const sub = body.subscription;
+    if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) {
+      return reply.code(400).send({ error: "valid subscription required" });
+    }
+    try {
+      const { id } = push.subscribe(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
+        typeof body.label === "string" ? body.label : undefined,
+      );
+      return { ok: true, id };
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : "subscribe failed" });
+    }
+  });
+  app.delete("/api/push/subscribe/:id", async (req, reply) => {
+    if (!push.unsubscribe((req.params as { id: string }).id))
+      return reply.code(404).send({ error: "not found" });
+    return { ok: true };
+  });
+  app.post("/api/push/test", async () => {
+    await push.notify({
+      title: "MyHQ",
+      body: "Test notification — push is working.",
+      kind: "test",
+      tag: "myhq-test",
+    });
+    return { ok: true, subscribers: push.subscriberCount() };
+  });
   // GET /api/logs
   //   ?date=YYYY-MM-DD  — read from the persisted file for that date
   //                        (omit to get the live in-memory ring for today)

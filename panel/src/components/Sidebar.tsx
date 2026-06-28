@@ -436,16 +436,16 @@ export function Sidebar({
         title={it.hintKey ? `${t(it.labelKey)} — ${t(it.hintKey)}` : t(it.labelKey)}
         aria-label={it.hintKey ? `${t(it.labelKey)}: ${t(it.hintKey)}` : t(it.labelKey)}
         aria-current={active ? "page" : undefined}
-        className={`flex w-full items-center gap-3 rounded-lg border-l-2 px-2.5 py-2 text-sm transition-colors ${
+        className={`flex w-full items-center gap-2.5 rounded-lg border-l-2 px-2.5 py-2 text-sm transition-colors ${
           active
             ? "border-accent bg-accent/10 text-accent"
             : "border-transparent text-fg-dim hover:bg-surface-2 hover:text-fg"
         }`}
       >
-        <span className="relative w-4 shrink-0 text-center">
+        <span className="relative flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none">
           {it.icon}
           {badge && (
-            <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface" />
+            <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface" />
           )}
         </span>
         <span className={`flex-1 text-left ${labelCls}`}>{t(it.labelKey)}</span>
@@ -513,10 +513,10 @@ export function Sidebar({
                     : "text-fg-faint hover:bg-surface-2 hover:text-fg-dim"
                 }`}
               >
-                <span className="relative w-4 shrink-0 text-center text-sm">
+                <span className="relative flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none">
                   {it.icon}
                   {updateBadge && (
-                    <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface" />
+                    <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface" />
                   )}
                 </span>
                 <span className={labelCls}>{t(it.labelKey)}</span>
@@ -528,9 +528,9 @@ export function Sidebar({
           onClick={onToggleTheme}
           title={t("theme_toggle")}
           aria-label={t("theme_toggle")}
-          className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg"
         >
-          <span className="w-4 shrink-0 text-center">{THEME_ICON[theme]}</span>
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none">{THEME_ICON[theme]}</span>
           <span className={labelCls}>
             {theme === "light" ? t("theme_light") : theme === "dark" ? t("theme_dark") : t("theme_matrix")}
           </span>
@@ -540,22 +540,22 @@ export function Sidebar({
           title={t("nav_settings")}
           aria-label={t("nav_settings")}
           aria-current={tab === "settings" || isSettingsChild(tab) ? "page" : undefined}
-          className={`flex w-full items-center gap-3 rounded-lg border-l-2 px-2.5 py-2 text-sm transition-colors ${
+          className={`flex w-full items-center gap-2.5 rounded-lg border-l-2 px-2.5 py-2 text-sm transition-colors ${
             tab === "settings" || isSettingsChild(tab)
               ? "border-accent bg-accent/10 text-accent"
               : "border-transparent text-fg-dim hover:bg-surface-2 hover:text-fg"
           }`}
         >
-          <span className="w-4 shrink-0 text-center">⚙</span>
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none">⚙</span>
           <span className={labelCls}>{t("nav_settings")}</span>
         </button>
         <button
           onClick={onSignOut}
           title={t("sign_out")}
           aria-label={t("sign_out")}
-          className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg"
         >
-          <span className="w-4 shrink-0 text-center">⏻</span>
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none">⏻</span>
           <span className={labelCls}>{t("sign_out")}</span>
         </button>
       </div>

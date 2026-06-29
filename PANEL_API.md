@@ -56,6 +56,7 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/workers \
 #   persona       character/tone instructions (separate from domain knowledge)
 #   autonomy      "supervised" | "standard" | "full"
 #   language      BCP 47 code, e.g. "en", "hu", "es"
+#   avatar        slug from the curated avatar set (e.g. "panda"); shown in panel and set as the Lead bot photo
 #   when          schedule: "30m", "2h", "1d", or "HH:MM" for daily
 #   enabled       true/false
 
@@ -63,8 +64,10 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/workers \
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/workers/<id> \
   -d '{ "enabled": true, "when": "08:00" }'
 
-# Trigger a manual run now
-curl -X POST -H "$AUTH" $BASE/api/workers/<id>/run
+# Trigger a manual run now.
+# Optional { "prompt": "..." } overrides the saved prompt for this one run only (does not mutate the worker).
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/workers/<id>/run \
+  -d '{ "prompt": "Audit the staging deploy and report back." }'
 
 # Stop a running worker
 curl -X POST -H "$AUTH" $BASE/api/workers/<id>/stop
@@ -548,7 +551,8 @@ A few more endpoints exist, mostly mirroring panel views:
 - `GET /api/update`, `POST /api/update/check|run|restore`: in-panel update check, apply, and rollback.
 - `GET /api/update/changelog`: the locally served `CHANGELOG.md` (`{ content }`); used as the Updates view's fallback when GitHub is unreachable.
 - `GET /api/connectors`, `PUT /api/connectors/<id>`: the external-connector catalogue. All six (Notion, Google Calendar, Gmail, Google Drive, Apple Calendar, Apple Mail) are live; `PUT` takes `{ enabled, secretId, scope }` where `scope` is `read` (default) or `write` (gates the write tools).
-- `GET /api/chat`, `POST /api/chat/send|stop|clear|approve`, `PUT /api/chat/settings`: the panel's own Claude chat session (talks to Atlas).
+- `GET /api/chat`, `POST /api/chat/send|stop|clear|approve`, `PUT /api/chat/settings`: the panel's own Claude chat session (talks to Atlas). The autonomy level is set per-chat from the toolbar (replacing the removed `PANEL_CHAT_BYPASS` env flag).
+- `GET /api/asks`, `POST /api/asks/resolve`: the pending `AskUserQuestion` queue and its resolver, used to render interactive question widgets in panel chat. Resolve with `{ id, optionIndices?, text? }`.
 - `GET /api/agent-chat/<id>`, `POST /api/agent-chat/<id>/send|stop|clear`, `PUT /api/agent-chat/<id>/settings`: an interactive chat with a specific worker/Lead by id.
 - `GET /api/usage/agents`: per-agent token + cost totals and a daily-by-role breakdown.
 - `GET /api/memories/stats`: counts by tier and embedding coverage.

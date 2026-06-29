@@ -3,6 +3,19 @@
 All notable changes to MyHQ are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myhq`.
 
+## [0.5.5] - 2026-06-29
+
+### Added
+- **Agent avatars**: pick an avatar from a curated set (13 flat-illustration assets) for any worker/Lead; avatars show on Crew/Workers cards and in chat bubbles, and each Lead bot's Telegram profile photo is set automatically on startup. ([a9367b4](https://github.com/gyorgysh/myhq/commit/a9367b4), [187b7bc](https://github.com/gyorgysh/myhq/commit/187b7bc), [569a097](https://github.com/gyorgysh/myhq/commit/569a097), [db6df2e](https://github.com/gyorgysh/myhq/commit/db6df2e))
+- **Run Agent modal**: the worker cards' Run Agent button opens a confirmation modal with the agent name, role, working directory, and a one-shot editable prompt (prefilled, never mutating the saved worker). ([13c822d](https://github.com/gyorgysh/myhq/commit/13c822d))
+- **Autonomy level selector in Chat**: choose supervised/standard/full per panel chat from the toolbar, replacing the removed `PANEL_CHAT_BYPASS` env flag. ([5f98335](https://github.com/gyorgysh/myhq/commit/5f98335), [6bec138](https://github.com/gyorgysh/myhq/commit/6bec138))
+- **Interactive AskUserQuestion widgets** in panel chat, backed by `GET /api/asks` and `POST /api/asks/resolve`. ([78b7f7b](https://github.com/gyorgysh/myhq/commit/78b7f7b))
+- **Chat permissions indicator** with browser-resolvable approvals. ([abac35c](https://github.com/gyorgysh/myhq/commit/abac35c))
+- **PLANNING badge** shown in chat instead of the raw planning preamble. ([cd80443](https://github.com/gyorgysh/myhq/commit/cd80443))
+
+### Security
+- **`crew_delegate` privilege-escalation fix**: the delegated child run's autonomy is now capped at the caller's (only `full`/`auto_until_error` callers grant bypass), and a planning turn files the delegation to the suggestion inbox for explicit approval instead of firing real work. ([26f929c](https://github.com/gyorgysh/myhq/commit/26f929c))
+
 ## [0.5.4] - 2026-06-29
 
 ### Added

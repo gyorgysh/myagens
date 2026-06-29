@@ -3,6 +3,22 @@
 All notable changes to MyHQ are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myhq`.
 
+## [0.5.4] - 2026-06-29
+
+### Added
+- **Semantic search for tasks and skills**: new `task_search` and `skill_search` MCP tools (auto-allowed) let agents find existing cards and skills by meaning before creating duplicates, via a shared cosine + keyword blend with keyword-only fallback when embeddings are off. ([75c0a08](https://github.com/gyorgysh/myhq/commit/75c0a08))
+- **In-panel changelog viewer**: the Updates view fetches the public CHANGELOG, shows a collapsible "What's new" section for releases newer than the installed version, a year-grouped Release history, and falls back to the locally served changelog when GitHub is unreachable. ([edd2240](https://github.com/gyorgysh/myhq/commit/edd2240), [6fcb9fa](https://github.com/gyorgysh/myhq/commit/6fcb9fa), [b049ddb](https://github.com/gyorgysh/myhq/commit/b049ddb))
+- **Update-first nudge on Feedback**: a soft, non-blocking callout links to the Updates tab when the deployment is behind. ([edd2240](https://github.com/gyorgysh/myhq/commit/edd2240))
+- **Version badge and changelog link in Setup**: the bot identity step shows the running version (amber when an update is available) alongside a link to the changelog. ([c2898cb](https://github.com/gyorgysh/myhq/commit/c2898cb))
+- **Bulk-delegate Tasks to a chosen Lead**: the board's bulk-select now includes a Lead picker, queuing the selected cards as autonomous runs under that Lead (or auto-routed). ([0a45c1e](https://github.com/gyorgysh/myhq/commit/0a45c1e))
+- **Expand/collapse markdown notes** on every Kanban card, not just done cards, for long or multi-line notes. ([1697319](https://github.com/gyorgysh/myhq/commit/1697319))
+- **Markdown link rendering** (`[text](url)`) in the panel Markdown component, and a local `GET /api/update/changelog` route. ([b049ddb](https://github.com/gyorgysh/myhq/commit/b049ddb))
+
+### Improved
+- **Agent chat resume token** now persists per-agent to `agentChat.json`, so a panel chat with a Lead survives a restart instead of starting cold. ([b1703f2](https://github.com/gyorgysh/myhq/commit/b1703f2))
+- **Planning/Execution toggle** remembers its last state per agent in localStorage instead of resetting to Execution on every mount. ([0025d0c](https://github.com/gyorgysh/myhq/commit/0025d0c))
+- Documented that each Lead bot's session already survives restarts and updates (resume token in `data/lead-<id>-state.json`, untouched by `update.sh`). ([803b15e](https://github.com/gyorgysh/myhq/commit/803b15e))
+
 ## [0.5.3] - 2026-06-29
 
 ### Added

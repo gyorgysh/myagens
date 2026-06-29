@@ -3,6 +3,7 @@ import { api, AuthError, type Connector, type ConnectorScope, type SecretView } 
 import { Badge, Button, Card, Empty, Label, Select } from "./ui.tsx";
 import { ConnectorsArt } from "./onboarding.tsx";
 import { useI18n } from "../lib/useI18n.ts";
+import { getConnectorIcon } from "../lib/connectorIcons.ts";
 import type { Tab } from "./Sidebar.tsx";
 
 export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => void; onGoto?: (t: Tab) => void }) {
@@ -68,10 +69,32 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
           <div className="grid gap-3 sm:grid-cols-2">
           {connectors.map((c) => {
             const live = c.status === "live";
+            const icon = getConnectorIcon(c.id);
             return (
               <div key={c.id} className="rounded-lg border border-line p-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-fg">{c.name}</span>
+                  <div className="flex items-center gap-2">
+                    {icon && (
+                      <svg
+                        role="img"
+                        viewBox="0 0 24 24"
+                        aria-label={icon.title}
+                        className="h-5 w-5 shrink-0 text-fg-dim transition-colors"
+                        style={{ color: undefined }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as SVGSVGElement).style.color = `#${icon.hex}`;
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as SVGSVGElement).style.color = "";
+                        }}
+                        fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path d={icon.path} />
+                      </svg>
+                    )}
+                    <span className="font-medium text-fg">{c.name}</span>
+                  </div>
                   {live ? (
                     <Badge tone="green">{t("connectors_live")}</Badge>
                   ) : (

@@ -265,6 +265,19 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
         return;
       }
     }
+    // Separate high ceiling on expensive GET reads (memory search, logs, run
+    // transcripts) so a runaway client can't pin CPU; normal fleet reads stay
+    // well under it. The WS handshake is exempt by prefix.
+    if (panelReadRateLimiter && isExpensiveRead(req.method, req.url) && !req.url.startsWith("/ws")) {
+      if (!panelReadRateLimiter.tryConsume(ip)) {
+        const retryMs = panelReadRateLimiter.retryAfterMs(ip);
+        await reply
+          .code(429)
+          .header("Retry-After", String(Math.ceil(retryMs / 1000)))
+          .send({ error: "read rate limit exceeded, slow down" });
+        return;
+      }
+    }
   });
 
   registerApi(app, hub);
@@ -390,8 +403,9 @@ function isLoopback(ip: string): boolean {
 // A valid PANEL_TOKEN grants full host access; even a legitimate holder must not
 // be able to spam costly mutating endpoints (delegate runs, chat sends, schedule
 // runs) unthrottled. A token bucket keyed by client IP throttles write requests
-// (POST/PUT/PATCH/DELETE); GET/HEAD reads are exempt. Disabled when
-// PANEL_RATE_LIMIT is 0. In-memory only, cleared on restart.
+// (POST/PUT/PATCH/DELETE). Most GET/HEAD reads are exempt; a few expensive ones
+// get a separate, much higher limit (see panelReadRateLimiter below). Disabled
+// when PANEL_RATE_LIMIT is 0. In-memory only, cleared on restart.
 const panelRateLimiter =
   config.PANEL_RATE_LIMIT > 0
     ? new TokenBucketLimiter<string>(config.PANEL_RATE_LIMIT, config.PANEL_RATE_WINDOW_MS)
@@ -401,6 +415,29 @@ const panelRateLimiter =
 function isMutatingMethod(method: string): boolean {
   const m = method.toUpperCase();
   return m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE";
+}
+
+// --- Per-client rate limit on *expensive* GET reads --------------------------
+// GETs are exempt from the mutating limiter above, but a few read endpoints are
+// genuinely costly: memory semantic search embeds up to 50 entries, log reads
+// scan/parse retained NDJSON files, and per-run transcripts can be large. An
+// authenticated client hammering these could still pin CPU. This is a SEPARATE,
+// deliberately HIGH bucket: on localhost dozens of agents read memory/logs all
+// the time, so it must never throttle normal fleet traffic — it only trips on a
+// runaway flood (hundreds of heavy reads/min). Disabled when the limit is 0.
+const panelReadRateLimiter =
+  config.PANEL_READ_RATE_LIMIT > 0
+    ? new TokenBucketLimiter<string>(config.PANEL_READ_RATE_LIMIT, config.PANEL_RATE_WINDOW_MS)
+    : undefined;
+
+/** URL path prefixes whose GET handlers are expensive enough to rate limit. */
+const EXPENSIVE_GET_PREFIXES = ["/api/memories", "/api/logs", "/api/runs"];
+
+/** True when a GET request targets one of the expensive read endpoints. */
+function isExpensiveRead(method: string, url: string): boolean {
+  if (method.toUpperCase() !== "GET") return false;
+  const path = url.split("?")[0];
+  return EXPENSIVE_GET_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
 }
 
 let warnedUnknownIp = false;

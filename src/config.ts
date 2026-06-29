@@ -59,6 +59,13 @@ const schema = z.object({
   // to disable.
   PANEL_RATE_LIMIT: z.coerce.number().int().nonnegative().default(120),
   PANEL_RATE_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  // Separate, deliberately HIGH ceiling on a short list of *expensive* GET
+  // endpoints (memory semantic search, log reads/search, per-run transcripts).
+  // These run on localhost where dozens of agents legitimately read memory/logs
+  // constantly, so the limit must never throttle normal fleet activity — it only
+  // exists to stop a runaway client hammering thousands of heavy reads/min. Per
+  // client IP, refilling over PANEL_RATE_WINDOW_MS. Set 0 to disable.
+  PANEL_READ_RATE_LIMIT: z.coerce.number().int().nonnegative().default(600),
   // Outbound webhooks: when a schedule or worker/task run with a webhookUrl
   // completes, POST a JSON outcome payload to that URL. This is the per-request
   // timeout (ms) for that POST. Every webhook URL is run through assertSafeUrl()

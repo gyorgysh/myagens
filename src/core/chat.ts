@@ -1,6 +1,7 @@
 import { config } from "../config.js";
 import { sessions } from "../session/manager.js";
 import { chatBridge, mainChatId, type BridgeMessage } from "./chatBridge.js";
+import { approvalQueue, type ApprovalChoice } from "./approvals.js";
 import { audit } from "./audit.js";
 
 export type ChatMessage = BridgeMessage;
@@ -62,8 +63,13 @@ export class ChatManager {
       // "auto" maps to the shared session's full-autonomy mode.
       auto: s?.autonomy === "full",
       hasContext: Boolean(s?.sessionId),
-      // The panel no longer holds approvals; they happen in Telegram.
-      approvalsInTelegram: true,
+      // The shared session's persisted "always allow" presets, surfaced read-only
+      // in the panel as a Permissions indicator.
+      allowedTools: s ? [...s.sessionAllowedTools] : [],
+      allowedBashCmds: s ? [...s.allowedBashCmds] : [],
+      // Pending tool-call approvals can be resolved from the panel too (the same
+      // promises the Telegram buttons settle).
+      approvals: approvalQueue.list(),
     };
   }
 
@@ -98,9 +104,16 @@ export class ChatManager {
     chatBridge.stop();
   }
 
-  /** Approvals now happen in Telegram; kept for REST back-compat (no-op). */
-  resolveApproval(_id: string, _allow: boolean): boolean {
-    return false;
+  /**
+   * Resolve a pending tool-call approval from the panel. The panel token is
+   * trusted (same trust level as terminal/chat access), so a simple allow/deny
+   * maps to the shared PermissionManager's approve/deny. Delegates to the same
+   * `approvalQueue` the Telegram buttons settle, so whichever surface acts first
+   * wins and the other updates in place.
+   */
+  resolveApproval(id: string, allow: boolean): boolean {
+    const choice: ApprovalChoice = allow ? "allow" : "deny";
+    return approvalQueue.resolve(id, choice);
   }
 
   /**

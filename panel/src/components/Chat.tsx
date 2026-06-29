@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { api, AuthError, type Autonomy, type ChatMessage, type Worker } from "../api.ts";
+import { api, AuthError, type ApprovalView, type Autonomy, type ChatMessage, type Worker } from "../api.ts";
 import { useChatEvents } from "../lib/useChatEvents.ts";
 import { useAgentChatEvents } from "../lib/useAgentChatEvents.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import { Markdown } from "../lib/markdown.tsx";
 import { roleLabel } from "../lib/agentRole.ts";
 import { Button } from "./ui.tsx";
-import { Settings2, Plus, ClipboardList, Zap } from "lucide-react";
+import { Settings2, Plus, ClipboardList, Zap, ShieldCheck } from "lucide-react";
 
 /** Sentinel id for the main Atlas chat (the Telegram-mirrored session). */
 const ATLAS = "atlas";
@@ -349,7 +349,7 @@ function Pill({
 
 function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
-  const { messages, stream, busy, view, setView } = useChatEvents(onAuthError);
+  const { messages, stream, busy, view, setView, approvals } = useChatEvents(onAuthError);
   const [editingCwd, setEditingCwd] = useState(false);
   // Planning mode is a per-agent UI preference (defaults to Execution),
   // persisted in localStorage so it survives navigation/reload. It only changes
@@ -374,9 +374,6 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
     }
   };
 
-  const toggleAuto = async () => {
-    setView(await api.chatSettings({ auto: !view?.auto }));
-  };
   const saveCwd = async (cwd: string) => {
     setEditingCwd(false);
     setView(await api.chatSettings({ cwd }));
@@ -386,7 +383,7 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
     <>
       {t("chat_empty")}
       <br />
-      {view?.auto ? t("chat_empty_auto") : t("chat_empty_safe")}
+      {t("chat_empty_perms")}
     </>
   );
 
@@ -418,15 +415,10 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
         )}
       </div>
       <div className="flex items-center gap-2">
-        <button
-          onClick={toggleAuto}
-          title={t("chat_toggle_auto")}
-          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-            view?.auto ? "bg-warn-subtle text-warn-fg" : "bg-surface-2 text-fg-dim"
-          }`}
-        >
-          {view?.auto ? t("chat_auto") : t("chat_safe")}
-        </button>
+        <PermissionsIndicator
+          tools={view?.allowedTools ?? []}
+          bashCmds={view?.allowedBashCmds ?? []}
+        />
         <Button variant="ghost" onClick={async () => view && setView(await api.clearChat())} disabled={busy}>
           {t("chat_clear")}
         </Button>
@@ -441,6 +433,7 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
       stream={stream}
       busy={busy}
       empty={empty}
+      approvals={approvals}
       planning={planning}
       onPlanningChange={setPlanning}
       autonomy={autonomy}
@@ -546,6 +539,7 @@ function ChatPane({
   empty,
   agentName,
   agentRole,
+  approvals,
   planning,
   onPlanningChange,
   autonomy,
@@ -560,6 +554,8 @@ function ChatPane({
   empty: React.ReactNode;
   agentName?: string;
   agentRole?: string;
+  /** Pending tool-call approvals to surface above the composer (Atlas only). */
+  approvals?: ApprovalView[];
   /** When defined, renders a Planning/Execution mode pill in the composer. */
   planning?: boolean;
   onPlanningChange?: (planning: boolean) => void;
@@ -675,6 +671,10 @@ function ChatPane({
           </div>
         )}
       </div>
+
+      {approvals && approvals.length > 0 && (
+        <ApprovalsBar approvals={approvals} />
+      )}
 
       <div className="flex flex-col gap-2 border-t border-line pt-3">
         {(planning !== undefined && onPlanningChange) || (autonomy !== undefined && onAutonomyChange) ? (
@@ -793,6 +793,114 @@ function AutonomyPill({
         >
           {label}
         </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Compact, read-only Permissions indicator for the Atlas header. Summarises the
+ * shared session's persisted "always allow" presets ("3 tools always allowed")
+ * and reveals the full list in a hover/focus popover. Informational only — the
+ * presets are managed from Telegram (/allow, /disallow) or by approving with
+ * "Always".
+ */
+function PermissionsIndicator({ tools, bashCmds }: { tools: string[]; bashCmds: string[] }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const count = tools.length + bashCmds.length;
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        onBlur={() => setOpen(false)}
+        title={t("chat_perms_title")}
+        className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-fg-dim transition-colors hover:text-fg-muted"
+      >
+        <ShieldCheck size={12} className="shrink-0" />
+        {count === 0 ? t("chat_perms_none") : t("chat_perms_count").replace("{n}", String(count))}
+      </button>
+      {open && count > 0 && (
+        <div className="absolute bottom-full right-0 z-20 mb-1.5 w-60 rounded-lg border border-line bg-surface p-2.5 text-xs shadow-xl">
+          <div className="mb-1.5 font-medium text-fg-dim">{t("chat_perms_heading")}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {tools.map((name) => (
+              <span key={name} className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-fg">
+                {name}
+              </span>
+            ))}
+            {bashCmds.map((cmd) => (
+              <span key={cmd} className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-fg">
+                $ {cmd}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Surfaces pending tool-call approvals in the panel so they can be resolved from
+ * the browser (the panel token is trusted, same as terminal/chat access).
+ * Allow/Deny settle the same promise the Telegram buttons do — whichever surface
+ * acts first wins, and the WS broadcast drops the row from both.
+ */
+function ApprovalsBar({ approvals }: { approvals: ApprovalView[] }) {
+  const { t } = useI18n();
+  const [pending, setPending] = useState<string | null>(null);
+
+  const resolve = async (id: string, allow: boolean) => {
+    setPending(id);
+    try {
+      await api.resolveApproval(id, allow);
+    } catch {
+      /* The WS broadcast keeps the list authoritative; a stale row clears itself. */
+    } finally {
+      setPending((p) => (p === id ? null : p));
+    }
+  };
+
+  return (
+    <div className="mt-2 space-y-1.5 rounded-xl border border-warn/40 bg-warn-subtle/40 p-2.5">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-warn-fg">
+        <ShieldCheck size={12} className="shrink-0" />
+        {t("chat_approvals_heading").replace("{n}", String(approvals.length))}
+      </div>
+      {approvals.map((a) => (
+        <div
+          key={a.id}
+          className="flex items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold text-fg">{a.toolName}</div>
+            <div className="mono truncate text-xs text-fg-dim" title={a.preview}>
+              {a.preview}
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={pending === a.id}
+            onClick={() => void resolve(a.id, true)}
+            className="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-fg transition-colors hover:opacity-90 disabled:opacity-50"
+          >
+            {t("chat_approve")}
+          </button>
+          <button
+            type="button"
+            disabled={pending === a.id}
+            onClick={() => void resolve(a.id, false)}
+            className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-fg-dim transition-colors hover:text-fg-muted disabled:opacity-50"
+          >
+            {t("chat_deny")}
+          </button>
+        </div>
       ))}
     </div>
   );

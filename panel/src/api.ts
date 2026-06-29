@@ -584,14 +584,28 @@ export interface ChatMessage {
   costUsd?: number;
 }
 
+/** One pending tool-call approval, mirrored from the shared session. */
+export interface ApprovalView {
+  id: string;
+  chatId: number;
+  toolName: string;
+  preview: string;
+  lead?: string;
+  ts: number;
+}
+
 export interface ChatView {
   messages: ChatMessage[];
   cwd: string;
   busy: boolean;
   auto: boolean;
   hasContext: boolean;
-  /** Approvals are handled in Telegram (the panel mirrors the main chat). */
-  approvalsInTelegram?: boolean;
+  /** The shared session's persisted "always allow" tool presets (read-only). */
+  allowedTools: string[];
+  /** The shared session's persisted "always allow" Bash command presets. */
+  allowedBashCmds: string[];
+  /** Tool-call approvals currently awaiting a decision. */
+  approvals: ApprovalView[];
 }
 
 /** Snapshot of an interactive chat with one specific worker / Lead. */
@@ -983,6 +997,8 @@ export const api = {
   clearChat: () => req<ChatView>("POST", "/api/chat/clear"),
   chatSettings: (s: { cwd?: string; auto?: boolean }) =>
     req<ChatView>("PUT", "/api/chat/settings", s),
+  resolveApproval: (approvalId: string, allow: boolean) =>
+    req<{ ok: boolean }>("POST", "/api/chat/approve", { approvalId, allow }),
 
   // Per-agent interactive chat (talk to a specific worker / Lead).
   agentChat: (id: string) => get<AgentChatView>(`/api/agent-chat/${id}`),

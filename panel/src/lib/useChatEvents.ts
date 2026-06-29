@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, openHealthSocket, type ChatMessage, type ChatView } from "../api.ts";
+import { api, openHealthSocket, type ApprovalView, type ChatMessage, type ChatView } from "../api.ts";
 
 export interface ChatStream {
   id: string;
@@ -17,6 +17,9 @@ type ChatMsg =
   | { type: "chat"; event: "busy"; busy: boolean }
   | { type: "chat"; event: "cleared" };
 
+/** The approval-queue broadcast pushed whenever the pending set changes. */
+type ApprovalsMsg = { type: "approvals"; approvals: ApprovalView[] };
+
 /** Subscribe to the shared chat stream over /ws and track the live conversation
  *  (mirrored from the main Telegram chat): messages, the in-flight turn, busy. */
 export function useChatEvents(onAuthError: () => void) {
@@ -24,6 +27,7 @@ export function useChatEvents(onAuthError: () => void) {
   const [stream, setStream] = useState<ChatStream | null>(null);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<ChatView | null>(null);
+  const [approvals, setApprovals] = useState<ApprovalView[]>([]);
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
 
   const refresh = useCallback(() => {
@@ -33,6 +37,7 @@ export function useChatEvents(onAuthError: () => void) {
         setView(v);
         setMessages(v.messages);
         setBusy(v.busy);
+        setApprovals(v.approvals ?? []);
       })
       .catch((e) => {
         if (e?.name === "AuthError") onAuthError();
@@ -48,14 +53,19 @@ export function useChatEvents(onAuthError: () => void) {
       if (closed) return;
       ws = openHealthSocket();
       ws.onmessage = (e) => {
-        let m: ChatMsg;
+        let parsed: unknown;
         try {
-          const parsed = JSON.parse(e.data);
-          if (parsed.type !== "chat") return;
-          m = parsed as ChatMsg;
+          parsed = JSON.parse(e.data);
         } catch {
           return;
         }
+        const t = (parsed as { type?: string }).type;
+        if (t === "approvals") {
+          setApprovals((parsed as ApprovalsMsg).approvals);
+          return;
+        }
+        if (t !== "chat") return;
+        const m = parsed as ChatMsg;
         switch (m.event) {
           case "user":
             setMessages((xs) => [...xs, m.message]);
@@ -96,5 +106,5 @@ export function useChatEvents(onAuthError: () => void) {
     };
   }, []);
 
-  return { messages, stream, busy, view, setView, refresh };
+  return { messages, stream, busy, view, setView, approvals, refresh };
 }

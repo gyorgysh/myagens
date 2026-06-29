@@ -2,30 +2,12 @@ import { config } from "../config.js";
 import { sessions } from "../session/manager.js";
 import { chatBridge, mainChatId, type BridgeMessage } from "./chatBridge.js";
 import { approvalQueue, type ApprovalChoice } from "./approvals.js";
+import { PLANNING_PREAMBLE } from "./planningMode.js";
 import { audit } from "./audit.js";
 
 export type ChatMessage = BridgeMessage;
 
 type Broadcaster = (msg: unknown) => void;
-
-/**
- * Prepended to a message when the panel Chat is in *Planning mode*. It keeps the
- * turn conversational and non-destructive: Atlas scopes the work and proposes
- * inbox cards / backlog tasks instead of editing files or running commands. The
- * model still has the tools available, but is instructed not to act on them.
- */
-const PLANNING_PREAMBLE = [
-  "[Planning mode] Stay conversational and non-destructive for this turn.",
-  "Do NOT take real actions: no editing files, running shell commands, or",
-  "mutating anything. Your job is to think through and scope the work with me.",
-  "When you have something concrete to capture, propose it as an inbox",
-  'suggestion (crew_suggest) or a backlog card (task_create with column "backlog")',
-  "— title, notes, and priority — rather than doing the work now.",
-  "If anything is ambiguous, ask a short clarifying question instead of guessing.",
-  "",
-  "My message:",
-  "",
-].join("\n");
 
 /**
  * Panel Chat is a window onto the *main* Telegram conversation (the first

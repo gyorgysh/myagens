@@ -20,24 +20,7 @@
 import { randomBytes } from "node:crypto";
 import { config } from "../config.js";
 import { loadJson, saveJson } from "./jsonStore.js";
-
-/**
- * Prepended to a message when the panel Chat is in *Planning mode*. Mirrors the
- * same preamble used for Atlas (chat.ts) so Leads behave identically: scope the
- * work and propose cards/suggestions instead of taking real actions.
- */
-const PLANNING_PREAMBLE = [
-  "[Planning mode] Stay conversational and non-destructive for this turn.",
-  "Do NOT take real actions: no editing files, running shell commands, or",
-  "mutating anything. Your job is to think through and scope the work with me.",
-  "When you have something concrete to capture, propose it as an inbox",
-  'suggestion (crew_suggest) or a backlog card (task_create with column "backlog")',
-  "— title, notes, and priority — rather than doing the work now.",
-  "If anything is ambiguous, ask a short clarifying question instead of guessing.",
-  "",
-  "My message:",
-  "",
-].join("\n");
+import { PLANNING_PREAMBLE, isPlanningPrompt } from "./planningMode.js";
 
 import { runTurn } from "../claude/runner.js";
 import { agentUsage } from "./agentUsage.js";
@@ -214,6 +197,9 @@ export class AgentChatManager {
       notify: async () => {},
       primaryChatId: 0,
       fromAgentId: w.id,
+      // President drives from the trusted panel (bypassPermissions), so caller
+      // autonomy is full; but a planning turn still routes delegations to the inbox.
+      callerPlanning: isPlanningPrompt(text),
     });
 
     const abort = new AbortController();

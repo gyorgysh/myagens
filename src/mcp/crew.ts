@@ -15,6 +15,7 @@ import { getLeadProtocol } from "../prompt.js";
 import { config } from "../config.js";
 import { log, redactSecrets } from "../logger.js";
 import { registerAsk } from "../core/crewAsk.js";
+import type { Autonomy } from "../session/manager.js";
 
 const DELEGATIONS_FILE = join(config.WORKDIR, "..", "delegations.jsonl");
 
@@ -35,6 +36,31 @@ export interface CrewMcpOptions {
   primaryChatId: number;
   /** Id of the agent running these tools (for delegation log). */
   fromAgentId?: string;
+  /**
+   * Autonomy level of the turn calling these tools. A delegated run's
+   * permissionMode is capped at this, so a supervised/standard caller cannot
+   * spawn a `bypassPermissions` child run (closes a privilege-escalation path
+   * through the delegation chain). Defaults to `full` when unset (autonomous
+   * worker runs that already run unattended).
+   */
+  callerAutonomy?: Autonomy;
+  /**
+   * True when the calling turn is in planning mode. A planning turn must not
+   * fire real work: crew_delegate routes to the suggestion inbox instead of
+   * running the Lead, so the president reviews and explicitly delegates.
+   */
+  callerPlanning?: boolean;
+}
+
+/**
+ * Cap a delegated run's permissionMode at the caller's autonomy. Only a `full`
+ * (or unattended-worker default) caller may grant `bypassPermissions`; anything
+ * more supervised falls back to `default`, where the delegated run's canUseTool
+ * gate still allows only the read-only AUTO_ALLOWED_TOOLS set.
+ */
+function delegatedPermissionMode(callerAutonomy: Autonomy | undefined): "bypassPermissions" | "default" {
+  const level = callerAutonomy ?? "full";
+  return level === "full" || level === "auto_until_error" ? "bypassPermissions" : "default";
 }
 
 /**
@@ -68,6 +94,34 @@ export function createCrewMcp(opts: CrewMcpOptions) {
               : "no workers are configured.";
             return { content: [{ type: "text", text: `No worker found matching "${args.leadId}". ${available}` }] };
           }
+          // Planning turns must not fire real work. Route the delegation to the
+          // suggestion inbox so the president reviews and explicitly delegates,
+          // rather than spawning an autonomous run mid-plan.
+          if (opts.callerPlanning) {
+            const fromId = opts.fromAgentId ?? "atlas";
+            const fromName = workers.get(fromId)?.name ?? fromId;
+            const detail = args.context
+              ? `Delegate to ${lead.name}: ${args.task}\n\nContext:\n${args.context}`
+              : `Delegate to ${lead.name}: ${args.task}`;
+            const s = suggestions.add({
+              fromAgentId: fromId,
+              fromAgentName: fromName,
+              title: `Delegate to ${lead.name}: ${args.task.slice(0, 80)}`,
+              detail,
+              category: "delegation",
+            });
+            logDelegation({ fromAgentId: fromId, type: "suggestion", toAgentId: lead.id, leadName: lead.name, summary: args.task });
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    `Planning mode: not run now. Filed as a suggestion (id ${s.id}) so the ` +
+                    `president can review and delegate to ${lead.name} from the inbox.`,
+                },
+              ],
+            };
+          }
           const skill = lead.skillId ? getSkill(lead.skillId) : undefined;
           const protocol = lead.role === "lead" ? getLeadProtocol(lead.name, lead.portfolio) : undefined;
           const append = [protocol, skill?.prompt, lead.systemPrompt].filter(Boolean).join("\n\n") || undefined;
@@ -93,7 +147,7 @@ export function createCrewMcp(opts: CrewMcpOptions) {
               env,
               systemPromptAppend: append,
               persona: lead.persona,
-              permissionMode: "bypassPermissions",
+              permissionMode: delegatedPermissionMode(opts.callerAutonomy),
               abortController: abort,
               mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead.id }), skills: skillsMcp },
               canUseTool: async (name, input) => {

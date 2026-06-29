@@ -53,6 +53,7 @@ import {
 import { resolveAsk, hasPendingAsk } from "./core/crewAsk.js";
 import { reflectOnTurn } from "./core/reflect.js";
 import { chatBridge, mainChatId } from "./core/chatBridge.js";
+import { isPlanningPrompt } from "./core/planningMode.js";
 import type { ImageInput, RunResult } from "./claude/runner.js";
 import type { Autonomy } from "./session/manager.js";
 import { sessions, AUTO_UNTIL_ERROR_TOOLS } from "./session/manager.js";
@@ -666,6 +667,8 @@ async function handleUserPrompt(
     notify: notifyAll,
     primaryChatId: chatId,
     fromAgentId: "atlas",
+    callerAutonomy: autonomy,
+    callerPlanning: isPlanningPrompt(prompt),
   });
 
   // Panel mirror: a stable assistant message id the streamed text/tools fold into.

@@ -204,6 +204,34 @@ async function main(): Promise<void> {
     log.warn("Regenerated PANEL_TOKEN and notified allowed users");
   }
 
+  // Loud warning when the panel terminal inherits the bot's full environment.
+  // In that mode the shell can `env` out every secret loaded from .env
+  // (TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY, PANEL_TOKEN, …), so anyone with
+  // panel access reads them all. Only a real risk when the terminal is actually
+  // enabled. Warn to the log and DM allowed users so it can't pass unnoticed.
+  if (config.PANEL_TERMINAL_ENABLED && config.PANEL_TERMINAL_INHERIT_ENV) {
+    log.warn(
+      "SECURITY: PANEL_TERMINAL_INHERIT_ENV=true — the panel shell inherits the full process env, " +
+        "so any panel user can read every secret (TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY, PANEL_TOKEN, …) " +
+        "via `env`. Set PANEL_TERMINAL_INHERIT_ENV=false unless you fully trust everyone with panel access.",
+    );
+    const text =
+      "⚠️ *Security warning*\n\n" +
+      "`PANEL_TERMINAL_INHERIT_ENV=true` is set while the panel terminal is enabled.\n\n" +
+      "The terminal shell inherits the bot's *full* environment, so anyone with panel " +
+      "access can run `env` and read every secret loaded from `.env` " +
+      "(`TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `PANEL_TOKEN`, API keys, …).\n\n" +
+      "Set `PANEL_TERMINAL_INHERIT_ENV=false` and restart unless you fully trust " +
+      "everyone who can reach the panel.";
+    for (const id of allowedUserIds) {
+      try {
+        await bot.telegram.sendMessage(id, text, { parse_mode: "Markdown" });
+      } catch (err) {
+        log.warn("Failed to DM terminal-env security warning", { id, error: errText(err) });
+      }
+    }
+  }
+
   log.info("Bot starting (long polling)…");
   // launch() resolves only once polling stops; log just before it begins.
   void bot

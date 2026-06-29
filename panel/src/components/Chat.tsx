@@ -24,6 +24,28 @@ function initialAgentFromUrl(): string {
 }
 
 /**
+ * Per-agent Planning/Execution preference, persisted in localStorage so the
+ * last-used mode survives a reload or navigating away (a Lead you always want in
+ * planning mode stays there). Keyed by agent id, so each Lead remembers its own
+ * mode independently. Mirrors the localStorage pattern used elsewhere in the
+ * panel (theme, newest-first, collapsibles).
+ */
+function usePlanningMode(agentId: string): [boolean, (v: boolean) => void] {
+  const key = `myhq.panel.planning.${agentId}`;
+  const [planning, setPlanning] = useState(() => localStorage.getItem(key) === "1");
+  // Re-read when switching between agents (the same component instance is reused
+  // for different agentIds via the switcher rail).
+  useEffect(() => {
+    setPlanning(localStorage.getItem(key) === "1");
+  }, [key]);
+  const update = (v: boolean) => {
+    setPlanning(v);
+    localStorage.setItem(key, v ? "1" : "0");
+  };
+  return [planning, update];
+}
+
+/**
  * Chat tab. Lets the President pick which agent to talk to via a switcher rail
  * at the top: Atlas (the shared Telegram session) plus every worker / Lead /
  * Assistant, each with its own resumable interactive session.
@@ -329,9 +351,10 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
   const { messages, stream, busy, view, setView } = useChatEvents(onAuthError);
   const [editingCwd, setEditingCwd] = useState(false);
-  // Planning mode is a per-tab UI preference (defaults to Execution), not server
-  // state: it only changes how the next message is framed to Atlas.
-  const [planning, setPlanning] = useState(false);
+  // Planning mode is a per-agent UI preference (defaults to Execution),
+  // persisted in localStorage so it survives navigation/reload. It only changes
+  // how the next message is framed to Atlas, not server state.
+  const [planning, setPlanning] = usePlanningMode(ATLAS);
 
   const toggleAuto = async () => {
     if (!view?.bypassAllowed) return;
@@ -425,7 +448,7 @@ function AgentChat({
   const { t } = useI18n();
   const { messages, stream, busy, view, setView } = useAgentChatEvents(agentId, onAuthError);
   const [editingCwd, setEditingCwd] = useState(false);
-  const [planning, setPlanning] = useState(false);
+  const [planning, setPlanning] = usePlanningMode(agentId);
   const role = worker ? roleLabel(worker, t) : undefined;
 
   const saveCwd = async (cwd: string) => {

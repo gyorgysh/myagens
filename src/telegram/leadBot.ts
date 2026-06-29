@@ -15,6 +15,7 @@ import { isAuthorized } from "../auth.js";
 import { resolveSecret } from "../core/vault.js";
 import { getProvider } from "../core/providers.js";
 import { TelegramStreamer } from "./streamer.js";
+import { setBotProfilePhoto } from "./botPhoto.js";
 import { AskQuestionManager } from "./askQuestion.js";
 import { sendExpandableQuote, sendFormattedMarkdown } from "./send.js";
 import { normalizeAgentText, summarizeArg, summarizeInput, toolDiffMeta } from "./formatting.js";
@@ -340,6 +341,14 @@ export class LeadBot {
       if (me.username) workers.setBotUsername(lead.id, me.username);
     } catch (err) {
       log.warn("Lead bot getMe failed", { leadId: lead.id, error: String(err) });
+    }
+
+    // Match the bot's Telegram profile photo to its avatar. Idempotent (Telegram
+    // persists it), and setBotProfilePhoto never throws — a cosmetic photo must
+    // never block startup.
+    if (lead.avatar) {
+      const ok = await setBotProfilePhoto(bot.telegram, lead.avatar);
+      if (ok) log.info("Lead bot profile photo set", { leadId: lead.id, avatar: lead.avatar });
     }
 
     log.info("Lead bot starting", { name: lead.name, portfolio: lead.portfolio });

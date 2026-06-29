@@ -25,6 +25,7 @@ import { PLANNING_PREAMBLE, isPlanningPrompt, stripPlanningPreamble } from "./pl
 import { runTurn } from "../claude/runner.js";
 import { agentUsage } from "./agentUsage.js";
 import { workers, type Worker } from "./workers.js";
+import { resolveAvatarSlug } from "./avatar.js";
 import { getSkill, recordSkillUse } from "./skills.js";
 import { getProvider } from "./providers.js";
 import { resolveSecret } from "./vault.js";
@@ -119,6 +120,9 @@ export class AgentChatManager {
     return {
       agentId,
       name: w.name,
+      // Avatar slug for the chat bubbles: the worker's explicit avatar, else the
+      // same deterministic default the panel derives from the worker id.
+      avatar: resolveAvatarSlug(w.id, w.avatar),
       cwd: s.cwd ?? w.cwd,
       messages: s.messages,
       busy: s.busy,

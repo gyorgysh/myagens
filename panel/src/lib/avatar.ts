@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 export interface AvatarEntry {
   slug: string;
   label: string;
+  /** When true, the slug is excluded from the Lead assignment shuffle (e.g. the
+   *  robot avatar is reserved as Atlas's fixed identity). */
+  reserved?: boolean;
 }
 
 /**
@@ -49,6 +52,11 @@ export function resolveAvatarSlug(id: string, avatar?: string): string {
 /** Public path to an avatar's circular SVG (scales crisply at any size). */
 export function avatarSrc(slug: string): string {
   return `/avatars/${slug}.svg`;
+}
+
+/** Public path to an avatar's 64px PNG, for small fixed-size bubble avatars. */
+export function avatarPng64Src(slug: string): string {
+  return `/avatars/64/${slug}.png`;
 }
 
 /**

@@ -635,6 +635,8 @@ export interface ChatView {
 export interface AgentChatView {
   agentId: string;
   name: string;
+  /** Avatar slug for chat bubbles (worker's avatar, or derived from id). */
+  avatar?: string;
   cwd: string;
   messages: ChatMessage[];
   busy: boolean;

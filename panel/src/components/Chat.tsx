@@ -5,6 +5,7 @@ import { useAgentChatEvents } from "../lib/useAgentChatEvents.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import { Markdown } from "../lib/markdown.tsx";
 import { roleLabel } from "../lib/agentRole.ts";
+import { avatarPng64Src } from "../lib/avatar.ts";
 import { Button } from "./ui.tsx";
 import { Settings2, Plus, ClipboardList, Zap, ShieldCheck, HelpCircle } from "lucide-react";
 
@@ -433,6 +434,7 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
       stream={stream}
       busy={busy}
       empty={empty}
+      avatar="robot"
       approvals={approvals}
       asks={asks}
       planning={planning}
@@ -513,6 +515,7 @@ function AgentChat({
       busy={busy}
       agentName={view?.name}
       agentRole={role}
+      avatar={view?.avatar}
       empty={<>{t("chat_agent_empty").replace("{name}", view?.name ?? "")}<br />{t("chat_agent_empty_2")}</>}
       planning={planning}
       onPlanningChange={setPlanning}
@@ -540,6 +543,7 @@ function ChatPane({
   empty,
   agentName,
   agentRole,
+  avatar,
   approvals,
   asks,
   planning,
@@ -556,6 +560,8 @@ function ChatPane({
   empty: React.ReactNode;
   agentName?: string;
   agentRole?: string;
+  /** Avatar slug shown next to assistant message bubbles. */
+  avatar?: string;
   /** Pending tool-call approvals to surface above the composer (Atlas only). */
   approvals?: ApprovalView[];
   /** Pending AskUserQuestion prompts to surface above the composer (Atlas only). */
@@ -616,10 +622,19 @@ function ChatPane({
           </div>
         )}
         {messages.map((m) => (
-          <Bubble key={m.id} m={m} agentName={agentName} agentRole={agentRole} />
+          <Bubble key={m.id} m={m} agentName={agentName} agentRole={agentRole} avatar={avatar} />
         ))}
         {stream && (
-          <div className="flex flex-col gap-1">
+          <div className="flex items-start gap-2">
+            {avatar && (
+              <img
+                src={avatarPng64Src(avatar)}
+                alt=""
+                aria-hidden
+                className="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-surface-2 object-cover"
+              />
+            )}
+            <div className="flex min-w-0 flex-col gap-1">
             {agentName && (
               <div className="ml-1 flex flex-wrap items-center gap-1.5 self-start">
                 <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-semibold tracking-wide text-accent border border-accent/20">
@@ -628,7 +643,7 @@ function ChatPane({
                 {agentRole && <span className="text-xs text-fg-dim">{agentRole}</span>}
               </div>
             )}
-            <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-surface px-4 py-2.5 text-sm">
+            <div className="max-w-full rounded-2xl rounded-tl-sm bg-surface px-4 py-2.5 text-sm">
               {stream.tool && (
                 <div className="mono mb-1 flex items-center gap-2 text-xs text-fg-dim">
                   <span className="flex items-center gap-1">
@@ -671,6 +686,7 @@ function ChatPane({
                 <Markdown text={stream.text} />
                 <span className="ml-0.5 animate-pulse text-accent">▮</span>
               </div>
+            </div>
             </div>
           </div>
         )}
@@ -1041,36 +1057,68 @@ function AskCard({ q }: { q: AskQuestionView }) {
   );
 }
 
-function Bubble({ m, agentName, agentRole }: { m: ChatMessage; agentName?: string; agentRole?: string }) {
+function Bubble({
+  m,
+  agentName,
+  agentRole,
+  avatar,
+}: {
+  m: ChatMessage;
+  agentName?: string;
+  agentRole?: string;
+  /** Avatar slug for assistant messages; renders a 32px circle to the left. */
+  avatar?: string;
+}) {
   const { t } = useI18n();
   const user = m.role === "user";
   const body = m.text || (m.error ? t("chat_failed") : "");
-  return (
-    <div className={`flex flex-col gap-1 ${user ? "items-end" : "items-start"}`}>
-      {!user && agentName && (
-        <div className="ml-1 flex flex-wrap items-center gap-1.5">
-          <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-semibold tracking-wide text-accent border border-accent/20">
-            {agentName}
+
+  // User messages: right-aligned, no avatar (unchanged).
+  if (user) {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        {m.planning && (
+          <span className="mr-1 inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+            <ClipboardList size={11} />
+            {t("chat_planning_badge")}
           </span>
-          {agentRole && <span className="text-xs text-fg-dim">{agentRole}</span>}
+        )}
+        <div className="max-w-[85%] break-words whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-accent px-4 py-2.5 text-sm text-accent-fg">
+          {body}
         </div>
+      </div>
+    );
+  }
+
+  // Assistant messages: avatar circle + bubble in a flex row, left-aligned.
+  return (
+    <div className="flex items-start gap-2">
+      {avatar && (
+        <img
+          src={avatarPng64Src(avatar)}
+          alt=""
+          aria-hidden
+          className="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-surface-2 object-cover"
+        />
       )}
-      {user && m.planning && (
-        <span className="mr-1 inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
-          <ClipboardList size={11} />
-          {t("chat_planning_badge")}
-        </span>
-      )}
-      <div
-        className={`max-w-[85%] break-words rounded-2xl px-4 py-2.5 text-sm ${
-          user
-            ? "whitespace-pre-wrap rounded-tr-sm bg-accent text-accent-fg"
-            : m.error
+      <div className="flex min-w-0 flex-col items-start gap-1">
+        {agentName && (
+          <div className="ml-1 flex flex-wrap items-center gap-1.5">
+            <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-semibold tracking-wide text-accent border border-accent/20">
+              {agentName}
+            </span>
+            {agentRole && <span className="text-xs text-fg-dim">{agentRole}</span>}
+          </div>
+        )}
+        <div
+          className={`max-w-full break-words rounded-2xl px-4 py-2.5 text-sm ${
+            m.error
               ? "whitespace-pre-wrap rounded-tl-sm border border-critical/30 bg-critical-subtle text-critical-fg"
               : "rounded-tl-sm bg-surface text-fg"
-        }`}
-      >
-        {user || m.error ? body : <Markdown text={body} />}
+          }`}
+        >
+          {m.error ? body : <Markdown text={body} />}
+        </div>
       </div>
     </div>
   );

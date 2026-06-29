@@ -1011,7 +1011,13 @@ function AvatarPicker({
   const { t } = useI18n();
   const list = useAvatarList();
   // Slugs to cycle through: the fetched set when loaded, else the embedded list.
-  const slugs = list.length > 0 ? list.map((a) => a.slug) : [...AVATAR_SLUGS];
+  // Reserved slugs (e.g. "robot" = Atlas's fixed identity) are excluded from
+  // Lead assignment. The embedded fallback has no reserved flags, so drop the
+  // known reserved slug there too.
+  const slugs =
+    list.length > 0
+      ? list.filter((a) => !a.reserved).map((a) => a.slug)
+      : AVATAR_SLUGS.filter((s) => s !== "robot");
   // The slug shown now (explicit value or the deterministic default for this id).
   const current = resolveAvatarSlug(id, value);
   const shuffle = () => {

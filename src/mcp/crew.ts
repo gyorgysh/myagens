@@ -1,8 +1,11 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import { Telegram } from "telegraf";
 import { z } from "zod";
 import { runTurn, AUTO_ALLOWED_TOOLS } from "../claude/runner.js";
+import { setBotProfilePhoto } from "../telegram/botPhoto.js";
+import { defaultAvatarSlug } from "../core/avatar.js";
 import { memoryMcp } from "./memory.js";
 import { createTasksMcp } from "./tasks.js";
 import { skillsMcp } from "./skills.js";
@@ -245,6 +248,52 @@ export function createCrewMcp(opts: CrewMcpOptions) {
               },
             ],
           };
+        },
+      ),
+
+      tool(
+        "crew_set_bot_photo",
+        "Set a Lead's Telegram bot profile photo to match its avatar. Use this " +
+          "when asked to update a Lead bot's picture. Resolves the Lead by id or " +
+          "name, reads its avatar slug, and uploads the matching PNG via the " +
+          "bot's own token.",
+        {
+          leadId: z.string().describe("The id or name of the Lead worker whose bot photo to set."),
+          avatar: z
+            .string()
+            .optional()
+            .describe("Optional avatar slug to use instead of the Lead's configured avatar."),
+        },
+        async (args) => {
+          const all = workers.list();
+          const lead =
+            workers.get(args.leadId) ??
+            all.find((w) => w.name.toLowerCase() === args.leadId.toLowerCase());
+          if (!lead) {
+            return { content: [{ type: "text", text: `No worker found matching "${args.leadId}".` }] };
+          }
+          if (!lead.telegramToken) {
+            return { content: [{ type: "text", text: `${lead.name} has no Telegram bot token configured.` }] };
+          }
+          const slug = (args.avatar ?? lead.avatar ?? "").trim() || defaultAvatarSlug(lead.id);
+          try {
+            const tg = new Telegram(resolveSecret(lead.telegramToken));
+            const ok = await setBotProfilePhoto(tg, slug);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: ok
+                    ? `Set ${lead.name}'s bot profile photo to "${slug}".`
+                    : `Could not set ${lead.name}'s photo (no PNG for "${slug}" or Telegram rejected it).`,
+                },
+              ],
+            };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            log.error("crew_set_bot_photo failed", { leadId: lead.id, error: msg });
+            return { content: [{ type: "text", text: `Failed to set photo: ${msg}` }] };
+          }
         },
       ),
 

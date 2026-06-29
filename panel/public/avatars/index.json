@@ -3,7 +3,7 @@
     { "slug": "panda", "label": "Panda" },
     { "slug": "koala", "label": "Koala" },
     { "slug": "trex", "label": "T-Rex" },
-    { "slug": "robot", "label": "Robot" },
+    { "slug": "robot", "label": "Robot", "reserved": true },
     { "slug": "fox", "label": "Fox" },
     { "slug": "octopus", "label": "Octopus" },
     { "slug": "owl", "label": "Owl" },

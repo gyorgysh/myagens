@@ -77,6 +77,7 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
   const [form, setForm] = useState<typeof blank>(blank);
   const [error, setError] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tagsExpanded, setTagsExpanded] = useState(false);
   const [bulkMode, setBulkMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [listRef] = useListAnimate();
@@ -482,32 +483,53 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
             );
           })}
         </div>
-        {allTags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-fg-faint">{t("memory_filter_tag")}</span>
-            {allTags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => setTagFilter((cur) => (cur === tag ? null : tag))}
-                className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
-                  tagFilter === tag
-                    ? "bg-[var(--accent)] text-white"
-                    : "bg-accent/15 text-accent hover:bg-accent/25"
-                }`}
-              >
-                {tag}
-              </button>
-            ))}
-            {tagFilter && (
-              <button
-                onClick={() => setTagFilter(null)}
-                className="text-xs text-fg-faint underline-offset-2 hover:underline"
-              >
-                {t("memory_filter_clear")}
-              </button>
-            )}
-          </div>
-        )}
+        {allTags.length > 0 && (() => {
+          // Keep the row scannable: show only the first ~10 tags collapsed, with
+          // a toggle to reveal the rest. Always keep the active filter visible.
+          const LIMIT = 10;
+          const collapsible = allTags.length > LIMIT;
+          let shownTags = tagsExpanded || !collapsible ? allTags : allTags.slice(0, LIMIT);
+          if (collapsible && !tagsExpanded && tagFilter && !shownTags.includes(tagFilter)) {
+            shownTags = [...shownTags, tagFilter];
+          }
+          const hiddenCount = allTags.length - shownTags.length;
+          return (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-fg-faint">{t("memory_filter_tag")}</span>
+              {shownTags.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => setTagFilter((cur) => (cur === tag ? null : tag))}
+                  className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
+                    tagFilter === tag
+                      ? "bg-[var(--accent)] text-white"
+                      : "bg-accent/15 text-accent hover:bg-accent/25"
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+              {collapsible && (
+                <button
+                  onClick={() => setTagsExpanded((v) => !v)}
+                  className="text-xs text-accent underline-offset-2 hover:underline"
+                >
+                  {tagsExpanded
+                    ? t("memory_tags_show_less")
+                    : t("memory_tags_show_all").replace("{n}", String(hiddenCount))}
+                </button>
+              )}
+              {tagFilter && (
+                <button
+                  onClick={() => setTagFilter(null)}
+                  className="text-xs text-fg-faint underline-offset-2 hover:underline"
+                >
+                  {t("memory_filter_clear")}
+                </button>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {entries.length === 0 && !editing ? (

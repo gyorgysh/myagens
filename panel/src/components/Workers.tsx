@@ -137,10 +137,10 @@ export function WorkersView({
         <h2 className="text-sm font-semibold text-fg-dim">{t("workers_crew")}</h2>
         {!creating && !wizarding && (
           <div className="flex gap-2">
-            <Button onClick={() => setWizarding(true)}>
+            <Button variant="primary" onClick={() => setWizarding(true)}>
               {t("workers_wizard")}
             </Button>
-            <Button variant="primary" onClick={() => setCreating(true)}>
+            <Button onClick={() => setCreating(true)}>
               {t("workers_new")}
             </Button>
           </div>
@@ -168,6 +168,7 @@ export function WorkersView({
 
       {creating && (
         <Card title={t("workers_new_card")}>
+          <p className="mb-4 text-xs text-fg-dim">{t("workers_manual_note")}</p>
           <WorkerForm
             skills={skills}
             providers={providers}
@@ -620,6 +621,17 @@ function WorkerWizard({
   const [created, setCreated] = useState<Set<number>>(new Set());
   const [genError, setGenError] = useState<string | null>(null);
 
+  // Prefill the path with the user's home dir so the field is never empty on
+  // load (the Add button stays usable). The user can change it freely.
+  useEffect(() => {
+    api
+      .me()
+      .then((m) => {
+        setAnswers((a) => (a.cwd.trim() ? a : { ...a, cwd: m.homeDir }));
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const generate = async () => {
     if (!answers.goal.trim()) return;
@@ -733,6 +745,7 @@ function WorkerWizard({
                 onChange={(e) => setAnswers({ ...answers, cwd: e.target.value })}
                 placeholder={t("wizard_q_cwd_placeholder")}
               />
+              <p className="mt-1 text-xs text-fg-faint">{t("wizard_q_cwd_help")}</p>
             </div>
             <div>
               <Label>{t("wizard_q_schedule")}</Label>

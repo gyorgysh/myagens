@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
@@ -552,6 +552,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     subscriptionPlan: getPlanSettings().plan !== "api",
     defaultLanguage: config.DEFAULT_LANGUAGE,
     defaultWorkdir: config.WORKDIR,
+    homeDir: homedir(),
     languages: AGENT_LANGUAGES,
     // Read-only deployment facts for the Setup view (all .env-sourced; not
     // editable from the panel by design — see SEC notes in CLAUDE.md).

@@ -1,23 +1,25 @@
 import { useEffect, useState } from "react";
 import { api, type RunLogEvent } from "../api.ts";
 import { useI18n } from "../lib/useI18n.ts";
+import { toolIcon } from "../lib/toolIcons.tsx";
+import { XCircle } from "lucide-react";
 
-/** Map a tool name to a small icon + verb, mirroring the Activity feed. */
-function describe(tool: string): { icon: string; verb: string } {
+/** Map a tool name to a short verb, mirroring the Activity feed. */
+function describe(tool: string): { verb: string } {
   const base = tool.replace(/^mcp__[^_]+__/, "");
-  const map: Record<string, { icon: string; verb: string }> = {
-    Bash: { icon: "⚡", verb: "Run" },
-    Read: { icon: "📖", verb: "Read" },
-    Write: { icon: "✏️", verb: "Write" },
-    Edit: { icon: "✏️", verb: "Edit" },
-    Glob: { icon: "🔍", verb: "Find" },
-    Grep: { icon: "🔍", verb: "Search" },
-    Task: { icon: "🧰", verb: "Subagent" },
-    WebFetch: { icon: "🌐", verb: "Fetch" },
-    WebSearch: { icon: "🌐", verb: "Search" },
-    TodoWrite: { icon: "✅", verb: "Plan" },
+  const verbs: Record<string, string> = {
+    Bash: "Run",
+    Read: "Read",
+    Write: "Write",
+    Edit: "Edit",
+    Glob: "Find",
+    Grep: "Search",
+    Task: "Subagent",
+    WebFetch: "Fetch",
+    WebSearch: "Search",
+    TodoWrite: "Plan",
   };
-  return map[base] ?? { icon: "🔧", verb: base };
+  return { verb: verbs[base] ?? base };
 }
 
 /**
@@ -56,9 +58,10 @@ export function RunLog({ runId }: { runId: string }) {
         }
         if (e.kind === "tool") {
           const d = describe(e.tool ?? "");
+          const Icon = toolIcon(e.tool ?? "");
           return (
             <div key={i} className="mt-1 flex items-start gap-1.5 text-xs text-accent">
-              <span>{d.icon}</span>
+              <Icon size={13} className="mt-0.5 shrink-0" />
               <span className="font-medium">{d.verb}</span>
               {e.arg && <span className="mono min-w-0 truncate text-fg-faint">{e.arg}</span>}
             </div>
@@ -66,8 +69,9 @@ export function RunLog({ runId }: { runId: string }) {
         }
         if (e.kind === "result" && e.isError) {
           return (
-            <div key={i} className="mt-0.5 text-xs text-critical-fg">
-              ✗ {t("runlog_tool_error")}
+            <div key={i} className="mt-0.5 flex items-center gap-1 text-xs text-critical-fg">
+              <XCircle size={13} className="shrink-0" />
+              {t("runlog_tool_error")}
             </div>
           );
         }

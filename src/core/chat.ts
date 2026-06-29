@@ -8,6 +8,25 @@ export type ChatMessage = BridgeMessage;
 type Broadcaster = (msg: unknown) => void;
 
 /**
+ * Prepended to a message when the panel Chat is in *Planning mode*. It keeps the
+ * turn conversational and non-destructive: Atlas scopes the work and proposes
+ * inbox cards / backlog tasks instead of editing files or running commands. The
+ * model still has the tools available, but is instructed not to act on them.
+ */
+const PLANNING_PREAMBLE = [
+  "[Planning mode] Stay conversational and non-destructive for this turn.",
+  "Do NOT take real actions: no editing files, running shell commands, or",
+  "mutating anything. Your job is to think through and scope the work with me.",
+  "When you have something concrete to capture, propose it as an inbox",
+  'suggestion (crew_suggest) or a backlog card (task_create with column "backlog")',
+  "— title, notes, and priority — rather than doing the work now.",
+  "If anything is ambiguous, ask a short clarifying question instead of guessing.",
+  "",
+  "My message:",
+  "",
+].join("\n");
+
+/**
  * Panel Chat is a window onto the *main* Telegram conversation (the first
  * allowed user's session). It no longer keeps its own isolated Claude session:
  * messages typed in Telegram show up here, messages sent from the panel are
@@ -90,12 +109,17 @@ export class ChatManager {
     return false;
   }
 
-  /** Send a user message — drives a turn on the main Telegram chat. */
-  send(text: string): { ok: boolean; error?: string } {
+  /**
+   * Send a user message — drives a turn on the main Telegram chat. When
+   * `planning` is set, a non-destructive preamble is prepended so Atlas scopes
+   * the work and proposes inbox/backlog items instead of acting.
+   */
+  send(text: string, planning = false): { ok: boolean; error?: string } {
     const s = this.mainSession();
     if (s?.busy) return { ok: false, error: "busy" };
-    const r = chatBridge.send(text);
-    if (r.ok) audit("chat.send", { chars: text.trim().length });
+    const prompt = planning ? PLANNING_PREAMBLE + text : text;
+    const r = chatBridge.send(prompt);
+    if (r.ok) audit("chat.send", { chars: text.trim().length, planning });
     return r;
   }
 }

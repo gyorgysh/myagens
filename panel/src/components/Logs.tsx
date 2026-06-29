@@ -3,6 +3,8 @@ import { api, AuthError, openHealthSocket, type LogEntry, type LogUsageSummary }
 import { Button, Empty, Select } from "./ui.tsx";
 import { LogsArt } from "./onboarding.tsx";
 import { useI18n } from "../lib/useI18n.ts";
+import { toolIcon, lifecycleIcon } from "../lib/toolIcons.tsx";
+import type { LucideIcon } from "lucide-react";
 
 type Level = LogEntry["level"];
 const LEVELS: Level[] = ["error", "warn", "info", "debug"];
@@ -246,7 +248,7 @@ function TabButton({
 interface Activity {
   key: string;
   ts: number;
-  icon: string;
+  icon: LucideIcon;
   verb: string;
   target: string;
   tone: "normal" | "error";
@@ -262,45 +264,46 @@ interface Activity {
 }
 
 /** Map a tool name to a friendly icon and verb. */
-function describeTool(tool: string, t: TFn): { icon: string; verb: string } {
+function describeTool(tool: string, t: TFn): { icon: LucideIcon; verb: string } {
   // Strip the mcp__ns__name wrapper down to the leaf tool name.
   const leaf = tool.replace(/^mcp__[^_]+__/, "");
+  const icon = toolIcon(tool);
   switch (leaf) {
     case "Read":
-      return { icon: "📖", verb: t("logs_act_reading") };
+      return { icon, verb: t("logs_act_reading") };
     case "Write":
-      return { icon: "✏️", verb: t("logs_act_writing") };
+      return { icon, verb: t("logs_act_writing") };
     case "Edit":
     case "NotebookEdit":
-      return { icon: "📝", verb: t("logs_act_editing") };
+      return { icon, verb: t("logs_act_editing") };
     case "Bash":
-      return { icon: "⚡", verb: t("logs_act_running") };
+      return { icon, verb: t("logs_act_running") };
     case "Grep":
-      return { icon: "🔍", verb: t("logs_act_searching") };
+      return { icon, verb: t("logs_act_searching") };
     case "Glob":
-      return { icon: "📂", verb: t("logs_act_finding") };
+      return { icon, verb: t("logs_act_finding") };
     case "WebFetch":
-      return { icon: "🌐", verb: t("logs_act_fetching") };
+      return { icon, verb: t("logs_act_fetching") };
     case "WebSearch":
-      return { icon: "🌐", verb: t("logs_act_browsing") };
+      return { icon, verb: t("logs_act_browsing") };
     case "Task":
     case "crew_delegate":
-      return { icon: "🤝", verb: t("logs_act_delegating") };
+      return { icon, verb: t("logs_act_delegating") };
     case "crew_ask_president":
-      return { icon: "❓", verb: t("logs_act_asking") };
+      return { icon, verb: t("logs_act_asking") };
     case "crew_report":
-      return { icon: "📣", verb: t("logs_act_reporting") };
+      return { icon, verb: t("logs_act_reporting") };
     case "crew_suggest":
-      return { icon: "💡", verb: t("logs_act_suggesting") };
+      return { icon, verb: t("logs_act_suggesting") };
     case "TodoWrite":
-      return { icon: "✅", verb: t("logs_act_todo") };
+      return { icon, verb: t("logs_act_todo") };
     case "send_file":
-      return { icon: "📎", verb: t("logs_act_sending") };
+      return { icon, verb: t("logs_act_sending") };
     default:
-      if (leaf.startsWith("memory_")) return { icon: "🧠", verb: t("logs_act_memory") };
-      if (leaf.startsWith("skill_")) return { icon: "🛠️", verb: t("logs_act_using") };
-      if (leaf.startsWith("task_")) return { icon: "📋", verb: t("logs_act_using") };
-      return { icon: "🔧", verb: `${t("logs_act_using")} ${leaf}` };
+      if (leaf.startsWith("memory_")) return { icon, verb: t("logs_act_memory") };
+      if (leaf.startsWith("skill_")) return { icon, verb: t("logs_act_using") };
+      if (leaf.startsWith("task_")) return { icon, verb: t("logs_act_using") };
+      return { icon, verb: `${t("logs_act_using")} ${leaf}` };
   }
 }
 
@@ -309,29 +312,31 @@ function describeTool(tool: string, t: TFn): { icon: string; verb: string } {
 function describeLifecycle(
   l: LogEntry,
   t: TFn,
-): { icon: string; verb: string; target: string } | null {
+): { icon: LucideIcon; verb: string; target: string } | null {
   const m = l.meta ?? {};
   const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const icon = lifecycleIcon(l.msg);
+  if (!icon) return null;
   switch (l.msg) {
     case "Prompt received":
-      return { icon: "💬", verb: t("logs_act_prompt"), target: str(m.text) };
+      return { icon, verb: t("logs_act_prompt"), target: str(m.text) };
     case "Voice transcribed":
-      return { icon: "🎙️", verb: t("logs_act_voice"), target: str(m.text) };
+      return { icon, verb: t("logs_act_voice"), target: str(m.text) };
     case "File received":
-      return { icon: "📥", verb: t("logs_act_file_in"), target: str(m.name) || str(m.path) };
+      return { icon, verb: t("logs_act_file_in"), target: str(m.name) || str(m.path) };
     case "Photo received":
-      return { icon: "🖼️", verb: t("logs_act_photo_in"), target: str(m.path) };
+      return { icon, verb: t("logs_act_photo_in"), target: str(m.path) };
     case "Turn complete":
-      return { icon: "✅", verb: t("logs_act_replied"), target: "" };
+      return { icon, verb: t("logs_act_replied"), target: "" };
     case "Scheduler started":
-      return { icon: "⏰", verb: t("logs_act_scheduler"), target: "" };
+      return { icon, verb: t("logs_act_scheduler"), target: "" };
     case "Scheduled task firing":
-      return { icon: "⏱️", verb: t("logs_act_sched_fire"), target: "" };
+      return { icon, verb: t("logs_act_sched_fire"), target: "" };
     case "Heartbeat started":
-      return { icon: "💓", verb: t("logs_act_heartbeat"), target: str(m.mode) };
+      return { icon, verb: t("logs_act_heartbeat"), target: str(m.mode) };
     case "Update check":
       return {
-        icon: "🔄",
+        icon,
         verb: t("logs_act_update_check"),
         target:
           typeof m.behindBy === "number" && m.behindBy > 0
@@ -339,17 +344,17 @@ function describeLifecycle(
             : t("logs_act_update_uptodate"),
       };
     case "Usage probe starting":
-      return { icon: "📊", verb: t("logs_act_usage_probe"), target: "" };
+      return { icon, verb: t("logs_act_usage_probe"), target: "" };
     case "Maintenance run starting":
-      return { icon: "🧹", verb: t("logs_act_maintenance"), target: "" };
+      return { icon, verb: t("logs_act_maintenance"), target: "" };
     case "Bot is listening for updates":
-      return { icon: "🚀", verb: t("logs_act_bot_ready"), target: "" };
+      return { icon, verb: t("logs_act_bot_ready"), target: "" };
     case "Management panel listening":
-      return { icon: "🖥️", verb: t("logs_act_panel_ready"), target: "" };
+      return { icon, verb: t("logs_act_panel_ready"), target: "" };
     case "Council command failed":
     case "Worker run failed":
     case "Task delegation failed":
-      return { icon: "⚠️", verb: l.msg, target: str(m.error) };
+      return { icon, verb: l.msg, target: str(m.error) };
     default:
       return null;
   }
@@ -644,7 +649,9 @@ function ActivityFeed({
             {activities.map((a) => (
               <div key={a.key} className="group px-2 py-2 hover:bg-surface-2/60 transition-colors">
                 <div className="flex items-center gap-3">
-                  <span className="shrink-0 text-sm leading-none w-5 text-center">{a.icon}</span>
+                  <span className={`flex w-5 shrink-0 justify-center ${a.tone === "error" ? "text-critical-fg" : "text-fg-dim"}`}>
+                    <a.icon size={15} />
+                  </span>
                   <div className="min-w-0 flex-1 flex flex-wrap items-center gap-1.5">
                     {a.agentLabel && (
                       <span

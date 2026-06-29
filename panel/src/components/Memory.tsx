@@ -6,6 +6,7 @@ import { useListAnimate } from "../lib/useListAnimate.ts";
 import { relTime } from "../lib/format.ts";
 import { Badge, Button, Callout, Card, Empty, InfoCard, Input, Label, Skeleton, TextArea } from "./ui.tsx";
 import { MemoryArt } from "./onboarding.tsx";
+import { Flame, Thermometer, Snowflake, type LucideIcon } from "lucide-react";
 
 const blank = { text: "", tags: "", salience: 0.5, tier: "warm" as MemoryTier };
 
@@ -16,6 +17,23 @@ const TIER_TONE = {
 };
 
 const TIER_KEY = { hot: "memory_tier_hot", warm: "memory_tier_warm", cold: "memory_tier_cold" } as const;
+
+const TIER_ICON: Record<MemoryTier, LucideIcon> = {
+  hot: Flame,
+  warm: Thermometer,
+  cold: Snowflake,
+};
+
+/** A tier badge with its Lucide glyph, used wherever a tier is shown as a chip. */
+function TierBadge({ tier, label }: { tier: MemoryTier; label: string }) {
+  const Icon = TIER_ICON[tier];
+  return (
+    <Badge tone={TIER_TONE[tier]}>
+      <Icon size={11} className="mr-1" />
+      {label}
+    </Badge>
+  );
+}
 
 type TierFilter = "all" | MemoryTier;
 
@@ -190,9 +208,18 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
       <div className="mb-4 space-y-3">
         <InfoCard id="memory" title={t("info_memory_title")} body={t("info_memory_body")}>
           <ul className="space-y-1.5">
-            <li>{t("info_memory_hot")}</li>
-            <li>{t("info_memory_warm")}</li>
-            <li>{t("info_memory_cold")}</li>
+            <li className="flex items-start gap-1.5">
+              <Flame size={13} className="mt-0.5 shrink-0 text-warn-fg" />
+              <span>{t("info_memory_hot")}</span>
+            </li>
+            <li className="flex items-start gap-1.5">
+              <Thermometer size={13} className="mt-0.5 shrink-0 text-accent" />
+              <span>{t("info_memory_warm")}</span>
+            </li>
+            <li className="flex items-start gap-1.5">
+              <Snowflake size={13} className="mt-0.5 shrink-0 text-fg-dim" />
+              <span>{t("info_memory_cold")}</span>
+            </li>
             <li>{t("info_memory_salience")}</li>
           </ul>
         </InfoCard>
@@ -284,19 +311,23 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
           <div>
             <Label>{t("memory_tier")}</Label>
             <div className="flex gap-2 mt-1">
-              {(["hot", "warm", "cold"] as MemoryTier[]).map((tier) => (
-                <button
-                  key={tier}
-                  onClick={() => setForm({ ...form, tier })}
-                  className={`inline-flex min-h-[44px] items-center rounded px-2.5 text-xs font-medium transition-colors ${
-                    form.tier === tier
-                      ? "bg-[var(--accent)] text-white"
-                      : "border border-line text-fg-dim hover:text-fg"
-                  }`}
-                >
-                  {t(TIER_KEY[tier])}
-                </button>
-              ))}
+              {(["hot", "warm", "cold"] as MemoryTier[]).map((tier) => {
+                const Icon = TIER_ICON[tier];
+                return (
+                  <button
+                    key={tier}
+                    onClick={() => setForm({ ...form, tier })}
+                    className={`inline-flex min-h-[44px] items-center gap-1 rounded px-2.5 text-xs font-medium transition-colors ${
+                      form.tier === tier
+                        ? "bg-[var(--accent)] text-white"
+                        : "border border-line text-fg-dim hover:text-fg"
+                    }`}
+                  >
+                    <Icon size={12} />
+                    {t(TIER_KEY[tier])}
+                  </button>
+                );
+              })}
             </div>
           </div>
           <div className="flex gap-2">
@@ -320,16 +351,18 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
             const count =
               f === "all" ? stats?.total : stats?.byTier[f];
             const label = f === "all" ? t("memory_filter_all") : t(TIER_KEY[f]);
+            const Icon = f === "all" ? null : TIER_ICON[f];
             return (
               <button
                 key={f}
                 onClick={() => setTierFilter(f)}
-                className={`inline-flex min-h-[44px] items-center rounded px-2.5 text-xs border border-line transition-colors ${
+                className={`inline-flex min-h-[44px] items-center gap-1 rounded px-2.5 text-xs border border-line transition-colors ${
                   tierFilter === f
                     ? "bg-[var(--accent)] text-white"
                     : "text-fg-dim hover:text-fg"
                 }`}
               >
+                {Icon && <Icon size={12} />}
                 {label}
                 {count !== undefined && <span className="ml-1 tabular opacity-70">{count}</span>}
               </button>
@@ -364,7 +397,7 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
               <div className="min-w-0">
                 <p className="text-sm text-fg">{m.text}</p>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-fg-faint">
-                  <Badge tone={TIER_TONE[m.tier]}>{t(TIER_KEY[m.tier])}</Badge>
+                  <TierBadge tier={m.tier} label={t(TIER_KEY[m.tier])} />
                   {m.tags.map((tag) => (
                     <Badge key={tag} tone="blue">
                       {tag}
@@ -377,16 +410,20 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
                   <span className="text-xs text-fg-faint">{t("memory_move_to")}</span>
                   {(["hot", "warm", "cold"] as MemoryTier[])
                     .filter((tier) => tier !== m.tier)
-                    .map((tier) => (
-                      <button
-                        key={tier}
-                        onClick={() => setTier(m.id, tier)}
-                        aria-label={t("memory_move_to_tier").replace("{tier}", t(TIER_KEY[tier]))}
-                        className="inline-flex min-h-[44px] items-center rounded-full border border-line px-2 text-xs font-medium text-fg-dim hover:border-accent/40 hover:bg-accent/5 hover:text-accent transition-colors"
-                      >
-                        {t(TIER_KEY[tier])}
-                      </button>
-                    ))}
+                    .map((tier) => {
+                      const Icon = TIER_ICON[tier];
+                      return (
+                        <button
+                          key={tier}
+                          onClick={() => setTier(m.id, tier)}
+                          aria-label={t("memory_move_to_tier").replace("{tier}", t(TIER_KEY[tier]))}
+                          className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-line px-2 text-xs font-medium text-fg-dim hover:border-accent/40 hover:bg-accent/5 hover:text-accent transition-colors"
+                        >
+                          <Icon size={11} />
+                          {t(TIER_KEY[tier])}
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
               <div className="flex shrink-0 gap-1.5">

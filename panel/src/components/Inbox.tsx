@@ -8,6 +8,7 @@ import { useListAnimate } from "../lib/useListAnimate.ts";
 import { toast } from "../lib/useToast.ts";
 import { Badge, Button, Card, Empty, InfoCard } from "./ui.tsx";
 import { InboxArt } from "./onboarding.tsx";
+import { Markdown } from "../lib/markdown.tsx";
 
 type Filter = "pending" | "accepted" | "dismissed";
 
@@ -417,9 +418,11 @@ function SuggestionCard({
           </div>
           {s.detail && (
             <>
-              <p className={`mt-2 whitespace-pre-wrap text-sm text-fg-muted ${open ? "" : "line-clamp-2"}`}>
-                {s.detail}
-              </p>
+              <div
+                className={`mt-2 text-sm text-fg-muted ${open ? "" : "max-h-12 overflow-hidden"}`}
+              >
+                <Markdown text={s.detail} />
+              </div>
               {s.detail.length > 120 && (
                 <button
                   onClick={(e) => {

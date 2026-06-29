@@ -7,6 +7,8 @@ import { useListAnimate } from "../lib/useListAnimate.ts";
 import { Button, Callout, Empty, InfoCard, Input, Skeleton, TextArea } from "./ui.tsx";
 import { TasksArt } from "./onboarding.tsx";
 import { RunLog } from "./RunLog.tsx";
+import { Markdown } from "../lib/markdown.tsx";
+import { ChevronDown, ChevronUp, Pencil, X, Check } from "lucide-react";
 import type { TranslationKey } from "../i18n/en.ts";
 
 /** Translate a default column name when it hasn't been renamed by the user. */
@@ -585,9 +587,9 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
                     {columnName(col, t)}
                     <span
                       aria-hidden
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="inline-flex opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      ✎
+                      <Pencil size={12} />
                     </span>
                   </h3>
                 )}
@@ -642,7 +644,7 @@ export function TasksView({ onAuthError }: { onAuthError: () => void }) {
                           : "text-fg-faint hover:text-critical-fg"
                       }`}
                     >
-                      {confirmDelCol === col.id ? t("tasks_remove_confirm") : "✕"}
+                      {confirmDelCol === col.id ? t("tasks_remove_confirm") : <X size={13} className="inline" />}
                     </button>
                   </>
                 )}
@@ -1024,11 +1026,18 @@ function Card({
               onClick={(e) => { e.stopPropagation(); setNotesOpen((o) => !o); }}
               className="mt-1 flex items-center gap-1 text-xs text-fg-faint hover:text-fg-dim"
             >
-              {t("tasks_notes_toggle")} <span className="opacity-50">{notesOpen ? "▲" : "▼"}</span>
+              {t("tasks_notes_toggle")}{" "}
+              {notesOpen ? (
+                <ChevronUp size={12} className="opacity-50" />
+              ) : (
+                <ChevronDown size={12} className="opacity-50" />
+              )}
             </button>
           )}
           {task.notes && (!isDone || notesOpen) && (
-            <div className="mt-1 line-clamp-3 text-xs text-fg-dim">{task.notes}</div>
+            <div className={`mt-1 text-xs text-fg-dim ${notesOpen ? "" : "max-h-16 overflow-hidden"}`}>
+              <Markdown text={task.notes} />
+            </div>
           )}
           {task.parentId && <div className="mt-1 text-xs text-fg-faint">{t("tasks_subtask")}</div>}
           {task.blockingIds && task.blockingIds.length > 0 && (
@@ -1314,7 +1323,7 @@ function DependencyPicker({
                 />
                 <span className="mono-xs text-fg-faint">#{c.id}</span>
                 <span className="truncate">{c.title}</span>
-                {c.column === "done" && <span className="ml-auto text-ok-fg">✓</span>}
+                {c.column === "done" && <Check size={14} className="ml-auto text-ok-fg" />}
               </label>
             ))
           )}

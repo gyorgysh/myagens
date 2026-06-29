@@ -4,7 +4,9 @@ import { useChatEvents } from "../lib/useChatEvents.ts";
 import { useAgentChatEvents } from "../lib/useAgentChatEvents.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import { Markdown } from "../lib/markdown.tsx";
+import { roleLabel } from "../lib/agentRole.ts";
 import { Button } from "./ui.tsx";
+import { Lock, Settings2, Plus, ClipboardList, Zap } from "lucide-react";
 
 /** Sentinel id for the main Atlas chat (the Telegram-mirrored session). */
 const ATLAS = "atlas";
@@ -74,7 +76,12 @@ export function ChatView({ onAuthError }: { onAuthError: () => void }) {
       {selected === ATLAS ? (
         <AtlasChat key={`atlas-${chatNonce}`} onAuthError={onAuthError} />
       ) : (
-        <AgentChat key={`${selected}-${chatNonce}`} agentId={selected} onAuthError={onAuthError} />
+        <AgentChat
+          key={`${selected}-${chatNonce}`}
+          agentId={selected}
+          worker={workers.find((w) => w.id === selected)}
+          onAuthError={onAuthError}
+        />
       )}
 
       {/* Mobile-only quick switcher / new-chat FAB (hidden on md+ where the rail is roomy). */}
@@ -138,7 +145,7 @@ function ChatFab({
             onClick={onNewChat}
             className="flex w-full items-center gap-2 border-b border-line px-3 py-3 text-left text-sm font-medium text-accent hover:bg-accent/10"
           >
-            <span className="text-base leading-none">＋</span>
+            <Plus size={16} className="shrink-0" />
             {t("chat_fab_new")}
           </button>
           <div className="max-h-64 overflow-y-auto py-1">
@@ -170,7 +177,7 @@ function ChatFab({
           open ? "rotate-45" : ""
         }`}
       >
-        <span className="text-2xl leading-none">＋</span>
+        <Plus size={24} />
       </button>
     </div>
   );
@@ -322,6 +329,9 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
   const { messages, stream, busy, view, setView } = useChatEvents(onAuthError);
   const [editingCwd, setEditingCwd] = useState(false);
+  // Planning mode is a per-tab UI preference (defaults to Execution), not server
+  // state: it only changes how the next message is framed to Atlas.
+  const [planning, setPlanning] = useState(false);
 
   const toggleAuto = async () => {
     if (!view?.bypassAllowed) return;
@@ -376,7 +386,7 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
             view?.auto ? "bg-warn-subtle text-warn-fg" : "bg-surface-2 text-fg-dim"
           } ${view?.bypassAllowed ? "" : "cursor-not-allowed opacity-60"}`}
         >
-          {!view?.bypassAllowed && <span className="mr-1">🔒</span>}
+          {!view?.bypassAllowed && <Lock size={11} className="mr-1 inline" />}
           {view?.auto ? t("chat_auto") : t("chat_safe")}
         </button>
         <Button variant="ghost" onClick={async () => view && setView(await api.clearChat())} disabled={busy}>
@@ -393,7 +403,9 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
       stream={stream}
       busy={busy}
       empty={empty}
-      onSend={(txt) => api.sendChat(txt).then(() => {})}
+      planning={planning}
+      onPlanningChange={setPlanning}
+      onSend={(txt) => api.sendChat(txt, planning).then(() => {})}
       onStop={() => void api.stopChat()}
     />
   );
@@ -401,10 +413,19 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
 
 // ─── Per-agent chat (talk to one worker / Lead) ──────────────────────────────
 
-function AgentChat({ agentId, onAuthError }: { agentId: string; onAuthError: () => void }) {
+function AgentChat({
+  agentId,
+  worker,
+  onAuthError,
+}: {
+  agentId: string;
+  worker?: Worker;
+  onAuthError: () => void;
+}) {
   const { t } = useI18n();
   const { messages, stream, busy, view, setView } = useAgentChatEvents(agentId, onAuthError);
   const [editingCwd, setEditingCwd] = useState(false);
+  const role = worker ? roleLabel(worker, t) : undefined;
 
   const saveCwd = async (cwd: string) => {
     setEditingCwd(false);
@@ -420,6 +441,7 @@ function AgentChat({ agentId, onAuthError }: { agentId: string; onAuthError: () 
             {t("chat_agent_private")}
           </span>
         </h2>
+        {role && <div className="mt-0.5 text-xs text-fg-dim">{role}</div>}
         {editingCwd ? (
           <input
             autoFocus
@@ -455,6 +477,7 @@ function AgentChat({ agentId, onAuthError }: { agentId: string; onAuthError: () 
       stream={stream}
       busy={busy}
       agentName={view?.name}
+      agentRole={role}
       empty={<>{t("chat_agent_empty").replace("{name}", view?.name ?? "")}<br />{t("chat_agent_empty_2")}</>}
       onSend={(txt) => api.sendAgentChat(agentId, txt).then(() => {})}
       onStop={() => void api.stopAgentChat(agentId)}
@@ -479,6 +502,9 @@ function ChatPane({
   busy,
   empty,
   agentName,
+  agentRole,
+  planning,
+  onPlanningChange,
   onSend,
   onStop,
 }: {
@@ -488,6 +514,10 @@ function ChatPane({
   busy: boolean;
   empty: React.ReactNode;
   agentName?: string;
+  agentRole?: string;
+  /** When defined, renders a Planning/Execution mode pill in the composer. */
+  planning?: boolean;
+  onPlanningChange?: (planning: boolean) => void;
   onSend: (text: string) => Promise<void>;
   onStop: () => void;
 }) {
@@ -538,19 +568,25 @@ function ChatPane({
           </div>
         )}
         {messages.map((m) => (
-          <Bubble key={m.id} m={m} agentName={agentName} />
+          <Bubble key={m.id} m={m} agentName={agentName} agentRole={agentRole} />
         ))}
         {stream && (
           <div className="flex flex-col gap-1">
             {agentName && (
-              <span className="ml-1 self-start rounded-full bg-accent/10 px-2 py-0.5 text-xs font-semibold tracking-wide text-accent border border-accent/20">
-                {agentName}
-              </span>
+              <div className="ml-1 flex flex-wrap items-center gap-1.5 self-start">
+                <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-semibold tracking-wide text-accent border border-accent/20">
+                  {agentName}
+                </span>
+                {agentRole && <span className="text-xs text-fg-dim">{agentRole}</span>}
+              </div>
             )}
             <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-surface px-4 py-2.5 text-sm">
               {stream.tool && (
                 <div className="mono mb-1 flex items-center gap-2 text-xs text-fg-dim">
-                  <span>⚙ {stream.tool}</span>
+                  <span className="flex items-center gap-1">
+                    <Settings2 size={12} className="shrink-0" />
+                    {stream.tool}
+                  </span>
                   {stream.diffLines && (
                     <span className="mono-xs rounded bg-surface-2 px-1.5 py-0.5 text-fg-faint">
                       {stream.diffLines}
@@ -592,39 +628,93 @@ function ChatPane({
         )}
       </div>
 
-      <div className="flex items-end gap-2 border-t border-line pt-3">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKey}
-          rows={1}
-          placeholder={t("chat_placeholder")}
-          className="max-h-40 min-h-[42px] flex-1 resize-none rounded-xl border border-line bg-input px-3 py-2.5 text-sm text-fg outline-none focus:border-accent"
-        />
-        {busy ? (
-          <Button variant="danger" onClick={onStop} className="h-[42px]">
-            {t("stop")}
-          </Button>
-        ) : (
-          <Button variant="primary" onClick={() => void send()} disabled={!text.trim()} className="h-[42px]">
-            {t("chat_send")}
-          </Button>
+      <div className="flex flex-col gap-2 border-t border-line pt-3">
+        {planning !== undefined && onPlanningChange && (
+          <ModePill planning={planning} onChange={onPlanningChange} />
         )}
+        <div className="flex items-end gap-2">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKey}
+            rows={1}
+            placeholder={planning ? t("chat_placeholder_planning") : t("chat_placeholder")}
+            className={`max-h-40 min-h-[42px] flex-1 resize-none rounded-xl border bg-input px-3 py-2.5 text-sm text-fg outline-none focus:border-accent ${
+              planning ? "border-accent/40" : "border-line"
+            }`}
+          />
+          {busy ? (
+            <Button variant="danger" onClick={onStop} className="h-[42px]">
+              {t("stop")}
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={() => void send()} disabled={!text.trim()} className="h-[42px]">
+              {t("chat_send")}
+            </Button>
+          )}
+        </div>
       </div>
     </>
   );
 }
 
-function Bubble({ m, agentName }: { m: ChatMessage; agentName?: string }) {
+/**
+ * Planning / Execution segmented toggle shown in the Atlas composer. Planning =
+ * conversational, non-destructive (Atlas scopes work and proposes cards);
+ * Execution = the normal behaviour where Atlas acts. Defaults to Execution.
+ */
+function ModePill({
+  planning,
+  onChange,
+}: {
+  planning: boolean;
+  onChange: (planning: boolean) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex items-center gap-2">
+      <div className="inline-flex rounded-full border border-line bg-surface-2 p-0.5 text-xs font-medium">
+        <button
+          type="button"
+          onClick={() => onChange(false)}
+          className={`flex items-center gap-1 rounded-full px-2.5 py-1 transition-colors ${
+            !planning ? "bg-accent text-accent-fg" : "text-fg-dim hover:text-fg-muted"
+          }`}
+        >
+          <Zap size={11} className="shrink-0" />
+          {t("chat_mode_execution")}
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(true)}
+          className={`flex items-center gap-1 rounded-full px-2.5 py-1 transition-colors ${
+            planning ? "bg-accent text-accent-fg" : "text-fg-dim hover:text-fg-muted"
+          }`}
+        >
+          <ClipboardList size={11} className="shrink-0" />
+          {t("chat_mode_planning")}
+        </button>
+      </div>
+      <span className="text-xs text-fg-faint">
+        {planning ? t("chat_mode_planning_hint") : t("chat_mode_execution_hint")}
+      </span>
+    </div>
+  );
+}
+
+function Bubble({ m, agentName, agentRole }: { m: ChatMessage; agentName?: string; agentRole?: string }) {
   const { t } = useI18n();
   const user = m.role === "user";
   const body = m.text || (m.error ? t("chat_failed") : "");
   return (
     <div className={`flex flex-col gap-1 ${user ? "items-end" : "items-start"}`}>
       {!user && agentName && (
-        <span className="ml-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-semibold tracking-wide text-accent border border-accent/20">
-          {agentName}
-        </span>
+        <div className="ml-1 flex flex-wrap items-center gap-1.5">
+          <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-semibold tracking-wide text-accent border border-accent/20">
+            {agentName}
+          </span>
+          {agentRole && <span className="text-xs text-fg-dim">{agentRole}</span>}
+        </div>
       )}
       <div
         className={`max-w-[85%] break-words rounded-2xl px-4 py-2.5 text-sm ${

@@ -976,7 +976,8 @@ export const api = {
   languages: () => get<{ languages: Record<string, string> }>("/api/languages"),
 
   chat: () => get<ChatView>("/api/chat"),
-  sendChat: (text: string) => req<ChatView>("POST", "/api/chat/send", { text }),
+  sendChat: (text: string, planning = false) =>
+    req<ChatView>("POST", "/api/chat/send", { text, planning }),
   stopChat: () => req<{ ok: boolean }>("POST", "/api/chat/stop"),
   clearChat: () => req<ChatView>("POST", "/api/chat/clear"),
   chatSettings: (s: { cwd?: string; auto?: boolean }) =>

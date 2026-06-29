@@ -1346,8 +1346,8 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
   // --- in-panel chat (dedicated Claude session) ---
   app.get("/api/chat", async () => chat.view());
   app.post("/api/chat/send", async (req, reply) => {
-    const { text } = (req.body ?? {}) as { text?: string };
-    const r = chat.send(typeof text === "string" ? text : "");
+    const { text, planning } = (req.body ?? {}) as { text?: string; planning?: boolean };
+    const r = chat.send(typeof text === "string" ? text : "", planning === true);
     if (!r.ok) return reply.code(409).send({ error: r.error });
     return chat.view();
   });

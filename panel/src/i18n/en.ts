@@ -554,6 +554,18 @@ export const en = {
   cmd_no_results: "No pages match.",
   cmd_hint_open: "⌘K to open",
 
+  // Keyboard shortcuts (shown in System view)
+  shortcuts_title: "Keyboard shortcuts",
+  shortcuts_show: "Keyboard shortcuts",
+  shortcuts_nav: "Navigation",
+  shortcuts_cmd_k: "Open navigation palette",
+  shortcuts_esc: "Close palette / modal",
+  shortcuts_arrow: "Move through palette results",
+  shortcuts_enter: "Select highlighted item",
+  shortcuts_chat: "Chat",
+  shortcuts_chat_send: "Send message",
+  shortcuts_chat_newline: "Insert newline",
+
   // Login
   login_title: "Control Panel",
   login_desc: "Enter the panel token to continue.",

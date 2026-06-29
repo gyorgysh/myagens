@@ -9,7 +9,7 @@ import {
   type ProbeResult,
   type UsageLimitWindow,
 } from "../api.ts";
-import { Bar, Card, Button, Empty, Metric } from "./ui.tsx";
+import { Bar, Card, Button, Empty, Metric, InfoCard } from "./ui.tsx";
 import { bytes, bytesPerSec, duration, uptime, relTime, friendlyProbeError } from "../lib/format.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import type { TranslationKey } from "../i18n/en.ts";
@@ -139,6 +139,7 @@ export function HealthView({ onGoto }: { onGoto?: (t: Tab) => void }) {
       </div>
 
       <MaintenanceCard />
+      <KeyboardShortcutsCard />
     </div>
   );
 }
@@ -594,5 +595,61 @@ function PreviewGroup({ label, tone, entries }: { label: string; tone: "delete" 
         ))}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard shortcuts card
+// ---------------------------------------------------------------------------
+
+type ShortcutRow = { keys: string[]; descKey: TranslationKey };
+
+const NAV_SHORTCUTS: ShortcutRow[] = [
+  { keys: ["⌘K", "Ctrl K"], descKey: "shortcuts_cmd_k" },
+  { keys: ["Esc"], descKey: "shortcuts_esc" },
+  { keys: ["↑ ↓"], descKey: "shortcuts_arrow" },
+  { keys: ["Enter"], descKey: "shortcuts_enter" },
+];
+
+const CHAT_SHORTCUTS: ShortcutRow[] = [
+  { keys: ["Enter"], descKey: "shortcuts_chat_send" },
+  { keys: ["Shift Enter"], descKey: "shortcuts_chat_newline" },
+];
+
+function ShortcutSection({ heading, rows }: { heading: string; rows: ShortcutRow[] }) {
+  const { t } = useI18n();
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-fg-faint">{heading}</p>
+      <div className="space-y-1">
+        {rows.map((row, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <div className="flex shrink-0 gap-1">
+              {row.keys.map((k) => (
+                <kbd
+                  key={k}
+                  className="mono-xs rounded border border-line bg-surface-2 px-1.5 py-0.5 text-fg-dim"
+                >
+                  {k}
+                </kbd>
+              ))}
+            </div>
+            <span className="text-xs text-fg-dim">{t(row.descKey)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function KeyboardShortcutsCard() {
+  const { t } = useI18n();
+  return (
+    <InfoCard id="keyboard-shortcuts" title={t("shortcuts_show")} openTitle={t("shortcuts_title")}>
+      <div className="space-y-4">
+        <ShortcutSection heading={t("shortcuts_nav")} rows={NAV_SHORTCUTS} />
+        <ShortcutSection heading={t("shortcuts_chat")} rows={CHAT_SHORTCUTS} />
+      </div>
+    </InfoCard>
   );
 }

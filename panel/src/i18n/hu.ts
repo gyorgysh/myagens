@@ -557,6 +557,18 @@ export const hu: Translations = {
   cmd_no_results: "Nincs találat.",
   cmd_hint_open: "⌘K a megnyitáshoz",
 
+  // Billentyűparancsok (Rendszer nézet)
+  shortcuts_title: "Billentyűparancsok",
+  shortcuts_show: "Billentyűparancsok",
+  shortcuts_nav: "Navigáció",
+  shortcuts_cmd_k: "Navigációs kereső megnyitása",
+  shortcuts_esc: "Kereső / ablak bezárása",
+  shortcuts_arrow: "Mozgás a találatok között",
+  shortcuts_enter: "Kijelölt elem megnyitása",
+  shortcuts_chat: "Csevegés",
+  shortcuts_chat_send: "Üzenet küldése",
+  shortcuts_chat_newline: "Sortörés beszúrása",
+
   // Bejelentkezés
   login_title: "Vezérlőpult",
   login_desc: "Add meg a panel tokent a folytatáshoz.",

@@ -16,6 +16,7 @@ type TaskMsg =
   | { type: "task"; event: "tool"; taskId: string; runId: string; tool: string }
   | { type: "task"; event: "queued"; taskId: string; column?: string }
   | { type: "task"; event: "queue"; paused: boolean }
+  | { type: "task"; event: "refresh" }
   | { type: "task"; event: "end"; taskId: string; runId: string; delegate?: TaskDelegation; column?: string };
 
 /**
@@ -58,6 +59,11 @@ export function useTaskEvents(
         }
         if (m.event === "queue") {
           onQueueRef.current?.(m.paused);
+          return;
+        }
+        if (m.event === "refresh") {
+          // Recurring templates spawned new backlog cards — reload the board.
+          onEndRef.current();
           return;
         }
         if (m.event === "queued") {

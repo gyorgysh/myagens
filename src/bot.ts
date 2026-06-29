@@ -36,7 +36,7 @@ import { sendVoiceReply, ttsEnabled } from "./telegram/tts.js";
 import { schedules, type ScheduleRunner } from "./schedule/manager.js";
 import { heartbeat } from "./core/heartbeat.js";
 import { taskDelegator } from "./core/taskRunner.js";
-import { createTask } from "./core/tasks.js";
+import { createTask, startRecurrenceTicker } from "./core/tasks.js";
 import { push } from "./core/push.js";
 import { fireWebhook, type WebhookSource } from "./core/webhook.js";
 import { resolveMainRunFor, isDryRun, dryRunDescription, DRY_RUN_TOOLS } from "./core/mainSettings.js";
@@ -303,6 +303,11 @@ export function buildBot(): Telegraf {
     return "started";
   };
   schedules.start(runScheduled);
+
+  // Recurring kanban templates: spawn fresh backlog copies on each card's
+  // cadence. Runs independently of the panel; a live board refresh is pushed
+  // via onRecurrenceFire (registered by the panel server) when the panel is up.
+  startRecurrenceTicker();
 
   // --- Heartbeat: proactive host/kanban monitoring (off unless enabled) ---
   const alertTargets = [...allowedUserIds];

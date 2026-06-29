@@ -31,12 +31,37 @@ export interface TaskDelegation {
   sessionId?: string;
 }
 
+/**
+ * Recurrence rule for a card that should repeat. The card carrying this rule is
+ * the *template*: it stays where it is, and on each due time a fresh copy of its
+ * title/notes/priority is dropped into the backlog column. Self-contained on
+ * purpose (not the schedule subsystem's ScheduleSpec) — a card only repeats on a
+ * simple wall-clock cadence.
+ */
+export type Recurrence =
+  | { kind: "daily"; hour: number; minute: number }
+  | { kind: "weekly"; dayOfWeek: number; hour: number; minute: number } // 0=Sun..6=Sat
+  | { kind: "monthly"; dayOfMonth: number; hour: number; minute: number }; // 1..31
+
+export interface TaskRecurrence {
+  rule: Recurrence;
+  /** Epoch ms of the next copy. Advanced after each fire. */
+  nextRunAt: number;
+  /** Epoch ms of the last copy created (for display / dedupe). */
+  lastRunAt?: number;
+}
+
 export interface Task {
   id: string;
   title: string;
   notes: string;
   column: Column;
   priority: Priority;
+  /**
+   * If set, this card is a recurring *template*: it stays put and spawns a fresh
+   * copy into the backlog on its cadence. Copies do not carry the recurrence.
+   */
+  recurrence?: TaskRecurrence;
   /** Optional parent for agent-created subtasks (auto-breakdown). */
   parentId?: string;
   /**
@@ -126,6 +151,60 @@ function isColumn(v: unknown): v is Column {
 
 function isPriority(v: unknown): v is Priority {
   return typeof v === "string" && (PRIORITIES as readonly string[]).includes(v);
+}
+
+/** Compute the next firing time (epoch ms) at or after `from` for a recurrence. */
+export function nextRecurrence(rule: Recurrence, from: number): number {
+  const d = new Date(from);
+  d.setSeconds(0, 0);
+  d.setHours(rule.hour, rule.minute);
+  if (rule.kind === "daily") {
+    if (d.getTime() <= from) d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }
+  if (rule.kind === "weekly") {
+    // Advance to the target weekday (today counts only if the time is still ahead).
+    let delta = (rule.dayOfWeek - d.getDay() + 7) % 7;
+    if (delta === 0 && d.getTime() <= from) delta = 7;
+    d.setDate(d.getDate() + delta);
+    return d.getTime();
+  }
+  // monthly: the Nth of each month. Clamp to the last day of short months.
+  const setDom = (base: Date) => {
+    const y = base.getFullYear();
+    const m = base.getMonth();
+    const lastDom = new Date(y, m + 1, 0).getDate();
+    base.setDate(Math.min(rule.dayOfMonth, lastDom));
+  };
+  setDom(d);
+  if (d.getTime() <= from) {
+    d.setDate(1); // avoid month overflow before re-clamping
+    d.setMonth(d.getMonth() + 1);
+    setDom(d);
+  }
+  return d.getTime();
+}
+
+/** Validate + normalise a recurrence rule from untrusted input. */
+export function normalizeRecurrence(input: unknown): Recurrence | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const r = input as Record<string, unknown>;
+  const hour = Number(r.hour);
+  const minute = Number(r.minute);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return undefined;
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) return undefined;
+  if (r.kind === "daily") return { kind: "daily", hour, minute };
+  if (r.kind === "weekly") {
+    const dow = Number(r.dayOfWeek);
+    if (!Number.isInteger(dow) || dow < 0 || dow > 6) return undefined;
+    return { kind: "weekly", dayOfWeek: dow, hour, minute };
+  }
+  if (r.kind === "monthly") {
+    const dom = Number(r.dayOfMonth);
+    if (!Number.isInteger(dom) || dom < 1 || dom > 31) return undefined;
+    return { kind: "monthly", dayOfMonth: dom, hour, minute };
+  }
+  return undefined;
 }
 
 export function listTasks(): Task[] {
@@ -241,6 +320,7 @@ export function createTask(input: {
   parentId?: string;
   blockedBy?: string[];
   createdBy?: string;
+  recurrence?: unknown;
 }): Task {
   const now = Date.now();
   const validCols = getColumnIds();
@@ -248,12 +328,14 @@ export function createTask(input: {
   const tasks = load();
   // New card goes to the end of its column.
   const maxOrder = Math.max(0, ...tasks.filter((t) => t.column === column).map((t) => t.order));
+  const rule = normalizeRecurrence(input.recurrence);
   const task: Task = {
     id: randomBytes(4).toString("hex"),
     title: input.title.trim() || "Untitled",
     notes: input.notes?.trim() ?? "",
     column,
     priority: isPriority(input.priority) ? input.priority : "normal",
+    recurrence: rule ? { rule, nextRunAt: nextRecurrence(rule, now) } : undefined,
     parentId: input.parentId,
     blockedBy: cleanBlockedBy(input.blockedBy),
     order: maxOrder + 1,
@@ -275,6 +357,11 @@ export interface TaskPatch {
   order?: number;
   /** Replace the card's prerequisite list (pass [] to clear). */
   blockedBy?: string[];
+  /**
+   * Set/replace the recurrence rule, or pass `null` to stop the card repeating.
+   * Anything else (a malformed object) is ignored.
+   */
+  recurrence?: Recurrence | null;
 }
 
 export function updateTask(id: string, patch: TaskPatch): Task | undefined {
@@ -287,6 +374,19 @@ export function updateTask(id: string, patch: TaskPatch): Task | undefined {
   if (isPriority(patch.priority)) task.priority = patch.priority;
   if (typeof patch.order === "number") task.order = patch.order;
   if (patch.blockedBy !== undefined) task.blockedBy = cleanBlockedBy(patch.blockedBy, id);
+  if (patch.recurrence === null) {
+    task.recurrence = undefined;
+  } else if (patch.recurrence !== undefined) {
+    const rule = normalizeRecurrence(patch.recurrence);
+    if (rule) {
+      // Keep lastRunAt if the cadence is unchanged; recompute nextRunAt either way.
+      task.recurrence = {
+        rule,
+        nextRunAt: nextRecurrence(rule, Date.now()),
+        lastRunAt: task.recurrence?.lastRunAt,
+      };
+    }
+  }
   task.updatedAt = Date.now();
   persist(tasks);
   audit("task.update", { id, column: task.column });
@@ -397,4 +497,86 @@ export function autoArchive(): void {
   }
 
   if (changed) persist(tasks);
+}
+
+/**
+ * Spawn fresh backlog copies for any recurring template whose nextRunAt has
+ * passed, advancing each template's schedule. The template card itself is left
+ * in place; the copy carries the title/notes/priority but NOT the recurrence
+ * (so copies never repeat themselves). Returns the ids of the cards created so
+ * callers can broadcast / log. Safe to call frequently — it's a no-op when
+ * nothing is due. Catches up missed fires by advancing to the next future slot.
+ */
+export function runDueRecurrences(): string[] {
+  const now = Date.now();
+  const tasks = load();
+  const templates = tasks.filter((t) => t.recurrence && t.recurrence.nextRunAt <= now);
+  if (templates.length === 0) return [];
+  const backlog = getColumnIds()[0] ?? "backlog";
+  const created: string[] = [];
+  for (const tpl of templates) {
+    const rec = tpl.recurrence!;
+    const maxOrder = Math.max(0, ...tasks.filter((t) => t.column === backlog).map((t) => t.order));
+    const copy: Task = {
+      id: randomBytes(4).toString("hex"),
+      title: tpl.title,
+      notes: tpl.notes,
+      column: backlog,
+      priority: tpl.priority,
+      order: maxOrder + 1,
+      createdBy: "schedule",
+      createdAt: now,
+      updatedAt: now,
+    };
+    tasks.push(copy);
+    created.push(copy.id);
+    // Advance to the next future slot (skip any missed ones in one hop).
+    let nextAt = nextRecurrence(rec.rule, now);
+    if (nextAt <= now) nextAt = nextRecurrence(rec.rule, nextAt);
+    rec.lastRunAt = now;
+    rec.nextRunAt = nextAt;
+    audit("task.recurrence_fire", { templateId: tpl.id, copyId: copy.id });
+  }
+  persist(tasks);
+  return created;
+}
+
+let recurrenceTimer: ReturnType<typeof setInterval> | undefined;
+/**
+ * Optional sink for "cards were just spawned by recurrence" notifications. The
+ * panel server registers one so it can push a board refresh to clients; if the
+ * panel is disabled this stays unset and the ticker simply creates the cards.
+ */
+let recurrenceListener: ((ids: string[]) => void) | undefined;
+
+/** Register a callback invoked with new card ids each time recurrences fire. */
+export function onRecurrenceFire(fn: (ids: string[]) => void): void {
+  recurrenceListener = fn;
+}
+
+/**
+ * Start the recurring-card ticker: every 60s it spawns backlog copies for any
+ * due template. Idempotent — a second call is a no-op. Runs regardless of the
+ * panel; live refreshes flow through {@link onRecurrenceFire} when registered.
+ */
+export function startRecurrenceTicker(): void {
+  if (recurrenceTimer) return;
+  const tick = () => {
+    try {
+      const ids = runDueRecurrences();
+      if (ids.length) recurrenceListener?.(ids);
+    } catch {
+      // Never let a bad rule kill the ticker.
+    }
+  };
+  recurrenceTimer = setInterval(tick, 60_000);
+  recurrenceTimer.unref?.();
+  tick(); // catch up immediately on boot
+}
+
+export function stopRecurrenceTicker(): void {
+  if (recurrenceTimer) {
+    clearInterval(recurrenceTimer);
+    recurrenceTimer = undefined;
+  }
 }

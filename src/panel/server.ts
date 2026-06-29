@@ -47,6 +47,7 @@ import {
   pruneArchive,
   autoArchive,
   blockingPrereqs,
+  onRecurrenceFire,
 } from "../core/tasks.js";
 import {
   listColumns,
@@ -144,6 +145,8 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
   tunnelManager.start((m) => hub.broadcast(m));
   // Push suggestion-inbox changes to every panel client.
   suggestions.onChange(() => hub.broadcast({ type: "suggestion", suggestions: suggestions.list() }));
+  // Tell clients to reload the board when recurring templates spawn fresh cards.
+  onRecurrenceFire(() => hub.broadcast({ type: "task", event: "refresh" }));
   // Stream live log lines to every panel client.
   const unsubLog = onLog((entry) => hub.broadcast({ type: "log", entry }));
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, AuthError, type Column, type ColumnDef, type Priority, type QueueState, type Task, type TaskRunConfig, type Wip, type Worker } from "../api.ts";
+import { api, AuthError, type Column, type ColumnDef, type Priority, type QueueState, type Recurrence, type Task, type TaskRunConfig, type Wip, type Worker } from "../api.ts";
 import { useTaskEvents, type LiveTask } from "../lib/useTaskEvents.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import { toast } from "../lib/useToast.ts";
@@ -8,7 +8,7 @@ import { Button, Callout, Empty, InfoCard, Input, Skeleton, TextArea } from "./u
 import { TasksArt } from "./onboarding.tsx";
 import { RunLog } from "./RunLog.tsx";
 import { Markdown } from "../lib/markdown.tsx";
-import { ChevronDown, ChevronUp, Pencil, X, Check } from "lucide-react";
+import { ChevronDown, ChevronUp, Pencil, X, Check, Repeat } from "lucide-react";
 import type { TranslationKey } from "../i18n/en.ts";
 
 /** Translate a default column name when it hasn't been renamed by the user. */
@@ -894,6 +894,7 @@ function Card({
   const [notes, setNotes] = useState(task.notes);
   const [priority, setPriority] = useState<Priority>(task.priority);
   const [blockedBy, setBlockedBy] = useState<string[]>(task.blockedBy ?? []);
+  const [recurrence, setRecurrence] = useState<Recurrence | null>(task.recurrence?.rule ?? null);
   const isDone = task.column.toLowerCase().includes("done") || task.column === "archive";
   const [delegateOpen, setDelegateOpen] = useState(!isDone);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -920,7 +921,8 @@ function Card({
 
   const save = async () => {
     try {
-      await api.updateTask(task.id, { title, notes, priority, blockedBy });
+      // recurrence rides in the same PATCH: a rule sets/updates it, null clears it.
+      await api.updateTask(task.id, { title, notes, priority, blockedBy, recurrence });
       setEditing(false);
       onChange();
     } catch (e) {
@@ -988,6 +990,7 @@ function Card({
           value={blockedBy}
           onChange={setBlockedBy}
         />
+        <RepeatPicker value={recurrence} onChange={setRecurrence} />
         <div className="flex gap-1.5">
           <Button variant="primary" onClick={save}>
             {t("save")}
@@ -1054,7 +1057,18 @@ function Card({
             }
           }}
         >
-          <div className="text-sm text-fg">{task.title}</div>
+          <div className="flex items-start gap-1.5">
+            <span className="min-w-0 flex-1 text-sm text-fg">{task.title}</span>
+            {task.recurrence && (
+              <span
+                className="mt-0.5 flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent"
+                title={t(`tasks_repeat_${task.recurrence.rule.kind}` as TranslationKey)}
+              >
+                <Repeat size={10} />
+                {t(`tasks_repeat_${task.recurrence.rule.kind}` as TranslationKey)}
+              </span>
+            )}
+          </div>
           {task.notes && (
             <>
               {/* Inline markdown preview on every card. Notes can be long and now
@@ -1371,6 +1385,138 @@ function DependencyPicker({
                 {c.column === "done" && <Check size={14} className="ml-auto text-ok-fg" />}
               </label>
             ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Collapsible repeat-schedule picker. A card with a recurrence acts as a
+ * template: it stays put while the ticker drops a fresh copy into the backlog
+ * on each cadence. `null` means no repeat; otherwise a daily/weekly/monthly rule
+ * with an hour:minute (and a day-of-week / day-of-month where relevant).
+ */
+function RepeatPicker({
+  value,
+  onChange,
+}: {
+  value: Recurrence | null;
+  onChange: (next: Recurrence | null) => void;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(value != null);
+
+  const kind = value?.kind ?? "none";
+  const hour = value?.kind ? value.hour : 9;
+  const minute = value?.kind ? value.minute : 0;
+  const dayOfWeek = value?.kind === "weekly" ? value.dayOfWeek : 1;
+  const dayOfMonth = value?.kind === "monthly" ? value.dayOfMonth : 1;
+
+  const setKind = (k: string) => {
+    if (k === "none") return onChange(null);
+    if (k === "daily") return onChange({ kind: "daily", hour, minute });
+    if (k === "weekly") return onChange({ kind: "weekly", dayOfWeek, hour, minute });
+    onChange({ kind: "monthly", dayOfMonth, hour, minute });
+  };
+  const setTime = (h: number, m: number) => {
+    if (!value) return;
+    onChange({ ...value, hour: h, minute: m } as Recurrence);
+  };
+
+  const weekdayKeys: TranslationKey[] = [
+    "weekday_sun",
+    "weekday_mon",
+    "weekday_tue",
+    "weekday_wed",
+    "weekday_thu",
+    "weekday_fri",
+    "weekday_sat",
+  ];
+  const hh = String(hour).padStart(2, "0");
+  const mm = String(minute).padStart(2, "0");
+
+  return (
+    <div className="mb-2 rounded border border-line bg-surface px-2 py-1.5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-xs text-fg-dim hover:text-fg"
+      >
+        <span className="flex items-center gap-1">
+          <Repeat size={13} />
+          {t("tasks_repeat")}
+          {value && (
+            <span className="ml-1 text-accent">
+              ({t(`tasks_repeat_${value.kind}` as TranslationKey)})
+            </span>
+          )}
+        </span>
+        <span className="opacity-50">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-2">
+          <div className="flex flex-wrap gap-1">
+            {(["none", "daily", "weekly", "monthly"] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setKind(k)}
+                className={`rounded px-2 py-1 text-xs ${
+                  kind === k ? "bg-accent/15 text-accent" : "text-fg-dim hover:bg-surface-2"
+                }`}
+              >
+                {t(`tasks_repeat_${k}` as TranslationKey)}
+              </button>
+            ))}
+          </div>
+          {value?.kind === "weekly" && (
+            <div className="flex flex-wrap gap-1">
+              {weekdayKeys.map((wk, i) => (
+                <button
+                  key={wk}
+                  onClick={() => onChange({ ...value, dayOfWeek: i })}
+                  className={`rounded px-2 py-1 text-xs ${
+                    value.dayOfWeek === i
+                      ? "bg-accent/15 text-accent"
+                      : "text-fg-dim hover:bg-surface-2"
+                  }`}
+                >
+                  {t(wk)}
+                </button>
+              ))}
+            </div>
+          )}
+          {value?.kind === "monthly" && (
+            <label className="flex items-center gap-2 text-xs text-fg-dim">
+              <span>{t("tasks_repeat_day_of_month")}</span>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={dayOfMonth}
+                onChange={(e) =>
+                  onChange({
+                    ...value,
+                    dayOfMonth: Math.min(31, Math.max(1, Number(e.target.value) || 1)),
+                  })
+                }
+                className="w-16 rounded border border-line bg-input px-1.5 py-1 text-fg"
+              />
+            </label>
+          )}
+          {value && (
+            <label className="flex items-center gap-2 text-xs text-fg-dim">
+              <span>{t("tasks_repeat_at")}</span>
+              <input
+                type="time"
+                value={`${hh}:${mm}`}
+                onChange={(e) => {
+                  const [h, m] = e.target.value.split(":").map((x) => Number(x) || 0);
+                  setTime(h ?? 0, m ?? 0);
+                }}
+                className="rounded border border-line bg-input px-1.5 py-1 text-fg"
+              />
+            </label>
           )}
         </div>
       )}

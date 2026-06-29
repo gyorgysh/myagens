@@ -194,12 +194,24 @@ export interface TaskDelegation {
   error?: string;
   output?: string;
 }
+/** A card's repeat rule (mirrors src/core/tasks.ts Recurrence). */
+export type Recurrence =
+  | { kind: "daily"; hour: number; minute: number }
+  | { kind: "weekly"; dayOfWeek: number; hour: number; minute: number }
+  | { kind: "monthly"; dayOfMonth: number; hour: number; minute: number };
+export interface TaskRecurrence {
+  rule: Recurrence;
+  nextRunAt: number;
+  lastRunAt?: number;
+}
 export interface Task {
   id: string;
   title: string;
   notes: string;
   column: Column;
   priority: Priority;
+  /** When set, this card is a recurring template that spawns backlog copies. */
+  recurrence?: TaskRecurrence;
   parentId?: string;
   /** Ids of cards this one is blocked by (must reach done before it can run). */
   blockedBy?: string[];
@@ -850,9 +862,19 @@ export const api = {
     get<{ tasks: Task[]; columns: ColumnDef[]; wip: Wip; config: TaskRunConfig; queue: QueueState }>("/api/tasks"),
   saveTasksConfig: (c: Partial<TaskRunConfig>) =>
     req<{ config: TaskRunConfig }>("PUT", "/api/tasks/config", c),
-  createTask: (t: { title: string; notes?: string; column?: Column; priority?: Priority }) =>
-    req<Task>("POST", "/api/tasks", t),
-  updateTask: (id: string, t: Partial<Task>) => req<Task>("PATCH", `/api/tasks/${id}`, t),
+  createTask: (t: {
+    title: string;
+    notes?: string;
+    column?: Column;
+    priority?: Priority;
+    recurrence?: Recurrence;
+  }) => req<Task>("POST", "/api/tasks", t),
+  updateTask: (
+    id: string,
+    // recurrence is the rule (or null to clear), distinct from Task.recurrence
+    // which wraps it with scheduling state.
+    t: Partial<Omit<Task, "recurrence">> & { recurrence?: Recurrence | null },
+  ) => req<Task>("PATCH", `/api/tasks/${id}`, t),
   reorderTasks: (moves: Array<{ id: string; column: Column; order: number }>) =>
     req<{ tasks: Task[] }>("POST", "/api/tasks/reorder", { moves }),
   deleteTask: (id: string) => req<{ ok: boolean }>("DELETE", `/api/tasks/${id}`),

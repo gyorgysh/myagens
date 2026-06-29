@@ -95,6 +95,9 @@ export const en = {
   conn_reloading: "Backend is back — reloading…",
   conn_retry_in: "Retrying in {s}s",
   conn_retry_now: "Retry now",
+  conn_locked: "Access temporarily locked",
+  conn_locked_hint: "Too many failed sign-ins from this network. Access is paused.",
+  conn_locked_retry: "Try again in ~{m} min",
   // Common labels
   model: "Model",
   provider: "Provider",

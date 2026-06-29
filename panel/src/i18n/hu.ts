@@ -97,6 +97,9 @@ export const hu: Translations = {
   conn_reloading: "A backend újra elérhető — újratöltés…",
   conn_retry_in: "Újrapróbálkozás {s} mp múlva",
   conn_retry_now: "Újrapróbálás most",
+  conn_locked: "Hozzáférés ideiglenesen zárolva",
+  conn_locked_hint: "Túl sok sikertelen bejelentkezés erről a hálózatról. A hozzáférés szünetel.",
+  conn_locked_retry: "Próbáld újra ~{m} perc múlva",
   // Általános feliratok
   model: "Modell",
   provider: "Szolgáltató",

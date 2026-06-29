@@ -76,6 +76,7 @@ import {
   createProvider,
   updateProvider,
   deleteProvider,
+  providerKind,
 } from "../core/providers.js";
 import { fetchProviderModels } from "../core/providerModels.js";
 import { BlockedUrlError } from "../core/safeUrl.js";
@@ -217,9 +218,16 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
     if (!req.url.startsWith("/api") && !req.url.startsWith("/ws")) return;
     const ip = clientIp(req);
     // Lock out a client that has failed repeatedly, so the long random token
-    // can't be brute-forced over the network.
-    if (isLockedOut(ip)) {
-      await reply.code(429).send({ error: "too many attempts, try again later" });
+    // can't be brute-forced over the network. Loopback is exempt (handled inside
+    // lockoutRemainingMs) so a local operator can't lock themselves out. Surface
+    // the remaining time so the SPA can show "try again in N minutes".
+    const lockedMs = lockoutRemainingMs(ip);
+    if (lockedMs > 0) {
+      const retryAfter = Math.ceil(lockedMs / 1000);
+      await reply
+        .code(429)
+        .header("Retry-After", String(retryAfter))
+        .send({ error: "too many attempts, try again later", lockout: true, retryAfterMs: lockedMs });
       return;
     }
     // SEC-9 (CSRF): mutating requests must prove they are not a forged
@@ -357,9 +365,23 @@ const SCHEDULE_PROMPT_MAX = 20_000;
 // A panel token grants host access, so throttle repeated auth failures per
 // client IP. In-memory only (no dep): after MAX_FAILS failures the IP is locked
 // for LOCKOUT_MS; a success clears the counter. Cleared on restart.
+//
+// Loopback (localhost / 127.0.0.1 / ::1) is exempt: a local operator with a few
+// browser tabs or a stale token can otherwise lock themselves out of their own
+// machine, which is pointless — there is no over-the-network brute-force threat
+// from the host itself. The lockout only defends against remote attackers, so it
+// only applies to non-loopback clients (the realistic attack surface, e.g. via a
+// tunnel/reverse proxy).
 const MAX_FAILS = 10;
-const LOCKOUT_MS = 5 * 60_000;
+const LOCKOUT_MS = 15 * 60_000;
 const authFailures = new Map<string, { count: number; lockedUntil: number }>();
+
+/** True for loopback addresses, which are exempt from the brute-force lockout. */
+function isLoopback(ip: string): boolean {
+  // Strip an IPv4-mapped-IPv6 prefix (::ffff:127.0.0.1) and any zone id.
+  const a = ip.replace(/^::ffff:/i, "").replace(/%.*$/, "");
+  return a === "127.0.0.1" || a.startsWith("127.") || a === "::1" || a === "localhost";
+}
 
 // --- Per-client rate limit on mutating API routes ----------------------------
 // A valid PANEL_TOKEN grants full host access; even a legitimate holder must not
@@ -393,16 +415,20 @@ function clientIp(req: FastifyRequest): string {
   return "unknown";
 }
 
-function isLockedOut(ip: string): boolean {
+/** Milliseconds remaining on an active lockout for this IP, else 0. */
+function lockoutRemainingMs(ip: string): number {
+  if (isLoopback(ip)) return 0; // loopback is never locked out
   const e = authFailures.get(ip);
-  if (!e) return false;
-  if (e.lockedUntil && e.lockedUntil > Date.now()) return true;
+  if (!e || !e.lockedUntil) return 0;
+  const remaining = e.lockedUntil - Date.now();
+  if (remaining > 0) return remaining;
   // Lockout window elapsed: reset so the client gets a fresh allowance.
-  if (e.lockedUntil && e.lockedUntil <= Date.now()) authFailures.delete(ip);
-  return false;
+  authFailures.delete(ip);
+  return 0;
 }
 
 function noteAuthFailure(ip: string): void {
+  if (isLoopback(ip)) return; // never lock a local operator out of their own host
   const e = authFailures.get(ip) ?? { count: 0, lockedUntil: 0 };
   e.count += 1;
   if (e.count >= MAX_FAILS) {
@@ -1156,7 +1182,11 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   app.get("/api/workers", async () => ({
     workers: workers.list().map(workerView),
     skills: listSkills().map((s) => ({ id: s.id, name: s.name })),
-    providers: listProviders().map((p) => ({ id: p.id, name: p.name })),
+    providers: listProviders().map((p) => ({
+      id: p.id,
+      name: p.name,
+      kind: providerKind(p.baseUrl),
+    })),
   }));
   app.post("/api/workers", async (req, reply) => {
     const hook = (req.body as { webhookUrl?: string })?.webhookUrl;

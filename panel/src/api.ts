@@ -59,6 +59,36 @@ export function openHealthSocket(): WebSocket {
   return new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
 }
 
+/** Result of probing whether the backend has locked this client out (429). */
+export interface LockoutProbe {
+  locked: boolean;
+  /** Seconds remaining on the lockout (best-effort, from Retry-After / body). */
+  retryAfterSec: number;
+}
+
+/**
+ * Cheap unauthenticated-friendly probe to tell a real backend outage apart from
+ * a brute-force lockout. The health WebSocket fails silently on a 429 (the
+ * browser can't read the handshake status), so when it won't open we hit a plain
+ * REST endpoint and read the 429 + Retry-After the server attaches to a lockout.
+ */
+export async function probeLockout(): Promise<LockoutProbe> {
+  try {
+    const res = await fetch("/api/me", { headers: authHeaders() });
+    if (res.status !== 429) return { locked: false, retryAfterSec: 0 };
+    const header = Number(res.headers.get("retry-after"));
+    let retryAfterSec = Number.isFinite(header) && header > 0 ? header : 0;
+    if (!retryAfterSec) {
+      const body = (await res.json().catch(() => null)) as { retryAfterMs?: number } | null;
+      if (body?.retryAfterMs) retryAfterSec = Math.ceil(body.retryAfterMs / 1000);
+    }
+    return { locked: true, retryAfterSec };
+  } catch {
+    // Network error → genuine outage, not a lockout.
+    return { locked: false, retryAfterSec: 0 };
+  }
+}
+
 // --- Shapes mirrored from src/core (kept in sync by hand; small + stable). ---
 
 export interface UsageStat {
@@ -105,6 +135,8 @@ export interface ScheduleView {
   specRaw: string;
   nextRunAt: number;
   lastRunAt?: number;
+  lastError?: string;
+  busySince?: number;
   createdAt: number;
   enabled: boolean;
   webhookUrl?: string;
@@ -196,6 +228,16 @@ export interface QueueState {
   queued: number;
   /** Cards held waiting on a blockedBy prerequisite. */
   blocked?: number;
+}
+
+/** Coarse provider classification (mirrors ProviderKind on the backend). */
+export type ProviderKind = "anthropic" | "ollama" | "lmstudio" | "custom";
+
+/** A provider option for the worker form, with its endpoint type for display. */
+export interface NamedProvider {
+  id: string;
+  name: string;
+  kind: ProviderKind;
 }
 
 export interface Worker {
@@ -823,7 +865,7 @@ export const api = {
     get<{
       workers: Worker[];
       skills: Array<{ id: string; name: string }>;
-      providers: Array<{ id: string; name: string }>;
+      providers: NamedProvider[];
     }>("/api/workers"),
   createWorker: (w: Partial<Worker>) => req<Worker>("POST", "/api/workers", w),
   updateWorker: (id: string, w: Partial<Worker>) => req<Worker>("PUT", `/api/workers/${id}`, w),

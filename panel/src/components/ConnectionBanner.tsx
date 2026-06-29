@@ -60,22 +60,35 @@ export function ConnectionBanner() {
 
   const ok = status === "live"; // showing the reconnected / reloading flash
   const offline = status === "offline";
+  const locked = status === "locked";
 
+  // Lockout and outage both read as "something is wrong" (critical red); a plain
+  // reconnect is a softer amber.
   const tone = ok
     ? "bg-ok-subtle text-ok-fg border-ok/30"
-    : offline
+    : offline || locked
       ? "bg-critical-subtle text-critical-fg border-critical/30"
       : "bg-warn-subtle text-warn-fg border-warn/30";
 
-  const dot = ok ? "bg-ok" : offline ? "bg-critical" : "bg-warn";
+  const dot = ok ? "bg-ok" : offline || locked ? "bg-critical" : "bg-warn";
 
   const title = reloading
     ? t("conn_reloading")
     : ok
       ? t("conn_reconnected")
-      : offline
-        ? t("conn_offline")
-        : t("conn_reconnecting");
+      : locked
+        ? t("conn_locked")
+        : offline
+          ? t("conn_offline")
+          : t("conn_reconnecting");
+
+  // A lockout has a known retry window, so phrase the countdown as minutes
+  // ("try again in ~N min") rather than the per-attempt "retrying in Ns".
+  const retryLabel = locked
+    ? t("conn_locked_retry").replace("{m}", String(Math.max(1, Math.ceil(retryIn / 60))))
+    : retryIn > 0
+      ? t("conn_retry_in").replace("{s}", String(retryIn))
+      : "";
 
   return (
     // Opaque base layer so page content scrolling under this sticky bar can't
@@ -96,23 +109,29 @@ export function ConnectionBanner() {
 
         {!ok && (
           <span className="text-fg-dim">
-            {offline ? t("conn_offline_hint") : t("conn_reconnecting_hint")}
+            {locked
+              ? t("conn_locked_hint")
+              : offline
+                ? t("conn_offline_hint")
+                : t("conn_reconnecting_hint")}
           </span>
         )}
 
         {!ok && (
           <span className="ml-auto flex items-center gap-2">
-            {retryIn > 0 && (
-              <span className="tabular-nums text-fg-dim">
-                {t("conn_retry_in").replace("{s}", String(retryIn))}
-              </span>
+            {retryLabel && (
+              <span className="tabular-nums text-fg-dim">{retryLabel}</span>
             )}
-            <button
-              onClick={retryNow}
-              className="rounded-md border border-current/30 px-2 py-0.5 text-xs font-medium hover:bg-current/10"
-            >
-              {t("conn_retry_now")}
-            </button>
+            {/* During a lockout the backend will keep rejecting us until the
+                window elapses, so a manual retry is pointless — hide it. */}
+            {!locked && (
+              <button
+                onClick={retryNow}
+                className="rounded-md border border-current/30 px-2 py-0.5 text-xs font-medium hover:bg-current/10"
+              >
+                {t("conn_retry_now")}
+              </button>
+            )}
           </span>
         )}
         </div>

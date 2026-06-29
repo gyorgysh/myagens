@@ -9,14 +9,16 @@
 //   "live"         connected and receiving the hub's periodic health push
 //   "reconnecting" we were connected and lost it; retrying with backoff
 //   "offline"      repeated failures (or never connected) — backend likely down
+//   "locked"       the backend returned 429 (brute-force lockout); we know the
+//                  retry window, so we wait it out instead of hammering
 //
 // The hub broadcasts a health frame every ~2s on /ws, so a missing heartbeat for
 // HEARTBEAT_TIMEOUT_MS means the socket is stale even if onclose never fired.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { openHealthSocket } from "../api.ts";
+import { openHealthSocket, probeLockout } from "../api.ts";
 
-export type ConnStatus = "live" | "reconnecting" | "offline";
+export type ConnStatus = "live" | "reconnecting" | "offline" | "locked";
 
 // After this many consecutive failed attempts we escalate reconnecting → offline.
 const OFFLINE_AFTER_ATTEMPTS = 2;
@@ -65,13 +67,9 @@ export function useConnection(): Connection {
     }, HEARTBEAT_TIMEOUT_MS);
   }, []);
 
-  const scheduleRetry = useCallback(() => {
-    const attempt = attemptsRef.current;
-    setStatus(attempt >= OFFLINE_AFTER_ATTEMPTS ? "offline" : "reconnecting");
-    const delay = Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS);
-
-    // Live countdown so the banner can show "retrying in Ns".
-    let remaining = Math.ceil(delay / 1000);
+  // Start a live countdown to the next retry and arm the retry timer.
+  const armRetry = useCallback((delayMs: number) => {
+    let remaining = Math.ceil(delayMs / 1000);
     setRetryIn(remaining);
     clearInterval(countdownTimer.current);
     countdownTimer.current = setInterval(() => {
@@ -79,10 +77,28 @@ export function useConnection(): Connection {
       setRetryIn(remaining > 0 ? remaining : 0);
       if (remaining <= 0) clearInterval(countdownTimer.current);
     }, 1000);
-
     clearTimeout(retryTimer.current);
-    retryTimer.current = setTimeout(() => connectRef.current(), delay);
+    retryTimer.current = setTimeout(() => connectRef.current(), delayMs);
   }, []);
+
+  const scheduleRetry = useCallback(() => {
+    const attempt = attemptsRef.current;
+    setStatus(attempt >= OFFLINE_AFTER_ATTEMPTS ? "offline" : "reconnecting");
+    const delay = Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS);
+    armRetry(delay);
+
+    // The WS handshake can't read a 429, so a brute-force lockout is
+    // indistinguishable from an outage here. Probe a REST endpoint to tell them
+    // apart: if we're locked out, surface it and wait the full lockout window
+    // (no point hammering — every attempt just refreshes nothing).
+    void probeLockout().then((p) => {
+      if (closedRef.current) return;
+      if (p.locked) {
+        setStatus("locked");
+        if (p.retryAfterSec > 0) armRetry(p.retryAfterSec * 1000);
+      }
+    });
+  }, [armRetry]);
 
   const connect = useCallback(() => {
     if (closedRef.current) return;

@@ -6,7 +6,7 @@ import { useI18n } from "../lib/useI18n.ts";
 import { Markdown } from "../lib/markdown.tsx";
 import { roleLabel } from "../lib/agentRole.ts";
 import { Button } from "./ui.tsx";
-import { Lock, Settings2, Plus, ClipboardList, Zap } from "lucide-react";
+import { Settings2, Plus, ClipboardList, Zap } from "lucide-react";
 
 /** Sentinel id for the main Atlas chat (the Telegram-mirrored session). */
 const ATLAS = "atlas";
@@ -375,8 +375,7 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
   };
 
   const toggleAuto = async () => {
-    if (!view?.bypassAllowed) return;
-    setView(await api.chatSettings({ auto: !view.auto }));
+    setView(await api.chatSettings({ auto: !view?.auto }));
   };
   const saveCwd = async (cwd: string) => {
     setEditingCwd(false);
@@ -421,13 +420,11 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
       <div className="flex items-center gap-2">
         <button
           onClick={toggleAuto}
-          disabled={!view?.bypassAllowed}
-          title={view?.bypassAllowed ? t("chat_toggle_auto") : t("chat_toggle_locked")}
+          title={t("chat_toggle_auto")}
           className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
             view?.auto ? "bg-warn-subtle text-warn-fg" : "bg-surface-2 text-fg-dim"
-          } ${view?.bypassAllowed ? "" : "cursor-not-allowed opacity-60"}`}
+          }`}
         >
-          {!view?.bypassAllowed && <Lock size={11} className="mr-1 inline" />}
           {view?.auto ? t("chat_auto") : t("chat_safe")}
         </button>
         <Button variant="ghost" onClick={async () => view && setView(await api.clearChat())} disabled={busy}>

@@ -523,7 +523,6 @@ export const hu: Translations = {
   chat_shared_badge: "Telegrammal megosztva",
   chat_change_cwd: "Munkakönyvtár módosítása",
   chat_toggle_auto: "Automatikus futtatás be/ki (jóváhagyások átugrása)",
-  chat_toggle_locked: "Állítsd be a PANEL_CHAT_BYPASS=true értéket és indítsd újra a feloldáshoz",
   chat_auto: "● auto",
   chat_safe: "○ biztonságos",
   chat_clear: "Törlés",

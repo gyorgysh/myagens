@@ -520,7 +520,6 @@ export const en = {
   chat_shared_badge: "shared with Telegram",
   chat_change_cwd: "Change working directory",
   chat_toggle_auto: "Toggle auto-run (bypass approvals)",
-  chat_toggle_locked: "Set PANEL_CHAT_BYPASS=true and restart to unlock",
   chat_auto: "● auto",
   chat_safe: "○ safe",
   chat_clear: "Clear",

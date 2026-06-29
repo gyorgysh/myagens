@@ -166,13 +166,6 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
-  // Panel chat: unlock "auto" (bypassPermissions) mode for the in-panel chat.
-  // Off by default — the chat then gates every risky tool behind an in-panel
-  // approve/deny prompt. Set true + restart to allow auto-run without prompts.
-  PANEL_CHAT_BYPASS: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((v) => v === "true"),
   // Panel terminal: a full interactive host shell streamed over /ws. A panel
   // token holder gets arbitrary command execution as the bot's user, so this is
   // OFF by default and must be explicitly opted into. Set true + restart to enable.

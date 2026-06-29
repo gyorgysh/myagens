@@ -45,10 +45,6 @@ export class ChatManager {
     return config.PANEL_CHAT_ENABLED;
   }
 
-  private get bypassAllowed(): boolean {
-    return config.PANEL_CHAT_BYPASS;
-  }
-
   /** The main Telegram session, or undefined if no allowed user is configured. */
   private mainSession() {
     const id = mainChatId();
@@ -63,7 +59,6 @@ export class ChatManager {
       messages: chatBridge.history(),
       cwd: s?.cwd ?? config.WORKDIR,
       busy: s?.busy ?? false,
-      bypassAllowed: this.bypassAllowed,
       // "auto" maps to the shared session's full-autonomy mode.
       auto: s?.autonomy === "full",
       hasContext: Boolean(s?.sessionId),
@@ -83,7 +78,6 @@ export class ChatManager {
   setAuto(auto: boolean): void {
     const s = this.mainSession();
     if (!s) return;
-    if (auto && !this.bypassAllowed) return; // locked unless env unlocks it
     s.autonomy = auto ? "full" : "standard";
     sessions.save();
   }

@@ -588,7 +588,6 @@ export interface ChatView {
   messages: ChatMessage[];
   cwd: string;
   busy: boolean;
-  bypassAllowed: boolean;
   auto: boolean;
   hasContext: boolean;
   /** Approvals are handled in Telegram (the panel mirrors the main chat). */

@@ -1295,6 +1295,8 @@ export const hu: Translations = {
   updates_whatsnew_latest_body: "Íme, mi került a jelenlegi kiadásba.",
   updates_release_history: "Kiadási előzmények",
   updates_show_all: "Összes mutatása ({n})",
+  updates_show_less: "Kevesebb mutatása",
+  updates_year_count: "{n} kiadás",
 
   // Terminál
   terminal_connecting: "Csatlakozás…",

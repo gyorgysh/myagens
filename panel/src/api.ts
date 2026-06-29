@@ -840,6 +840,7 @@ export const api = {
   checkUpdate: () => req<UpdateStatus>("POST", "/api/update/check"),
   runUpdate: () => req<{ started: boolean }>("POST", "/api/update/run"),
   restoreUpdate: () => req<{ started: boolean }>("POST", "/api/update/restore"),
+  changelog: () => get<{ content: string }>("/api/update/changelog"),
 
   claudeUsage: () => get<ClaudeUsageSnapshot>("/api/claude-usage"),
 

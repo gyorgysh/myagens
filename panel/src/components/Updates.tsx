@@ -53,6 +53,36 @@ function parseChangelog(md: string): ChangelogEntry[] {
   return entries.map((e) => ({ ...e, body: e.body.trim() }));
 }
 
+// Pull a 4-digit year out of an entry's date string (e.g. "2025-03-14" or
+// "March 14, 2025"). Falls back to "—" when no year is present so malformed
+// dates still group together rather than vanish.
+function entryYear(e: ChangelogEntry): string {
+  const m = e.date.match(/\b(20\d{2}|19\d{2})\b/);
+  return m ? m[1] : "—";
+}
+
+// Group entries into year buckets, preserving the (already version-sorted)
+// order within each bucket. Returns buckets newest-year-first.
+function groupByYear(entries: ChangelogEntry[]): { year: string; entries: ChangelogEntry[] }[] {
+  const order: string[] = [];
+  const byYear = new Map<string, ChangelogEntry[]>();
+  for (const e of entries) {
+    const y = entryYear(e);
+    if (!byYear.has(y)) {
+      byYear.set(y, []);
+      order.push(y);
+    }
+    byYear.get(y)!.push(e);
+  }
+  // Sort years descending; the "—" (unknown) bucket sorts last.
+  order.sort((a, b) => {
+    if (a === "—") return 1;
+    if (b === "—") return -1;
+    return Number(b) - Number(a);
+  });
+  return order.map((year) => ({ year, entries: byYear.get(year)! }));
+}
+
 export function UpdatesView({
   onAuthError,
   onStatus,
@@ -82,20 +112,29 @@ export function UpdatesView({
   }, []);
 
   // Fetch the public CHANGELOG to show "what's new" since the installed version.
-  // Fully best-effort: any failure (offline, GitHub down, parse miss) is swallowed
-  // so the rest of the Updates view is unaffected.
+  // Best-effort: if the public GitHub fetch fails (offline, GitHub down), fall
+  // back to the local CHANGELOG.md shipped with the installed checkout. The local
+  // file is at most at the installed version (no future-release entries), which
+  // is fine. If both fail, the section is silently skipped.
   useEffect(() => {
     let cancelled = false;
+    const setFromMarkdown = (md: string) => {
+      if (cancelled) return;
+      const entries = parseChangelog(md);
+      if (entries.length > 0) setChangelog(entries);
+    };
     fetch(CHANGELOG_URL)
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
-      .then((md) => {
-        if (cancelled) return;
-        const entries = parseChangelog(md);
-        if (entries.length > 0) setChangelog(entries);
-      })
-      .catch(() => {
-        /* offline / GitHub down — silently skip the section */
-      });
+      .then(setFromMarkdown)
+      .catch(() =>
+        // GitHub unreachable — fall back to the local file via the panel API.
+        api
+          .changelog()
+          .then((res) => setFromMarkdown(res.content))
+          .catch(() => {
+            /* both sources failed — silently skip the section */
+          }),
+      );
     return () => {
       cancelled = true;
     };
@@ -248,10 +287,23 @@ export function UpdatesView({
         : sortedLog.filter((e) => cmpVer(e.version, version) <= 0)
       : [];
   const HISTORY_CAP = 10;
-  const visibleHistory = showAllHistory
-    ? historyEntries
-    : historyEntries.slice(0, HISTORY_CAP);
   const showHistory = historyEntries.length > 0;
+  // Collapsed: a flat, capped list of the most recent older releases. Expanded:
+  // the full history grouped into collapsible year sections (newest year open).
+  const cappedHistory = historyEntries.slice(0, HISTORY_CAP);
+  const historyByYear = groupByYear(historyEntries);
+
+  const renderEntry = (e: ChangelogEntry) => (
+    <details key={e.version} className="rounded-lg border border-line bg-input p-3">
+      <summary className="cursor-pointer select-none text-sm font-medium text-fg">
+        <span className="mono">{e.version}</span>
+        <span className="ml-2 text-xs text-fg-faint">{e.date}</span>
+      </summary>
+      <div className="mt-2 text-sm text-fg-dim">
+        <Markdown text={e.body} compact />
+      </div>
+    </details>
+  );
 
   return (
     <div className="space-y-4">
@@ -366,29 +418,38 @@ export function UpdatesView({
       )}
 
       {/* Release history: all changelog entries older than the installed
-          version, collapsed. Capped at the last 10 with a "Show all" toggle. */}
+          version. Collapsed shows a flat, capped list of the most recent; once
+          expanded the full history is grouped into collapsible year sections
+          (newest year open) so a long history stays navigable. */}
       {showHistory && (
         <Card title={t("updates_release_history")}>
-          <div className="space-y-3">
-            {visibleHistory.map((e) => (
-              <details
-                key={e.version}
-                className="rounded-lg border border-line bg-input p-3"
-              >
-                <summary className="cursor-pointer select-none text-sm font-medium text-fg">
-                  <span className="mono">{e.version}</span>
-                  <span className="ml-2 text-xs text-fg-faint">{e.date}</span>
-                </summary>
-                <div className="mt-2 text-sm text-fg-dim">
-                  <Markdown text={e.body} compact />
-                </div>
-              </details>
-            ))}
-          </div>
-          {historyEntries.length > HISTORY_CAP && !showAllHistory && (
+          {showAllHistory ? (
+            <div className="space-y-3">
+              {historyByYear.map((g, gi) => (
+                <details
+                  key={g.year}
+                  open={gi === 0}
+                  className="rounded-lg border border-line bg-surface-2 p-2"
+                >
+                  <summary className="cursor-pointer select-none px-1 py-0.5 text-sm font-semibold text-fg">
+                    {g.year}
+                    <span className="ml-2 text-xs font-normal text-fg-faint">
+                      {t("updates_year_count").replace("{n}", String(g.entries.length))}
+                    </span>
+                  </summary>
+                  <div className="mt-2 space-y-2">{g.entries.map(renderEntry)}</div>
+                </details>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">{cappedHistory.map(renderEntry)}</div>
+          )}
+          {historyEntries.length > HISTORY_CAP && (
             <div className="mt-3">
-              <Button onClick={() => setShowAllHistory(true)}>
-                {t("updates_show_all").replace("{n}", String(historyEntries.length))}
+              <Button onClick={() => setShowAllHistory((v) => !v)}>
+                {showAllHistory
+                  ? t("updates_show_less")
+                  : t("updates_show_all").replace("{n}", String(historyEntries.length))}
               </Button>
             </div>
           )}

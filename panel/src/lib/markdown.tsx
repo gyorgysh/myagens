@@ -132,8 +132,12 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
 
 function renderEmphasis(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
-  // Bold (**x** / __x__), then italic (*x* / _x_), then bare links.
-  const re = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|https?:\/\/[^\s)]+)/g;
+  // Bold (**x** / __x__), italic (*x* / _x_), [text](url) links, then bare links.
+  // The [text](url) alternative is ordered before the bare-URL one so the
+  // overlapping `https://...` inside the parentheses doesn't get matched on its
+  // own and split the link apart.
+  const re =
+    /(\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\[([^\]]+)\]\((https?:\/\/[^)]+)\)|https?:\/\/[^\s)]+)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let n = 0;
@@ -143,6 +147,19 @@ function renderEmphasis(text: string, keyBase: string): ReactNode[] {
     const key = `${keyBase}-e${n++}`;
     if ((tok.startsWith("**") && tok.endsWith("**")) || (tok.startsWith("__") && tok.endsWith("__"))) {
       out.push(<strong key={key} className="font-semibold text-fg">{tok.slice(2, -2)}</strong>);
+    } else if (m[2] !== undefined && m[3] !== undefined) {
+      // [text](url) — m[2] is the link text, m[3] is the href.
+      out.push(
+        <a
+          key={key}
+          href={m[3]}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="text-accent underline underline-offset-2 hover:opacity-80"
+        >
+          {m[2]}
+        </a>,
+      );
     } else if (tok.startsWith("http")) {
       out.push(
         <a

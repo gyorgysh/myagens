@@ -889,6 +889,19 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     void runRestore((line) => hub.broadcast({ type: "update", line })).catch(() => {});
     return { started: true };
   });
+  // Local CHANGELOG.md fallback for the Updates view: when the panel can't reach
+  // the public GitHub raw URL (offline, GitHub down), it falls back to the file
+  // shipped with the installed checkout. Fixed internal path, same class as the
+  // log endpoints — no user input reaches the path.
+  app.get("/api/update/changelog", async (_req, reply) => {
+    const file = join(repoRoot, "CHANGELOG.md");
+    if (!existsSync(file)) return reply.code(404).send({ error: "not found" });
+    try {
+      return { content: readFileSync(file, "utf8") };
+    } catch {
+      return reply.code(404).send({ error: "not found" });
+    }
+  });
 
   // --- durable memory ---
   // Drop the (large) raw embedding vector from API responses; the panel never

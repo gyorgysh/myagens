@@ -148,13 +148,15 @@ export function CrewView({
         ))}
       </InfoCard>
 
-      {/* President */}
+      {/* President — always present; dimmed as a structural placeholder until
+          the fleet data loads so the hierarchy shape shows immediately. */}
       <CrewNode
         icon="★"
         title={t("crew_president")}
         subtitle={t("crew_president_sub")}
         tone="amber"
         depth={0}
+        dimmed={!loaded}
       />
 
       {/* Atlas — the main bot is always reachable on Telegram */}
@@ -164,19 +166,22 @@ export function CrewView({
         subtitle={`${t("crew_atlas_sub")} · ${atlas?.effectiveModel ?? "…"}`}
         tone="accent"
         depth={1}
+        dimmed={!loaded}
         extra={t("crew_listening")}
         extraHref={atlas?.botUsername ? `https://t.me/${atlas.botUsername}` : undefined}
         onWebChat={onChat ? () => onChat("atlas") : undefined}
       />
 
-      {/* Skeleton lead rows while the initial fetch is in flight */}
+      {/* A couple of Lead skeleton rows below the (dimmed) President + Atlas,
+          so the nested shape is previewed while the initial fetch is in flight. */}
       {!loaded &&
-        Array.from({ length: 3 }).map((_, i) => (
+        Array.from({ length: 2 }).map((_, i) => (
           <div
             key={i}
-            className="flex items-center gap-3"
+            className="flex items-center gap-3 border-l-2 border-blue-400/40 pl-3"
             style={{ marginLeft: "calc(2 * var(--crew-indent))" }}
           >
+            <div className="h-px w-4 shrink-0 bg-line" />
             <Skeleton className="h-4 w-4 shrink-0 rounded-full" />
             <div className="min-w-0 flex-1 space-y-1.5">
               <Skeleton className="h-4 w-32" />
@@ -207,6 +212,7 @@ export function CrewView({
             tone="blue"
             depth={2}
             paused={!lead.enabled}
+            escalated={lead.escalated}
             extra={lead.listening ? t("crew_listening") : undefined}
             extraHref={
               lead.listening && lead.botUsername ? `https://t.me/${lead.botUsername}` : undefined
@@ -225,6 +231,7 @@ export function CrewView({
                 tone="zinc"
                 depth={3}
                 paused={!a.enabled}
+                escalated={a.escalated}
               />
             ))}
         </div>
@@ -242,6 +249,7 @@ export function CrewView({
             tone="zinc"
             depth={2}
             paused={!a.enabled}
+            escalated={a.escalated}
           />
         ))}
 
@@ -260,6 +268,7 @@ export function CrewView({
               tone="zinc"
               depth={2}
               paused={!w.enabled}
+              escalated={w.escalated}
             />
           ))}
         </div>
@@ -277,7 +286,7 @@ export function CrewView({
             placeholder={t("crew_council_placeholder")}
             rows={3}
             disabled={voting}
-            className="w-full resize-y rounded-md border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-dim focus:border-accent focus:outline-none disabled:opacity-60"
+            className="w-full resize-y rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-dim focus:border-accent focus:outline-none disabled:opacity-60"
           />
           <div className="mt-2 flex items-center justify-between gap-3">
             <span className="text-xs text-fg-dim">
@@ -288,7 +297,7 @@ export function CrewView({
             <button
               onClick={runVote}
               disabled={voting || !proposal.trim() || enabledLeads === 0}
-              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             >
               {voting && (
                 <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
@@ -297,7 +306,7 @@ export function CrewView({
             </button>
           </div>
           {voting && (
-            <div className="mt-3 flex items-start gap-3 rounded-md border border-accent/30 bg-accent/10 p-3">
+            <div className="mt-3 flex items-start gap-3 rounded-lg border border-accent/30 bg-accent/10 p-3">
               <span className="mt-0.5 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
               <div className="min-w-0">
                 <p className="text-sm font-medium text-fg">
@@ -573,6 +582,8 @@ function CrewNode({
   extraHref,
   warn,
   paused,
+  dimmed,
+  escalated,
   onWebChat,
 }: {
   icon: string;
@@ -586,6 +597,11 @@ function CrewNode({
   warn?: string;
   /** Dim the node and show a "paused" badge when the worker is disabled. */
   paused?: boolean;
+  /** Dim the node without a badge — used as a loading placeholder before the
+   *  fleet data has arrived, so the hierarchy shape is visible while it loads. */
+  dimmed?: boolean;
+  /** Show an amber "escalated" badge: worker hit a tool error in auto_until_error mode. */
+  escalated?: boolean;
   /** When set, show a neon "Web Chat" badge that opens the panel chat here. */
   onWebChat?: () => void;
 }) {
@@ -606,9 +622,9 @@ function CrewNode({
 
   return (
     <div
-      className={`flex items-center gap-3 ${depth > 0 ? "pl-3" : ""} ${
+      className={`flex items-center gap-3 transition-opacity ${depth > 0 ? "pl-3" : ""} ${
         ruleClass[depth] ?? ""
-      } ${paused ? "opacity-50" : ""}`}
+      } ${paused ? "opacity-50" : ""} ${dimmed ? "opacity-60" : ""}`}
       style={{ marginLeft: `calc(${depth} * var(--crew-indent))` }}
     >
       {depth > 0 && (
@@ -621,6 +637,11 @@ function CrewNode({
         <div className="flex items-center gap-2">
           <span className="font-medium text-fg">{title}</span>
           {paused && <Badge tone="zinc">{t("crew_paused")}</Badge>}
+          {escalated && (
+            <span title={t("crew_escalated_hint")}>
+              <Badge tone="amber">{t("crew_escalated")}</Badge>
+            </span>
+          )}
           {/* Telegram + Chat: fixed-width slots so badges always align */}
           <span className="flex items-center gap-1.5">
             {extra &&

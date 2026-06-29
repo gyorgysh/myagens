@@ -78,6 +78,14 @@ export interface Worker {
   language?: string;
   /** Optional URL POSTed a JSON outcome payload when a run completes. */
   webhookUrl?: string;
+  /**
+   * Persisted escalation state for `auto_until_error` autonomy.
+   * When set, this worker has hit a tool error and is in supervised cooldown.
+   * Cleared when the next run starts (same semantics as `resetEscalation` for
+   * chat sessions) so stale escalation doesn't block the worker permanently.
+   * Survives restarts — that's the whole point of persisting it here.
+   */
+  escalated?: boolean;
 }
 
 export interface WorkerRun {
@@ -321,10 +329,24 @@ export class WorkerManager {
 
     const autonomy = w.autonomy ?? "full";
     // For unattended workers there is no human to approve tool calls, so:
-    //   full       → bypassPermissions (default — current behaviour).
-    //   standard   → auto-allow safe tools, deny risky ones silently.
-    //   supervised → deny everything that isn't in AUTO_ALLOWED_TOOLS.
-    const permissionMode = autonomy === "full" ? "bypassPermissions" : "default";
+    //   full             → bypassPermissions (default — current behaviour).
+    //   auto_until_error → bypassPermissions when not escalated; "default" + deny
+    //                      risky tools when escalated (persisted across restarts).
+    //   standard         → auto-allow safe tools, deny risky ones silently.
+    //   supervised       → deny everything that isn't in AUTO_ALLOWED_TOOLS.
+    const permissionMode =
+      autonomy === "full" || (autonomy === "auto_until_error" && !w.escalated)
+        ? "bypassPermissions"
+        : "default";
+
+    // auto_until_error: clear any persisted escalation at the start of each run,
+    // matching how chat sessions call resetEscalation() at the top of each turn.
+    // The new run gets a clean slate — if it errors again, it re-escalates below.
+    if (autonomy === "auto_until_error" && w.escalated) {
+      w.escalated = false;
+      this.persist();
+      log.info("auto_until_error worker: cleared escalation for new run", { worker: w.id });
+    }
 
     // Unattended worker: no human chat, so crew_suggest just files into the
     // president's inbox (notify is a no-op; it never DMs from a worker run).
@@ -354,6 +376,17 @@ export class WorkerManager {
         abortController: abort,
         mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: w.id }), skills: skillsMcp, self_update: selfUpdateMcp, crew: crewMcp },
         canUseTool: async (toolName, input) => {
+          if (autonomy === "full") {
+            // full: bypassPermissions handles everything; canUseTool is a no-op.
+            return { behavior: "allow", updatedInput: input };
+          }
+          if (autonomy === "auto_until_error") {
+            // Not escalated: bypassPermissions is active, so this gate isn't
+            // normally reached. Allow as a belt-and-suspenders fallback.
+            // Escalated: deny the risky tools, allow the safe set.
+            if (AUTO_ALLOWED_TOOLS.has(toolName)) return { behavior: "allow", updatedInput: input };
+            return { behavior: "deny", message: "Tool not permitted for unattended worker (escalated after tool error)." };
+          }
           // supervised/standard: only AUTO_ALLOWED_TOOLS pass for unattended workers.
           if (AUTO_ALLOWED_TOOLS.has(toolName)) return { behavior: "allow", updatedInput: input };
           return { behavior: "deny", message: "Tool not permitted for unattended worker." };
@@ -376,7 +409,16 @@ export class WorkerManager {
             arg: summarize(input),
           });
         },
-        onToolResult: (isError) => transcript.event({ ts: Date.now(), kind: "result", isError }),
+        onToolResult: (isError) => {
+          transcript.event({ ts: Date.now(), kind: "result", isError });
+          // auto_until_error: persist escalation when a tool errors so the state
+          // survives a bot restart (the safety regression described in the card).
+          if (isError && autonomy === "auto_until_error" && !w.escalated) {
+            w.escalated = true;
+            this.persist();
+            log.info("auto_until_error worker: tool error — persisting escalation", { worker: w.id });
+          }
+        },
         onSessionId: () => {},
       });
       run.status = res.isError ? "error" : "ok";

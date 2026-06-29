@@ -226,6 +226,8 @@ export interface Worker {
   webhookUrl?: string;
   /** True when this Lead has a live Telegram bot listening (role+token+enabled). */
   listening?: boolean;
+  /** True when autonomy is auto_until_error and the worker has hit a tool error. */
+  escalated?: boolean;
 }
 
 export interface Skill {

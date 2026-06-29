@@ -169,6 +169,8 @@ export const hu: Translations = {
   crew_web_chat: "Chat",
   crew_web_chat_hint: "Csevegj ezzel az ügynökkel a panelen",
   crew_paused: "szüneteltetve",
+  crew_escalated: "eszkalált",
+  crew_escalated_hint: "Eszközhibát ütött auto_until_error módban — a következő futás csak biztonságos eszközöket használhat",
   crew_leads_count: "{total} Lead · {active} aktív",
   // Crew "hogyan működik" infókártya
   crew_how_title: "Hogyan működik a csapat",

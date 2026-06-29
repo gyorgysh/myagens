@@ -458,6 +458,8 @@ function workerView(w: Worker) {
     autonomy: w.autonomy ?? "full",
     language: w.language ?? "",
     webhookUrl: w.webhookUrl ?? "",
+    /** True when the worker is in auto_until_error and hit a tool error. */
+    escalated: w.escalated === true,
     // True when this Lead has a live Telegram bot listening (role lead + token
     // + enabled). The panel warns when a Lead is enabled but has no token.
     listening: w.role === "lead" && !!w.telegramToken && w.enabled,

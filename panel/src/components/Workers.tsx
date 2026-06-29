@@ -278,6 +278,11 @@ function WorkerRow({
         {worker.model && <Badge>{shortModel(worker.model)}</Badge>}
         {providerName && <Badge tone="blue">⌂ {providerName}</Badge>}
         {!worker.enabled && <Badge tone="amber">{t("disabled")}</Badge>}
+        {worker.escalated && (
+          <span title={t("crew_escalated_hint")}>
+            <Badge tone="amber">{t("crew_escalated")}</Badge>
+          </span>
+        )}
         {/* Telegram + Chat: fixed-width slots so badges always align */}
         <span className="flex items-center gap-1.5">
           {worker.listening &&

@@ -167,6 +167,8 @@ export const en = {
   crew_web_chat: "Chat",
   crew_web_chat_hint: "Chat with this agent here in the panel",
   crew_paused: "paused",
+  crew_escalated: "escalated",
+  crew_escalated_hint: "Hit a tool error in auto_until_error mode — next run will use safe tools only",
   crew_leads_count: "{total} Leads · {active} active",
   // Crew "how it works" info card
   crew_how_title: "How the crew works",

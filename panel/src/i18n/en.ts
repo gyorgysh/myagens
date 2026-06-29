@@ -1284,6 +1284,10 @@ export const en = {
   updates_tip_active_body: "A task is currently running. If you apply an update now, the bot will restart and the task will be stopped.",
   updates_restore_confirm:
     "Restore the code to the latest GitHub commit? Local code changes are discarded; your data and config are kept. The bot will rebuild and restart.",
+  updates_whatsnew_title: "What's new",
+  updates_whatsnew_behind: "Released since your version",
+  updates_whatsnew_latest_title: "You're on the latest release",
+  updates_whatsnew_latest_body: "Here's what landed in the current release.",
 
   // Terminal
   terminal_connecting: "Connecting…",
@@ -1414,6 +1418,10 @@ export const en = {
   feedback_thanks: "Sent ✓",
   feedback_failed: "Couldn't send feedback. Please try again later.",
   feedback_rate_limited: "Too many submissions. Please try again later.",
+  feedback_update_nudge_title: "An update is available",
+  feedback_update_nudge_body:
+    "You're {n} version(s) behind. This issue may already be fixed — consider updating first.",
+  feedback_update_nudge_action: "Go to Updates",
 };
 
 export type TranslationKey = keyof typeof en;

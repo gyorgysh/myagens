@@ -4,6 +4,54 @@ import { Badge, Button, Callout, Card } from "./ui.tsx";
 import { useI18n } from "../lib/useI18n.ts";
 import { relTime } from "../lib/format.ts";
 import { reloadFresh } from "../lib/reload.ts";
+import { Markdown } from "../lib/markdown.tsx";
+
+const CHANGELOG_URL =
+  "https://raw.githubusercontent.com/gyorgysh/myhq/refs/heads/main/CHANGELOG.md";
+
+interface ChangelogEntry {
+  version: string;
+  date: string;
+  /** Raw markdown body for the section (everything under the header). */
+  body: string;
+}
+
+// Parse a normalised semver "x.y.z" into a comparable tuple. Anything missing
+// or non-numeric becomes 0, so a malformed header just sorts to the bottom.
+function parseVer(v: string): [number, number, number] {
+  const m = v.trim().match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return [0, 0, 0];
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+// Returns > 0 if a is newer than b, < 0 if older, 0 if equal.
+function cmpVer(a: string, b: string): number {
+  const pa = parseVer(a);
+  const pb = parseVer(b);
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  }
+  return 0;
+}
+
+// Split CHANGELOG.md into entries by "## [x.y.z] - date" headers.
+function parseChangelog(md: string): ChangelogEntry[] {
+  const lines = md.replace(/\r\n/g, "\n").split("\n");
+  const entries: ChangelogEntry[] = [];
+  let current: ChangelogEntry | null = null;
+  for (const line of lines) {
+    const h = line.match(/^##\s+\[([^\]]+)\]\s*-\s*(.+)$/);
+    if (h) {
+      if (current) entries.push(current);
+      current = { version: h[1].trim(), date: h[2].trim(), body: "" };
+      continue;
+    }
+    if (current) current.body += (current.body ? "\n" : "") + line;
+  }
+  if (current) entries.push(current);
+  // Trim trailing blank lines from each body.
+  return entries.map((e) => ({ ...e, body: e.body.trim() }));
+}
 
 export function UpdatesView({
   onAuthError,
@@ -18,6 +66,7 @@ export function UpdatesView({
   const [checking, setChecking] = useState(false);
   const [running, setRunning] = useState(false);
   const [lines, setLines] = useState<string[]>([]);
+  const [changelog, setChangelog] = useState<ChangelogEntry[] | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
   const apply = (s: UpdateStatus) => {
@@ -29,6 +78,26 @@ export function UpdatesView({
     api.me().then((m) => setVersion(m.version)).catch((e) => e instanceof AuthError && onAuthError());
     api.updateStatus().then(apply).catch((e) => e instanceof AuthError && onAuthError());
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch the public CHANGELOG to show "what's new" since the installed version.
+  // Fully best-effort: any failure (offline, GitHub down, parse miss) is swallowed
+  // so the rest of the Updates view is unaffected.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(CHANGELOG_URL)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+      .then((md) => {
+        if (cancelled) return;
+        const entries = parseChangelog(md);
+        if (entries.length > 0) setChangelog(entries);
+      })
+      .catch(() => {
+        /* offline / GitHub down — silently skip the section */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Live update-output frames over the shared /ws.
@@ -152,6 +221,21 @@ export function UpdatesView({
 
   const available = status?.available;
 
+  // Decide what to show in the "What's new" section. We need both the parsed
+  // changelog and a resolved installed version (not the "…" placeholder).
+  const haveVersion = version !== "…" && version.trim().length > 0;
+  const sortedLog = changelog
+    ? [...changelog].sort((a, b) => cmpVer(b.version, a.version))
+    : null;
+  const newerEntries =
+    sortedLog && haveVersion
+      ? sortedLog.filter((e) => cmpVer(e.version, version) > 0)
+      : [];
+  // When up to date, surface the latest release as a confirmation instead.
+  const latestEntry = sortedLog && sortedLog.length > 0 ? sortedLog[0] : null;
+  const showWhatsNew = newerEntries.length > 0;
+  const showLatestConfirm = !showWhatsNew && haveVersion && latestEntry !== null;
+
   return (
     <div className="space-y-4">
       {status?.active && (
@@ -223,6 +307,46 @@ export function UpdatesView({
           <p className="mt-2 text-xs text-warn-fg">⚠️ {t("updates_active_warn")}</p>
         )}
       </Card>
+
+      {/* What's new: changelog entries newer than the installed version, or a
+          "you're on the latest" confirmation when up to date. Best-effort —
+          rendered only when the public CHANGELOG fetch + parse succeeded. */}
+      {showWhatsNew && (
+        <Card title={t("updates_whatsnew_title")}>
+          <p className="mb-2 text-xs text-fg-faint">{t("updates_whatsnew_behind")}</p>
+          <div className="space-y-3">
+            {newerEntries.map((e) => (
+              <details
+                key={e.version}
+                open={e.version === newerEntries[0].version}
+                className="rounded-lg border border-line bg-input p-3"
+              >
+                <summary className="cursor-pointer select-none text-sm font-medium text-fg">
+                  <span className="mono">{e.version}</span>
+                  <span className="ml-2 text-xs text-fg-faint">{e.date}</span>
+                </summary>
+                <div className="mt-2 text-sm text-fg-dim">
+                  <Markdown text={e.body} />
+                </div>
+              </details>
+            ))}
+          </div>
+        </Card>
+      )}
+      {showLatestConfirm && latestEntry && (
+        <Card title={t("updates_whatsnew_latest_title")}>
+          <p className="mb-2 text-xs text-fg-faint">{t("updates_whatsnew_latest_body")}</p>
+          <details className="rounded-lg border border-line bg-input p-3">
+            <summary className="cursor-pointer select-none text-sm font-medium text-fg">
+              <span className="mono">{latestEntry.version}</span>
+              <span className="ml-2 text-xs text-fg-faint">{latestEntry.date}</span>
+            </summary>
+            <div className="mt-2 text-sm text-fg-dim">
+              <Markdown text={latestEntry.body} />
+            </div>
+          </details>
+        </Card>
+      )}
 
       {/* Streamed output */}
       {lines.length > 0 && (

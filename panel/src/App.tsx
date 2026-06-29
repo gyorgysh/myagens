@@ -303,7 +303,7 @@ export function App() {
             {tab === "schedules" && <SchedulesView onAuthError={onAuthError} />}
             {tab === "heartbeat" && <HeartbeatView_ onAuthError={onAuthError} />}
             {tab === "remote" && <RemoteAccessView onAuthError={onAuthError} />}
-            {tab === "feedback" && <FeedbackView onAuthError={onAuthError} />}
+            {tab === "feedback" && <FeedbackView onAuthError={onAuthError} onGoto={select} />}
             {tab === "usage" && <UsageView onAuthError={onAuthError} />}
             {tab === "settings" && <SettingsView onAuthError={onAuthError} />}
           </Suspense>

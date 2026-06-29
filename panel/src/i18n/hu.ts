@@ -1289,6 +1289,10 @@ export const hu: Translations = {
   updates_tip_active_body: "Jelenleg fut egy feladat. Ha most frissítesz, a bot újraindul és a feladat leáll.",
   updates_restore_confirm:
     "Visszaállítod a kódot a legutóbbi GitHub commitra? A helyi kódváltoztatások elvesznek; az adatok és a konfiguráció megmaradnak. A bot újraépül és újraindul.",
+  updates_whatsnew_title: "Újdonságok",
+  updates_whatsnew_behind: "A te verziód óta megjelent",
+  updates_whatsnew_latest_title: "A legfrissebb kiadást használod",
+  updates_whatsnew_latest_body: "Íme, mi került a jelenlegi kiadásba.",
 
   // Terminál
   terminal_connecting: "Csatlakozás…",
@@ -1420,4 +1424,8 @@ export const hu: Translations = {
   feedback_thanks: "Elküldve ✓",
   feedback_failed: "Nem sikerült elküldeni a visszajelzést. Próbáld újra később.",
   feedback_rate_limited: "Túl sok beküldés. Kérlek, próbáld újra később.",
+  feedback_update_nudge_title: "Frissítés érhető el",
+  feedback_update_nudge_body:
+    "{n} verzióval vagy elmaradva. Lehet, hogy ezt a hibát már javították — érdemes előbb frissíteni.",
+  feedback_update_nudge_action: "Ugrás a Frissítésekhez",
 };

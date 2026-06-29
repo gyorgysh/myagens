@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, ApiError, AuthError } from "../api.ts";
-import { Button, Card, InfoCard, Input, Label, TextArea } from "./ui.tsx";
+import { Button, Callout, Card, InfoCard, Input, Label, TextArea } from "./ui.tsx";
 import { toast } from "../lib/useToast.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import type { TranslationKey } from "../i18n/en.ts";
@@ -16,13 +16,34 @@ const KINDS: Array<{ id: Kind; label: TranslationKey; icon: string }> = [
 // Light client-side check; the server validates too. Kept loose on purpose.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function FeedbackView({ onAuthError }: { onAuthError: () => void }) {
+export function FeedbackView({
+  onAuthError,
+  onGoto,
+}: {
+  onAuthError: () => void;
+  onGoto?: (tab: "updates") => void;
+}) {
   const { t } = useI18n();
   const [kind, setKind] = useState<Kind>("bug");
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
+  // Soft nudge: if an update is available, the user's bug may already be fixed.
+  const [behindBy, setBehindBy] = useState(0);
+
+  // Non-blocking check on mount; failures are ignored (the form still works).
+  useEffect(() => {
+    api
+      .updateStatus()
+      .then((s) => {
+        if (s.available) setBehindBy(s.behindBy);
+      })
+      .catch((e) => {
+        if (e instanceof AuthError) onAuthError();
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const emailInvalid = email.trim().length > 0 && !EMAIL_RE.test(email.trim());
 
@@ -55,6 +76,21 @@ export function FeedbackView({ onAuthError }: { onAuthError: () => void }) {
 
   return (
     <div className="space-y-4">
+      {behindBy > 0 && (
+        <Callout title={t("feedback_update_nudge_title")}>
+          <p>{t("feedback_update_nudge_body").replace("{n}", String(behindBy))}</p>
+          {onGoto && (
+            <button
+              type="button"
+              onClick={() => onGoto("updates")}
+              className="mt-2 font-medium text-accent underline underline-offset-2 hover:opacity-80"
+            >
+              {t("feedback_update_nudge_action")}
+            </button>
+          )}
+        </Callout>
+      )}
+
       <InfoCard
         id="feedback"
         title={t("feedback_info_title")}

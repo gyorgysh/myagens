@@ -233,6 +233,21 @@ export const en = {
   inbox_less: "Show less",
   inbox_delegated_lead: "Delegated to {lead}. It's running now.",
   inbox_delegated_generic: "Delegated. A generic run is on it now.",
+  // Inbox bulk selection + delegate-as picker
+  inbox_select_mode: "Select",
+  inbox_select_cancel: "Cancel",
+  inbox_select_all: "All",
+  inbox_select_none: "None",
+  inbox_delegate_as: "Delegate as",
+  inbox_delegate_auto: "Auto (best-fit Lead)",
+  inbox_bulk_selected: "{n} selected",
+  inbox_bulk_delegate: "Delegate {n}",
+  inbox_bulk_park: "Park {n}",
+  inbox_bulk_dismiss: "Dismiss {n}",
+  inbox_bulk_parked: "Parked {n} suggestions ✓",
+  inbox_bulk_delegated: "Delegated {n} suggestions ✓",
+  inbox_bulk_delegated_lead: "Delegated {n} suggestions to {lead} ✓",
+  inbox_bulk_dismissed: "Dismissed {n} suggestions ✓",
   // Inbox "what is this" info box
   inbox_info_title: "What is the Inbox?",
   inbox_info_body:

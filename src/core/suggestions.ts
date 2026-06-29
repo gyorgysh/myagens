@@ -3,7 +3,7 @@ import { loadJson, saveJson } from "./jsonStore.js";
 import { audit } from "./audit.js";
 import { createTask } from "./tasks.js";
 import { taskDelegator } from "./taskRunner.js";
-import { workers } from "./workers.js";
+import { workers, type Worker } from "./workers.js";
 
 const FILE = "suggestions.json";
 
@@ -143,15 +143,24 @@ class SuggestionStore {
    * to the most relevant Lead (or a generic run when none fits), and kick off an
    * autonomous run that does the work, moves the card to done, and reports back.
    * Returns the updated suggestion plus the routed Lead's display name (if any).
+   *
+   * Pass `leadId` to force the run to a specific enabled Lead (the "delegate as
+   * Iris" path), overriding the automatic routing. An unknown/disabled id falls
+   * back to auto-routing.
    */
-  delegate(id: string): { suggestion?: Suggestion; leadName?: string; started: boolean } {
+  delegate(id: string, leadId?: string): { suggestion?: Suggestion; leadName?: string; started: boolean } {
     const s = this.get(id);
     if (!s) return { started: false };
     if (s.status !== "pending") return { suggestion: s, started: false };
     const taskId = this.fileCard(s);
     this.persist();
     if (!taskId) return { suggestion: s, started: false };
-    const lead = workers.routeFor({ fromAgentId: s.fromAgentId, category: s.category, title: s.title });
+    let lead: Worker | undefined;
+    if (leadId) {
+      const chosen = workers.get(leadId);
+      if (chosen && chosen.role === "lead" && chosen.enabled) lead = chosen;
+    }
+    if (!lead) lead = workers.routeFor({ fromAgentId: s.fromAgentId, category: s.category, title: s.title });
     const res = taskDelegator.delegate(taskId, lead?.id);
     audit("suggestion.delegate", { id, taskId, leadId: lead?.id, ok: res.ok });
     return { suggestion: s, leadName: lead?.name, started: res.ok };

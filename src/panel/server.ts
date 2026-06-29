@@ -911,7 +911,11 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     return updated;
   });
   app.post("/api/suggestions/:id/delegate", async (req, reply) => {
-    const { suggestion, leadName, started } = suggestions.delegate((req.params as { id: string }).id);
+    const { leadId } = (req.body ?? {}) as { leadId?: string };
+    const { suggestion, leadName, started } = suggestions.delegate(
+      (req.params as { id: string }).id,
+      typeof leadId === "string" && leadId ? leadId : undefined,
+    );
     if (!suggestion) return reply.code(404).send({ error: "not found" });
     return { suggestion, leadName, started };
   });

@@ -236,6 +236,21 @@ export const hu: Translations = {
   inbox_less: "Kevesebb",
   inbox_delegated_lead: "Delegálva: {lead}. Most fut.",
   inbox_delegated_generic: "Delegálva. Egy általános futás dolgozik rajta.",
+  // Postaláda többszörös kijelölés + delegálás kiválasztott vezetőnek
+  inbox_select_mode: "Kijelölés",
+  inbox_select_cancel: "Mégse",
+  inbox_select_all: "Összes",
+  inbox_select_none: "Egyik sem",
+  inbox_delegate_as: "Delegálás neki",
+  inbox_delegate_auto: "Automatikus (legjobb vezető)",
+  inbox_bulk_selected: "{n} kijelölve",
+  inbox_bulk_delegate: "Delegálás ({n})",
+  inbox_bulk_park: "Félretevés ({n})",
+  inbox_bulk_dismiss: "Elvetés ({n})",
+  inbox_bulk_parked: "{n} javaslat félretéve ✓",
+  inbox_bulk_delegated: "{n} javaslat delegálva ✓",
+  inbox_bulk_delegated_lead: "{n} javaslat delegálva neki: {lead} ✓",
+  inbox_bulk_dismissed: "{n} javaslat elvetve ✓",
   // Postaláda "mi ez" infódoboz
   inbox_info_title: "Mi a Postaláda?",
   inbox_info_body:

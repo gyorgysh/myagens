@@ -902,10 +902,11 @@ export const api = {
   suggestions: (status?: SuggestionStatus) =>
     get<{ suggestions: Suggestion[] }>(`/api/suggestions${status ? `?status=${status}` : ""}`),
   acceptSuggestion: (id: string) => req<Suggestion>("POST", `/api/suggestions/${id}/accept`),
-  delegateSuggestion: (id: string) =>
+  delegateSuggestion: (id: string, leadId?: string) =>
     req<{ suggestion: Suggestion; leadName?: string; started: boolean }>(
       "POST",
       `/api/suggestions/${id}/delegate`,
+      leadId ? { leadId } : undefined,
     ),
   dismissSuggestion: (id: string) => req<Suggestion>("POST", `/api/suggestions/${id}/dismiss`),
 

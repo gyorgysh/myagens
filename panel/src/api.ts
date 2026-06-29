@@ -133,6 +133,17 @@ export interface SessionView {
   usage: { total: UsageStat; today: UsageStat };
 }
 
+/** One conversation-search hit (live chat message or run transcript). */
+export interface ConversationHit {
+  id: string;
+  source: "chat" | "run";
+  label: string;
+  snippet: string;
+  ts: number;
+  runId?: string;
+  score: number;
+}
+
 export interface ScheduleView {
   id: string;
   chatId: number;
@@ -859,6 +870,8 @@ export const api = {
     req<{ ok: boolean }>("POST", "/api/feedback", { kind, message, email }),
   health: () => get<Health>("/api/health"),
   sessions: () => get<{ sessions: SessionView[] }>("/api/sessions"),
+  searchConversations: (q: string, limit = 25) =>
+    get<{ hits: ConversationHit[] }>(`/api/conversations/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   logs: (params?: { date?: string; q?: string; level?: string; limit?: number }) => {
     const qs = new URLSearchParams();
     if (params?.date) qs.set("date", params.date);

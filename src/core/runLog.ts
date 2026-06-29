@@ -130,6 +130,51 @@ export function hasRunLog(runId: string): boolean {
   return findRunFile(runId) !== null;
 }
 
+/** Lightweight descriptor of a stored run transcript. */
+export interface RunSummary {
+  runId: string;
+  /** YYYY-MM-DD day-dir the transcript lives in. */
+  date: string;
+  /** File mtime (epoch ms), used for recency ordering. */
+  mtime: number;
+}
+
+/**
+ * Enumerate every stored run transcript across all day-dirs, newest first.
+ * Used by conversation search to know which transcripts to scan.
+ */
+export function listRuns(): RunSummary[] {
+  let dates: string[];
+  try {
+    dates = readdirSync(RUNS_DIR);
+  } catch {
+    return [];
+  }
+  const out: RunSummary[] = [];
+  for (const date of dates) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    let files: string[];
+    try {
+      files = readdirSync(dayDir(date));
+    } catch {
+      continue;
+    }
+    for (const f of files) {
+      if (!f.endsWith(".ndjson")) continue;
+      const runId = f.slice(0, -".ndjson".length);
+      let mtime = 0;
+      try {
+        mtime = statSync(join(dayDir(date), f)).mtimeMs;
+      } catch {
+        /* vanished mid-scan */
+      }
+      out.push({ runId, date, mtime });
+    }
+  }
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out;
+}
+
 /** Search every day-dir for `<runId>.ndjson`. */
 function findRunFile(runId: string): string | null {
   // Reject anything that isn't a plain id, so a caller can't path-traverse.

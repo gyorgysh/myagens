@@ -69,6 +69,7 @@ import { heartbeat } from "../core/heartbeat.js";
 import { listConnectors, setConnector } from "../core/connectors.js";
 import { listWebhookTools, createWebhookTool, updateWebhookTool, deleteWebhookTool } from "../core/webhookTools.js";
 import { getBranding, setBranding, brandingUnlocked, effectiveBranding } from "../core/branding.js";
+import { searchConversations } from "../core/conversationSearch.js";
 import { vault, importProviderSecrets, resolveSecret, vaultUsages } from "../core/vault.js";
 import { backupManifest, exportBackup, importBackup } from "../core/backup.js";
 import {
@@ -436,7 +437,7 @@ const panelReadRateLimiter =
     : undefined;
 
 /** URL path prefixes whose GET handlers are expensive enough to rate limit. */
-const EXPENSIVE_GET_PREFIXES = ["/api/memories", "/api/logs", "/api/runs"];
+const EXPENSIVE_GET_PREFIXES = ["/api/memories", "/api/logs", "/api/runs", "/api/conversations"];
 
 /** True when a GET request targets one of the expensive read endpoints. */
 function isExpensiveRead(method: string, url: string): boolean {
@@ -1014,6 +1015,14 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     if (!memory.remove((req.params as { id: string }).id))
       return reply.code(404).send({ error: "not found" });
     return { ok: true };
+  });
+
+  // --- conversation search (live chat + run transcripts) ---
+  app.get("/api/conversations/search", async (req) => {
+    const { q, limit } = req.query as { q?: string; limit?: string };
+    const n = Math.min(100, Math.max(1, Number(limit) || 25));
+    const hits = q ? await searchConversations(q, n) : [];
+    return { hits };
   });
 
   // --- suggestion inbox ---

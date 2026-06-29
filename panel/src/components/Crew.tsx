@@ -153,6 +153,7 @@ export function CrewView({
       <CrewNode
         icon="★"
         title={t("crew_president")}
+        role={t("crew_role_president")}
         subtitle={t("crew_president_sub")}
         tone="amber"
         depth={0}
@@ -163,6 +164,7 @@ export function CrewView({
       <CrewNode
         icon="◈"
         title="Atlas"
+        role={t("crew_role_coordinator")}
         subtitle={`${t("crew_atlas_sub")} · ${atlas?.effectiveModel ?? "…"}`}
         tone="accent"
         depth={1}
@@ -206,9 +208,8 @@ export function CrewView({
           <CrewNode
             icon="◆"
             title={lead.name}
-            subtitle={[lead.portfolio ? `${lead.portfolio} Lead` : "Lead", lead.model]
-              .filter(Boolean)
-              .join(" · ")}
+            role={lead.portfolio ? `${lead.portfolio} ${t("crew_role_lead")}` : t("crew_role_lead")}
+            subtitle={lead.model || t("crew_default_model")}
             tone="blue"
             depth={2}
             paused={!lead.enabled}
@@ -227,7 +228,8 @@ export function CrewView({
                 key={a.id}
                 icon="◇"
                 title={a.name}
-                subtitle={a.portfolio ?? "Assistant"}
+                role={a.portfolio || t("crew_role_assistant")}
+                subtitle={a.model || t("crew_default_model")}
                 tone="zinc"
                 depth={3}
                 paused={!a.enabled}
@@ -245,7 +247,8 @@ export function CrewView({
             key={a.id}
             icon="◇"
             title={a.name}
-            subtitle={a.portfolio ?? "Assistant"}
+            role={a.portfolio || t("crew_role_assistant")}
+            subtitle={a.model || t("crew_default_model")}
             tone="zinc"
             depth={2}
             paused={!a.enabled}
@@ -264,7 +267,8 @@ export function CrewView({
               key={w.id}
               icon="·"
               title={w.name}
-              subtitle={w.model || "default model"}
+              role={w.portfolio || t("crew_role_specialist")}
+              subtitle={w.model || t("crew_default_model")}
               tone="zinc"
               depth={2}
               paused={!w.enabled}
@@ -575,6 +579,7 @@ type Tone = "amber" | "accent" | "blue" | "zinc";
 function CrewNode({
   icon,
   title,
+  role,
   subtitle,
   tone,
   depth,
@@ -588,6 +593,10 @@ function CrewNode({
 }: {
   icon: string;
   title: string;
+  /** The agent's portfolio / domain (e.g. "Web Design & UI", "President"),
+   *  rendered as an always-visible role chip below the name so the Crew tab
+   *  reads as an org chart, not just a name list. */
+  role?: string;
   subtitle: string;
   tone: Tone;
   depth: number;
@@ -636,6 +645,14 @@ function CrewNode({
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-medium text-fg">{title}</span>
+          {role && (
+            <span
+              className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-xs font-medium text-fg-dim"
+              title={role}
+            >
+              {role}
+            </span>
+          )}
           {paused && <Badge tone="zinc">{t("crew_paused")}</Badge>}
           {escalated && (
             <span title={t("crew_escalated_hint")}>

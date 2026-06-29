@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { CheckCircle2, XCircle, Info, X, type LucideIcon } from "lucide-react";
 import { useI18n } from "../lib/useI18n";
 import { actOnToast, dismissToast, useToasts, type ToastVariant } from "../lib/useToast.ts";
 
@@ -390,11 +391,11 @@ export function Callout({
  *  light/dark/matrix all stay coherent. */
 const TOAST_STYLES: Record<
   ToastVariant,
-  { icon: string; border: string; text: string }
+  { icon: LucideIcon; border: string; text: string }
 > = {
-  success: { icon: "✓", border: "border-l-ok", text: "text-ok-fg" },
-  error: { icon: "✕", border: "border-l-critical", text: "text-critical-fg" },
-  info: { icon: "ⓘ", border: "border-l-accent", text: "text-accent" },
+  success: { icon: CheckCircle2, border: "border-l-ok", text: "text-ok-fg" },
+  error: { icon: XCircle, border: "border-l-critical", text: "text-critical-fg" },
+  info: { icon: Info, border: "border-l-accent", text: "text-accent" },
 };
 
 /** Single global toast stack. Mount once near the app root; it subscribes to
@@ -409,13 +410,14 @@ export function ToastViewport() {
     <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2">
       {toasts.map((toast) => {
         const style = TOAST_STYLES[toast.variant];
+        const Icon = style.icon;
         return (
           <div
             key={toast.id}
             role="status"
             className={`pointer-events-auto flex items-start gap-2 rounded-lg border border-l-4 border-line bg-surface px-3 py-2 shadow-lg ${style.border}`}
           >
-            <span className={`mt-0.5 shrink-0 text-sm ${style.text}`}>{style.icon}</span>
+            <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${style.text}`} strokeWidth={2} />
             <p className="min-w-0 flex-1 break-words text-sm text-fg">{toast.message}</p>
             {toast.action && (
               <button
@@ -428,9 +430,9 @@ export function ToastViewport() {
             <button
               onClick={() => dismissToast(toast.id)}
               aria-label={t("toast_dismiss")}
-              className="shrink-0 text-xs text-fg-faint transition-colors hover:text-fg-muted"
+              className="shrink-0 text-fg-faint transition-colors hover:text-fg-muted"
             >
-              ✕
+              <X className="h-3.5 w-3.5" strokeWidth={2} />
             </button>
           </div>
         );

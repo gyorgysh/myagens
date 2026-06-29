@@ -302,26 +302,37 @@ export function App() {
           {tab === "settings" && <SettingsView onAuthError={onAuthError} />}
 
           {tab !== "command" && !isCommandChild(tab) && (
-          <footer className="mt-10 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs text-fg-faint">
-            <span>{t("app_footer_made_with")}</span>
-            <span className="text-fg-faint/50">·</span>
-            <a
-              href="https://gyorgy.sh"
-              target="_blank"
-              rel="noreferrer"
-              className="text-fg-dim hover:text-fg-muted"
-            >
-              gyorgy.sh
-            </a>
-            <span className="text-fg-faint/50">·</span>
-            <a
-              href="https://github.com/gyorgysh/myhq"
-              target="_blank"
-              rel="noreferrer"
-              className="text-fg-dim hover:text-fg-muted"
-            >
-              GitHub
-            </a>
+          <footer className="mt-10">
+            {/* A thin gradient rule above the footer gives it a deliberate
+                edge without adding weight: it fades in from transparent to a
+                faint accent at the centre and back, reading as a subtle brand
+                motif rather than a hard divider. */}
+            <div className="mx-auto h-px max-w-xs bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs text-fg-faint">
+              <span>{t("app_footer_made_with")}</span>
+              <span className="text-accent/40" aria-hidden>
+                ◈
+              </span>
+              <a
+                href="https://gyorgy.sh"
+                target="_blank"
+                rel="noreferrer"
+                className="text-fg-dim hover:text-fg-muted"
+              >
+                gyorgy.sh
+              </a>
+              <span className="text-accent/40" aria-hidden>
+                ◈
+              </span>
+              <a
+                href="https://github.com/gyorgysh/myhq"
+                target="_blank"
+                rel="noreferrer"
+                className="text-fg-dim hover:text-fg-muted"
+              >
+                GitHub
+              </a>
+            </div>
           </footer>
           )}
         </main>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Settings, Search, CornerDownLeft, type LucideIcon } from "lucide-react";
 import { useI18n } from "../lib/useI18n.ts";
 import { NAV, type Tab } from "./Sidebar.tsx";
 import type { TranslationKey } from "../i18n/en.ts";
@@ -8,7 +9,7 @@ type PaletteItem = {
   label: string;
   group: string;
   hint: string;
-  icon: string;
+  icon: LucideIcon;
 };
 
 function scoreMatch(item: PaletteItem, query: string): number {
@@ -76,7 +77,7 @@ export function CommandPalette({
       label: t("nav_settings"),
       group: "",
       hint: t("nav_settings_hint"),
-      icon: "⚙",
+      icon: Settings,
     },
   ];
 
@@ -162,9 +163,7 @@ export function CommandPalette({
       <div className="relative mx-4 w-full max-w-lg rounded-xl border border-line bg-surface shadow-2xl">
         {/* Search input */}
         <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-          <span className="shrink-0 text-fg-dim" aria-hidden="true">
-            ⌕
-          </span>
+          <Search className="h-4 w-4 shrink-0 text-fg-dim" aria-hidden="true" strokeWidth={1.75} />
           <input
             ref={inputRef}
             value={query}
@@ -194,6 +193,7 @@ export function CommandPalette({
           )}
           {filtered.map((item, idx) => {
             const isActive = idx === active;
+            const Icon = item.icon;
             return (
               <li
                 key={item.id}
@@ -208,12 +208,11 @@ export function CommandPalette({
                   isActive ? "bg-accent/10 text-fg" : "text-fg-muted hover:bg-surface-2"
                 }`}
               >
-                <span
-                  className={`w-5 shrink-0 text-center text-base ${isActive ? "text-accent" : "text-fg-dim"}`}
+                <Icon
+                  className={`h-[18px] w-[18px] shrink-0 ${isActive ? "text-accent" : "text-fg-dim"}`}
+                  strokeWidth={isActive ? 2.25 : 1.75}
                   aria-hidden="true"
-                >
-                  {item.icon}
-                </span>
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
                     <span className="text-sm font-medium">{item.label}</span>
@@ -230,8 +229,8 @@ export function CommandPalette({
                   )}
                 </div>
                 {isActive && (
-                  <kbd className="mono-xs shrink-0 rounded border border-line px-1.5 py-0.5 text-fg-faint">
-                    ↵
+                  <kbd className="mono-xs flex shrink-0 items-center rounded border border-line px-1.5 py-1 text-fg-faint">
+                    <CornerDownLeft className="h-3 w-3" strokeWidth={1.75} />
                   </kbd>
                 )}
               </li>

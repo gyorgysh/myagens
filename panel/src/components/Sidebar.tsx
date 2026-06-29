@@ -2,6 +2,37 @@ import { useEffect, useRef, useState } from "react";
 import type { Theme } from "../lib/useTheme.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import type { TranslationKey } from "../i18n/en.ts";
+import {
+  LayoutDashboard,
+  ScrollText,
+  HeartPulse,
+  History,
+  TrendingUp,
+  Terminal,
+  ListTodo,
+  Hexagon,
+  Inbox,
+  Bot,
+  Clock,
+  Brain,
+  KeyRound,
+  Plug,
+  MessageSquareQuote,
+  Sparkles,
+  Pencil,
+  Activity,
+  Download,
+  Database,
+  ArrowLeftRight,
+  PenLine,
+  Settings,
+  Sun,
+  Moon,
+  Binary,
+  Power,
+  Menu,
+  type LucideIcon,
+} from "lucide-react";
 
 export type Tab =
   | "setup"
@@ -29,7 +60,7 @@ export type Tab =
   | "feedback"
   | "usage";
 
-type Item = { id: Tab; labelKey: TranslationKey; icon: string; hintKey?: TranslationKey };
+type Item = { id: Tab; labelKey: TranslationKey; icon: LucideIcon; hintKey?: TranslationKey };
 type Group = { headingKey: TranslationKey; items: Item[] };
 
 /**
@@ -37,29 +68,29 @@ type Group = { headingKey: TranslationKey; items: Item[] };
  * always one tap away on phones).
  */
 export const PRIMARY_NAV: Item[] = [
-  { id: "health", labelKey: "nav_health", icon: "▦", hintKey: "nav_health_hint" },
-  { id: "command", labelKey: "nav_command", icon: "❯", hintKey: "nav_command_hint" },
-  { id: "tasks", labelKey: "nav_tasks", icon: "▤", hintKey: "nav_tasks_hint" },
-  { id: "crew", labelKey: "nav_crew", icon: "⬡", hintKey: "nav_crew_hint" },
-  { id: "inbox", labelKey: "nav_inbox", icon: "✉", hintKey: "nav_inbox_hint" },
+  { id: "health", labelKey: "nav_health", icon: LayoutDashboard, hintKey: "nav_health_hint" },
+  { id: "command", labelKey: "nav_command", icon: Terminal, hintKey: "nav_command_hint" },
+  { id: "tasks", labelKey: "nav_tasks", icon: ListTodo, hintKey: "nav_tasks_hint" },
+  { id: "crew", labelKey: "nav_crew", icon: Hexagon, hintKey: "nav_crew_hint" },
+  { id: "inbox", labelKey: "nav_inbox", icon: Inbox, hintKey: "nav_inbox_hint" },
 ];
 
 /**
  * @deprecated Use NAV groups directly. Kept for mobile More drawer compatibility.
  */
 export const MORE_NAV: Item[] = [
-  { id: "logs", labelKey: "nav_logs", icon: "≣", hintKey: "nav_logs_hint" },
-  { id: "heartbeat", labelKey: "nav_heartbeat", icon: "♡", hintKey: "nav_heartbeat_hint" },
-  { id: "sessions", labelKey: "nav_sessions", icon: "◇", hintKey: "nav_sessions_hint" },
-  { id: "usage", labelKey: "nav_usage", icon: "↗", hintKey: "nav_usage_hint" },
-  { id: "workers", labelKey: "nav_workers", icon: "◈", hintKey: "nav_workers_hint" },
-  { id: "schedules", labelKey: "nav_schedules", icon: "◷", hintKey: "nav_schedules_hint" },
-  { id: "memory", labelKey: "nav_memory", icon: "❋", hintKey: "nav_memory_hint" },
-  { id: "vault", labelKey: "nav_vault", icon: "⚷", hintKey: "nav_vault_hint" },
-  { id: "connectors", labelKey: "nav_connectors", icon: "⊹", hintKey: "nav_connectors_hint" },
-  { id: "prompt", labelKey: "nav_prompt", icon: "❝", hintKey: "nav_prompt_hint" },
-  { id: "skills", labelKey: "nav_skills", icon: "✦", hintKey: "nav_skills_hint" },
-  { id: "setup", labelKey: "nav_setup", icon: "✎", hintKey: "nav_setup_hint" },
+  { id: "logs", labelKey: "nav_logs", icon: ScrollText, hintKey: "nav_logs_hint" },
+  { id: "heartbeat", labelKey: "nav_heartbeat", icon: HeartPulse, hintKey: "nav_heartbeat_hint" },
+  { id: "sessions", labelKey: "nav_sessions", icon: History, hintKey: "nav_sessions_hint" },
+  { id: "usage", labelKey: "nav_usage", icon: TrendingUp, hintKey: "nav_usage_hint" },
+  { id: "workers", labelKey: "nav_workers", icon: Bot, hintKey: "nav_workers_hint" },
+  { id: "schedules", labelKey: "nav_schedules", icon: Clock, hintKey: "nav_schedules_hint" },
+  { id: "memory", labelKey: "nav_memory", icon: Brain, hintKey: "nav_memory_hint" },
+  { id: "vault", labelKey: "nav_vault", icon: KeyRound, hintKey: "nav_vault_hint" },
+  { id: "connectors", labelKey: "nav_connectors", icon: Plug, hintKey: "nav_connectors_hint" },
+  { id: "prompt", labelKey: "nav_prompt", icon: MessageSquareQuote, hintKey: "nav_prompt_hint" },
+  { id: "skills", labelKey: "nav_skills", icon: Sparkles, hintKey: "nav_skills_hint" },
+  { id: "setup", labelKey: "nav_setup", icon: Pencil, hintKey: "nav_setup_hint" },
 ];
 
 /**
@@ -72,35 +103,35 @@ export const NAV: Group[] = [
     // Monitor — things you observe passively: system state, events, activity
     headingKey: "nav_monitor",
     items: [
-      { id: "health", labelKey: "nav_health", icon: "▦", hintKey: "nav_health_hint" },
-      { id: "logs", labelKey: "nav_logs", icon: "≣", hintKey: "nav_logs_hint" },
-      { id: "heartbeat", labelKey: "nav_heartbeat", icon: "♡", hintKey: "nav_heartbeat_hint" },
-      { id: "sessions", labelKey: "nav_sessions", icon: "◇", hintKey: "nav_sessions_hint" },
-      { id: "usage", labelKey: "nav_usage", icon: "↗", hintKey: "nav_usage_hint" },
+      { id: "health", labelKey: "nav_health", icon: LayoutDashboard, hintKey: "nav_health_hint" },
+      { id: "logs", labelKey: "nav_logs", icon: ScrollText, hintKey: "nav_logs_hint" },
+      { id: "heartbeat", labelKey: "nav_heartbeat", icon: HeartPulse, hintKey: "nav_heartbeat_hint" },
+      { id: "sessions", labelKey: "nav_sessions", icon: History, hintKey: "nav_sessions_hint" },
+      { id: "usage", labelKey: "nav_usage", icon: TrendingUp, hintKey: "nav_usage_hint" },
     ],
   },
   {
     // Operate — things you actively work with day to day
     headingKey: "nav_operate",
     items: [
-      { id: "command", labelKey: "nav_command", icon: "❯", hintKey: "nav_command_hint" },
-      { id: "tasks", labelKey: "nav_tasks", icon: "▤", hintKey: "nav_tasks_hint" },
-      { id: "crew", labelKey: "nav_crew", icon: "⬡", hintKey: "nav_crew_hint" },
-      { id: "inbox", labelKey: "nav_inbox", icon: "✉", hintKey: "nav_inbox_hint" },
-      { id: "workers", labelKey: "nav_workers", icon: "◈", hintKey: "nav_workers_hint" },
-      { id: "schedules", labelKey: "nav_schedules", icon: "◷", hintKey: "nav_schedules_hint" },
+      { id: "command", labelKey: "nav_command", icon: Terminal, hintKey: "nav_command_hint" },
+      { id: "tasks", labelKey: "nav_tasks", icon: ListTodo, hintKey: "nav_tasks_hint" },
+      { id: "crew", labelKey: "nav_crew", icon: Hexagon, hintKey: "nav_crew_hint" },
+      { id: "inbox", labelKey: "nav_inbox", icon: Inbox, hintKey: "nav_inbox_hint" },
+      { id: "workers", labelKey: "nav_workers", icon: Bot, hintKey: "nav_workers_hint" },
+      { id: "schedules", labelKey: "nav_schedules", icon: Clock, hintKey: "nav_schedules_hint" },
     ],
   },
   {
     // Configure — set once, rarely revisit
     headingKey: "nav_configure",
     items: [
-      { id: "memory", labelKey: "nav_memory", icon: "❋", hintKey: "nav_memory_hint" },
-      { id: "vault", labelKey: "nav_vault", icon: "⚷", hintKey: "nav_vault_hint" },
-      { id: "connectors", labelKey: "nav_connectors", icon: "⊹", hintKey: "nav_connectors_hint" },
-      { id: "prompt", labelKey: "nav_prompt", icon: "❝", hintKey: "nav_prompt_hint" },
-      { id: "skills", labelKey: "nav_skills", icon: "✦", hintKey: "nav_skills_hint" },
-      { id: "setup", labelKey: "nav_setup", icon: "✎", hintKey: "nav_setup_hint" },
+      { id: "memory", labelKey: "nav_memory", icon: Brain, hintKey: "nav_memory_hint" },
+      { id: "vault", labelKey: "nav_vault", icon: KeyRound, hintKey: "nav_vault_hint" },
+      { id: "connectors", labelKey: "nav_connectors", icon: Plug, hintKey: "nav_connectors_hint" },
+      { id: "prompt", labelKey: "nav_prompt", icon: MessageSquareQuote, hintKey: "nav_prompt_hint" },
+      { id: "skills", labelKey: "nav_skills", icon: Sparkles, hintKey: "nav_skills_hint" },
+      { id: "setup", labelKey: "nav_setup", icon: Pencil, hintKey: "nav_setup_hint" },
     ],
   },
 ];
@@ -112,11 +143,11 @@ export const NAV: Group[] = [
  * here via the footer link icons.
  */
 export const FOOTER_NAV: Item[] = [
-  { id: "status", labelKey: "nav_status", icon: "◉", hintKey: "nav_status_hint" },
-  { id: "updates", labelKey: "nav_updates", icon: "⤓", hintKey: "nav_updates_hint" },
-  { id: "backup", labelKey: "nav_backup", icon: "⛁", hintKey: "nav_backup_hint" },
-  { id: "remote", labelKey: "nav_remote", icon: "⇆", hintKey: "nav_remote_hint" },
-  { id: "feedback", labelKey: "nav_feedback", icon: "✍", hintKey: "nav_feedback_hint" },
+  { id: "status", labelKey: "nav_status", icon: Activity, hintKey: "nav_status_hint" },
+  { id: "updates", labelKey: "nav_updates", icon: Download, hintKey: "nav_updates_hint" },
+  { id: "backup", labelKey: "nav_backup", icon: Database, hintKey: "nav_backup_hint" },
+  { id: "remote", labelKey: "nav_remote", icon: ArrowLeftRight, hintKey: "nav_remote_hint" },
+  { id: "feedback", labelKey: "nav_feedback", icon: PenLine, hintKey: "nav_feedback_hint" },
 ];
 
 /** Every group + the footer items, for search/lookup that must span all tabs. */
@@ -147,10 +178,10 @@ export function tabLabel(tab: Tab): string {
 
 /** A handful of high-traffic tabs surfaced in the mobile bottom nav. */
 const BOTTOM_NAV: Item[] = [
-  { id: "health", labelKey: "nav_health", icon: "▦" },
-  { id: "command", labelKey: "nav_command", icon: "❯" },
-  { id: "tasks", labelKey: "nav_tasks", icon: "▤" },
-  { id: "inbox", labelKey: "nav_inbox", icon: "✉" },
+  { id: "health", labelKey: "nav_health", icon: LayoutDashboard },
+  { id: "command", labelKey: "nav_command", icon: Terminal },
+  { id: "tasks", labelKey: "nav_tasks", icon: ListTodo },
+  { id: "inbox", labelKey: "nav_inbox", icon: Inbox },
 ];
 
 /** Fixed bottom navigation bar shown only on narrow screens (below md). */
@@ -174,6 +205,7 @@ export function BottomNav({
       {items.map((it) => {
         const active = it.id === tab || (it.id === "command" && isCommandChild(tab));
         const showBadge = it.id === "inbox" && inboxPending > 0;
+        const Icon = it.icon;
         return (
           <button
             key={it.id}
@@ -182,8 +214,8 @@ export function BottomNav({
               active ? "text-accent" : "text-fg-dim"
             }`}
           >
-            <span className="relative text-base leading-none">
-              {it.icon}
+            <span className="relative leading-none">
+              <Icon className="h-5 w-5" strokeWidth={active ? 2.25 : 1.75} />
               {showBadge && (
                 <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
               )}
@@ -196,7 +228,7 @@ export function BottomNav({
         onClick={onOpenMenu}
         className="flex flex-1 flex-col items-center gap-0.5 py-2 text-xs text-fg-dim transition-colors"
       >
-        <span className="text-base leading-none">☰</span>
+        <Menu className="h-5 w-5" strokeWidth={1.75} />
         <span>{t("nav_more")}</span>
       </button>
     </nav>
@@ -323,6 +355,7 @@ export function MoreDrawer({
                     const active = it.id === tab || (it.id === "command" && isCommandChild(tab));
                     const inboxBadge = it.id === "inbox" && inboxPending > 0;
                     const updateBadge = it.id === "updates" && updateAvailable;
+                    const Icon = it.icon;
                     return (
                       <button
                         key={it.id}
@@ -337,7 +370,7 @@ export function MoreDrawer({
                             : "text-fg-dim hover:bg-surface-2 active:bg-surface-2"
                         }`}
                       >
-                        <span className="w-4 shrink-0 text-center">{it.icon}</span>
+                        <Icon className="h-4 w-4 shrink-0" strokeWidth={active ? 2.25 : 1.75} />
                         <span className="min-w-0 flex-1 text-left">
                           <span className="block truncate">{t(it.labelKey)}</span>
                           {it.hintKey && (
@@ -367,7 +400,10 @@ export function MoreDrawer({
                       : "text-fg-dim hover:bg-surface-2 active:bg-surface-2"
                   }`}
                 >
-                  <span className="w-4 shrink-0 text-center">⚙</span>
+                  <Settings
+                    className="h-4 w-4 shrink-0"
+                    strokeWidth={tab === "settings" || isSettingsChild(tab) ? 2.25 : 1.75}
+                  />
                   <span className="min-w-0 flex-1 text-left">
                     <span className="block truncate">{t("nav_settings")}</span>
                     <span className="block truncate text-xs text-fg-faint">{t("nav_settings_hint")}</span>
@@ -395,7 +431,7 @@ export function isTab(value: string): value is Tab {
   return (TAB_IDS as string[]).includes(value);
 }
 
-const THEME_ICON: Record<Theme, string> = { light: "☀", dark: "☾", matrix: "▚" };
+const THEME_ICON: Record<Theme, LucideIcon> = { light: Sun, dark: Moon, matrix: Binary };
 
 export function Sidebar({
   tab,
@@ -437,6 +473,7 @@ export function Sidebar({
     const badge = updateBadge || inboxBadge;
     const count = inboxBadge ? inboxPending : updateCount;
     const badgeText = count > 99 ? "99+" : String(count || 1);
+    const Icon = it.icon;
     return (
       <button
         key={it.id}
@@ -450,8 +487,8 @@ export function Sidebar({
             : "border-transparent text-fg-dim hover:bg-surface-2 hover:text-fg"
         }`}
       >
-        <span className="relative flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none">
-          {it.icon}
+        <span className="relative flex h-5 w-5 shrink-0 items-center justify-center leading-none">
+          <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.25 : 1.75} />
           {badge && (
             <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface" />
           )}
@@ -506,6 +543,7 @@ export function Sidebar({
           {FOOTER_NAV.map((it) => {
             const active = it.id === tab;
             const updateBadge = it.id === "updates" && updateAvailable;
+            const Icon = it.icon;
             return (
               <button
                 key={it.id}
@@ -521,8 +559,8 @@ export function Sidebar({
                     : "text-fg-faint hover:bg-surface-2 hover:text-fg-dim"
                 }`}
               >
-                <span className="relative flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none">
-                  {it.icon}
+                <span className="relative flex h-5 w-5 shrink-0 items-center justify-center leading-none">
+                  <Icon className="h-4 w-4" strokeWidth={active ? 2.25 : 1.75} />
                   {updateBadge && (
                     <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface" />
                   )}
@@ -532,17 +570,24 @@ export function Sidebar({
             );
           })}
         </div>
-        <button
-          onClick={onToggleTheme}
-          title={t("theme_toggle")}
-          aria-label={t("theme_toggle")}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg"
-        >
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none">{THEME_ICON[theme]}</span>
-          <span className={labelCls}>
-            {theme === "light" ? t("theme_light") : theme === "dark" ? t("theme_dark") : t("theme_matrix")}
-          </span>
-        </button>
+        {(() => {
+          const ThemeIcon = THEME_ICON[theme];
+          return (
+            <button
+              onClick={onToggleTheme}
+              title={t("theme_toggle")}
+              aria-label={t("theme_toggle")}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg"
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center leading-none">
+                <ThemeIcon className="h-[18px] w-[18px]" strokeWidth={1.75} />
+              </span>
+              <span className={labelCls}>
+                {theme === "light" ? t("theme_light") : theme === "dark" ? t("theme_dark") : t("theme_matrix")}
+              </span>
+            </button>
+          );
+        })()}
         <button
           onClick={() => onSelect("settings")}
           title={t("nav_settings")}
@@ -554,7 +599,12 @@ export function Sidebar({
               : "border-transparent text-fg-dim hover:bg-surface-2 hover:text-fg"
           }`}
         >
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none">⚙</span>
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center leading-none">
+            <Settings
+              className="h-[18px] w-[18px]"
+              strokeWidth={tab === "settings" || isSettingsChild(tab) ? 2.25 : 1.75}
+            />
+          </span>
           <span className={labelCls}>{t("nav_settings")}</span>
         </button>
         <button
@@ -563,7 +613,9 @@ export function Sidebar({
           aria-label={t("sign_out")}
           className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg"
         >
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center text-base leading-none">⏻</span>
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center leading-none">
+            <Power className="h-[18px] w-[18px]" strokeWidth={1.75} />
+          </span>
           <span className={labelCls}>{t("sign_out")}</span>
         </button>
       </div>

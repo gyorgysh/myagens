@@ -33,6 +33,14 @@ export abstract class BaseDraftStreamer implements Streamer {
   private keepalive: NodeJS.Timeout | null = null;
   private flushing = false;
   private dirty = false;
+  /**
+   * Optional predicate: when it returns true the turn is parked waiting on the
+   * user (crew_ask_president / AskUserQuestion free-text). While paused we stop
+   * re-pushing the ephemeral draft, since an active draft occupies the chat's
+   * compose slot and masks the user's typed answer — the answer wouldn't
+   * register until the draft loop cleared.
+   */
+  private paused: (() => boolean) | null = null;
 
   constructor(
     protected tg: Telegram,
@@ -45,13 +53,23 @@ export abstract class BaseDraftStreamer implements Streamer {
   }
 
   /**
+   * Register a predicate that, while true, pauses draft pushes (keepalive and
+   * flush). Used to stop the draft loop from masking a user's typed reply while
+   * the turn is parked on crew_ask_president / AskUserQuestion.
+   */
+  setPaused(predicate: () => boolean): void {
+    this.paused = predicate;
+  }
+
+  /**
    * Start the keepalive. We don't push anything until real text arrives — an
    * empty/placeholder draft renders as a stray "Thinking…" bubble.
    */
   async start(): Promise<void> {
     this.keepalive = setInterval(() => {
-      // Re-send the current state to reset the 30s expiry even when idle.
-      if (!this.closed && this.content) void this.pushDraft().catch(() => {});
+      // Re-send the current state to reset the 30s expiry even when idle, unless
+      // the turn is parked waiting on the user (see `paused`).
+      if (!this.closed && this.content && !this.paused?.()) void this.pushDraft().catch(() => {});
     }, KEEPALIVE_MS);
   }
 
@@ -85,6 +103,12 @@ export abstract class BaseDraftStreamer implements Streamer {
     if (!this.dirty) return;
     // Nothing to preview yet — avoid an empty placeholder draft.
     if (!this.content) return;
+    // Parked waiting on the user: don't push a draft that would mask their typed
+    // reply. Keep the buffered content dirty and retry once the pause clears.
+    if (this.paused?.()) {
+      this.schedule();
+      return;
+    }
     this.flushing = true;
     this.dirty = false;
     try {

@@ -481,14 +481,21 @@ async function handleUserPrompt(
   const ack = await tg.sendMessage(chatId, t("bot_working", langForChat(chatId))).catch(() => undefined);
   let placeholderId: number | undefined;
 
+  // Parked-on-user predicate, shared by the typing loop and the draft keepalive:
+  // while a crew_ask_president or AskUserQuestion free-text reply is awaited, the
+  // draft preview must stop refreshing so it doesn't mask the user's typed answer.
+  const parkedOnUser = () => hasPendingAsk(chatId) || asks.hasPending(chatId);
+
   let streamer: Streamer;
   if (config.STREAM_MODE === "rich") {
     const draft = new RichDraftStreamer(tg, chatId);
+    draft.setPaused(parkedOnUser);
     await draft.start();
     streamer = draft;
     placeholderId = ack?.message_id;
   } else if (config.STREAM_MODE === "draft") {
     const draft = new DraftStreamer(tg, chatId);
+    draft.setPaused(parkedOnUser);
     await draft.start();
     streamer = draft;
     placeholderId = ack?.message_id;
@@ -504,7 +511,7 @@ async function handleUserPrompt(
     // While the turn is parked waiting on the user — either crew_ask_president or
     // an AskUserQuestion prompt — suppress the "typing…" indicator so their input
     // area isn't stuck spinning (and so a typed "Other" reply isn't masked).
-    if (hasPendingAsk(chatId) || asks.hasPending(chatId)) return;
+    if (parkedOnUser()) return;
     void tg.sendChatAction(chatId, "typing").catch(() => {});
   }, 4000);
 

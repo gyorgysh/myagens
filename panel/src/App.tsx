@@ -307,7 +307,7 @@ export function App() {
             {tab === "memory" && <MemoryView onAuthError={onAuthError} />}
             {tab === "vault" && <VaultView onAuthError={onAuthError} />}
             {tab === "backup" && <BackupView onAuthError={onAuthError} />}
-            {tab === "connectors" && <ConnectorsView onAuthError={onAuthError} />}
+            {tab === "connectors" && <ConnectorsView onAuthError={onAuthError} onGoto={select} />}
             {tab === "prompt" && <PromptView_ onAuthError={onAuthError} />}
             {tab === "logs" && <LogsView onAuthError={onAuthError} />}
             {tab === "sessions" && <SessionsView onAuthError={onAuthError} />}

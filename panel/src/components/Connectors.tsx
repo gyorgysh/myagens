@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, AuthError, type Connector, type ConnectorScope, type SecretView } from "../api.ts";
-import { Badge, Card, Empty, Label, Select } from "./ui.tsx";
+import { Badge, Button, Card, Empty, Label, Select } from "./ui.tsx";
 import { ConnectorsArt } from "./onboarding.tsx";
 import { useI18n } from "../lib/useI18n.ts";
+import type { Tab } from "./Sidebar.tsx";
 
-export function ConnectorsView({ onAuthError }: { onAuthError: () => void }) {
+export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => void; onGoto?: (t: Tab) => void }) {
   const { t } = useI18n();
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [secrets, setSecrets] = useState<SecretView[]>([]);
@@ -45,6 +46,20 @@ export function ConnectorsView({ onAuthError }: { onAuthError: () => void }) {
       {connectors.length === 0 ? (
         <Empty icon={<ConnectorsArt />} title={t("connectors_empty_title")}>
           {t("connectors_empty_desc")}
+        </Empty>
+      ) : !connectors.some((c) => c.secretId) ? (
+        <Empty
+          icon={<ConnectorsArt />}
+          title={t("connectors_none_configured")}
+          action={
+            onGoto && (
+              <Button variant="primary" onClick={() => onGoto("vault")}>
+                {t("connectors_add_credential")}
+              </Button>
+            )
+          }
+        >
+          {t("connectors_none_configured_desc")}
         </Empty>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">

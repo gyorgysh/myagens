@@ -1290,6 +1290,9 @@ export const en = {
   connectors_access_write_hint: "Read tools plus create, update, send, and delete.",
   connectors_empty_title: "No connectors loaded",
   connectors_empty_desc: "Integrations appear here once the catalogue loads. If this persists, check the panel connection.",
+  connectors_none_configured: "No connector configured yet",
+  connectors_none_configured_desc: "Vault a credential (an API token or OAuth key), then bind it to a connector below to give the fleet that integration's tools.",
+  connectors_add_credential: "Add a credential",
 
   // Prompt (operator playbook) view
   prompt_playbook_title: "Operator playbook",

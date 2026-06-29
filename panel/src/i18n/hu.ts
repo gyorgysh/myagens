@@ -1295,6 +1295,9 @@ export const hu: Translations = {
   connectors_access_write_hint: "Olvasó eszközök, plusz létrehozás, módosítás, küldés és törlés.",
   connectors_empty_title: "Nincsenek betöltött csatlakozók",
   connectors_empty_desc: "Az integrációk itt jelennek meg, amint a katalógus betöltődik. Ha ez tartósan így marad, ellenőrizd a panel kapcsolatát.",
+  connectors_none_configured: "Még nincs beállított csatlakozó",
+  connectors_none_configured_desc: "Tárolj egy hitelesítő adatot (API tokent vagy OAuth kulcsot) a széfben, majd kösd hozzá egy lenti csatlakozóhoz, hogy a flotta megkapja az adott integráció eszközeit.",
+  connectors_add_credential: "Hitelesítő adat hozzáadása",
 
   // Prompt (üzemeltetői kézikönyv) nézet
   prompt_playbook_title: "Üzemeltetői kézikönyv",

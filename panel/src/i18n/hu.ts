@@ -545,6 +545,7 @@ export const hu: Translations = {
   chat_autonomy_label: "Autonómia",
   chat_send: "Küldés",
   chat_failed: "(sikertelen)",
+  chat_planning_badge: "Tervezés",
   chat_agent_atlas: "Atlas",
   chat_agent_atlas_sub: "Fő ügynök",
   chat_agent_private: "privát munkamenet",

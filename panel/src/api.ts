@@ -582,6 +582,8 @@ export interface ChatMessage {
   ts: number;
   error?: boolean;
   costUsd?: number;
+  /** True when this user message was sent in planning mode (preamble stripped). */
+  planning?: boolean;
 }
 
 /** One pending tool-call approval, mirrored from the shared session. */

@@ -920,6 +920,12 @@ function Bubble({ m, agentName, agentRole }: { m: ChatMessage; agentName?: strin
           {agentRole && <span className="text-xs text-fg-dim">{agentRole}</span>}
         </div>
       )}
+      {user && m.planning && (
+        <span className="mr-1 inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+          <ClipboardList size={11} />
+          {t("chat_planning_badge")}
+        </span>
+      )}
       <div
         className={`max-w-[85%] break-words rounded-2xl px-4 py-2.5 text-sm ${
           user

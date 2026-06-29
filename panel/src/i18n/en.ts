@@ -542,6 +542,7 @@ export const en = {
   chat_autonomy_label: "Autonomy",
   chat_send: "Send",
   chat_failed: "(failed)",
+  chat_planning_badge: "Planning",
   chat_agent_atlas: "Atlas",
   chat_agent_atlas_sub: "Main agent",
   chat_agent_private: "private session",

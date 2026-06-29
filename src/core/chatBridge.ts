@@ -14,6 +14,7 @@
  */
 
 import { config, allowedUserIds } from "../config.js";
+import { isPlanningPrompt, stripPlanningPreamble } from "./planningMode.js";
 
 /** Drives a single turn for the main Telegram chat. Registered by the bot. */
 type Runner = (chatId: number, prompt: string) => void;
@@ -28,6 +29,8 @@ export interface BridgeMessage {
   ts: number;
   error?: boolean;
   costUsd?: number;
+  /** True when this user message was sent in planning mode (preamble stripped). */
+  planning?: boolean;
 }
 
 const HISTORY_CAP = 200;
@@ -87,9 +90,15 @@ class ChatBridge {
 
   // --- mirror hooks, called from handleUserPrompt for the main chat ---
 
-  /** Record + broadcast a user message (typed in Telegram or the panel). */
+  /**
+   * Record + broadcast a user message (typed in Telegram or the panel). When the
+   * text carries the planning preamble, strip it and flag the message so the panel
+   * renders a compact "PLANNING" badge instead of the verbose preamble.
+   */
   mirrorUser(text: string): void {
-    const m: BridgeMessage = { id: rid(), role: "user", text, ts: Date.now() };
+    const planning = isPlanningPrompt(text);
+    const display = planning ? stripPlanningPreamble(text) : text;
+    const m: BridgeMessage = { id: rid(), role: "user", text: display, ts: Date.now(), planning: planning || undefined };
     this.append(m);
     this.broadcast({ type: "chat", event: "user", message: m });
   }

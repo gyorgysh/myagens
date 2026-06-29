@@ -29,3 +29,14 @@ export const PLANNING_PREAMBLE = [
 export function isPlanningPrompt(prompt: string): boolean {
   return prompt.startsWith(PLANNING_MARKER);
 }
+
+/**
+ * Strip the planning preamble from a prompt, returning just the user's original
+ * message. If the exact preamble prefix is present it is removed; otherwise the
+ * text is returned unchanged. Used so the panel can show the bare message under
+ * a compact "PLANNING" badge rather than the verbose preamble.
+ */
+export function stripPlanningPreamble(prompt: string): string {
+  if (prompt.startsWith(PLANNING_PREAMBLE)) return prompt.slice(PLANNING_PREAMBLE.length);
+  return prompt;
+}

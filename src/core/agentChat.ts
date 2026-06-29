@@ -20,7 +20,7 @@
 import { randomBytes } from "node:crypto";
 import { config } from "../config.js";
 import { loadJson, saveJson } from "./jsonStore.js";
-import { PLANNING_PREAMBLE, isPlanningPrompt } from "./planningMode.js";
+import { PLANNING_PREAMBLE, isPlanningPrompt, stripPlanningPreamble } from "./planningMode.js";
 
 import { runTurn } from "../claude/runner.js";
 import { agentUsage } from "./agentUsage.js";
@@ -44,6 +44,8 @@ export interface AgentChatMessage {
   ts: number;
   error?: boolean;
   costUsd?: number;
+  /** True when this user message was sent in planning mode (preamble stripped). */
+  planning?: boolean;
 }
 
 type Broadcaster = (msg: unknown) => void;
@@ -171,7 +173,9 @@ export class AgentChatManager {
     s.busy = true;
     this.broadcast({ type: "agentchat", event: "busy", agentId, busy: true });
 
-    const userMsg: AgentChatMessage = { id: rid(), role: "user", text, ts: Date.now() };
+    const planning = isPlanningPrompt(text);
+    const display = planning ? stripPlanningPreamble(text) : text;
+    const userMsg: AgentChatMessage = { id: rid(), role: "user", text: display, ts: Date.now(), planning: planning || undefined };
     this.append(s, userMsg);
     this.broadcast({ type: "agentchat", event: "user", agentId, message: userMsg });
 

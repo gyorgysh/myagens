@@ -542,8 +542,8 @@ export const hu: Translations = {
   chat_agent_atlas: "Atlas",
   chat_agent_atlas_sub: "Fő ügynök",
   chat_agent_private: "privát munkamenet",
-  chat_agent_empty: "Közvetlen utasítások és egyszeri kérdések {name} számára. Minden prompt frissen indul, nincs memória az üzenetek között.",
-  chat_agent_empty_2: "Folyamatos beszélgetéshez használd a Telegramot, ha az ügynöknek van bot tokenje.",
+  chat_agent_empty: "Privát, többfordulós munkamenet {name} számára. A kontextus megmarad az üzenetek között a munkameneten belül.",
+  chat_agent_empty_2: "A munkamenet-kontextus panel-újraindításkor törlődik. Tartós előzményekhez használd a Telegramot, ha az ügynöknek van bot tokenje.",
 
   // Memória (további)
   memory_fact_placeholder: "Egy tömör, önmagában érthető tény…",

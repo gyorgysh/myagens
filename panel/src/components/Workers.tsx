@@ -12,7 +12,7 @@ import { useWorkerEvents, type LiveRun } from "../lib/useWorkerEvents.ts";
 import { roleLabel } from "../lib/agentRole.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import type { TranslationKey } from "../i18n/en.ts";
-import { Avatar, Badge, Button, Card, Empty, InfoCard, Input, Label, Select, TextArea } from "./ui.tsx";
+import { Avatar, Badge, Button, Card, ConfirmDialog, Empty, InfoCard, Input, Label, Modal, Select, TextArea } from "./ui.tsx";
 import { useAvatarList, resolveAvatarSlug, AVATAR_SLUGS } from "../lib/avatar.ts";
 import { RefreshCw } from "lucide-react";
 import { RunLog } from "./RunLog.tsx";
@@ -279,6 +279,7 @@ function WorkerRow({
   // Run-Agent confirmation modal: an ad-hoc run is intentional (shows cwd +
   // editable prompt) rather than a one-tap fire-and-forget.
   const [runModal, setRunModal] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [runs, setRuns] = useState<WorkerRun[]>([]);
   const running = worker.running || live?.status === "running";
   // Resolve the agent's backend provider. With no providerId set it runs on the
@@ -312,7 +313,7 @@ function WorkerRow({
     onChange();
   };
   const del = async () => {
-    if (!confirm(t("workers_delete_confirm").replace("{name}", worker.name))) return;
+    setConfirmDelete(false);
     await api.deleteWorker(worker.id);
     onChange();
   };
@@ -398,7 +399,7 @@ function WorkerRow({
           )}
           <Button onClick={() => setOpen((o) => !o)}>{open ? t("hide") : t("details")}</Button>
           <Button onClick={() => setEditing((e) => !e)}>{t("edit")}</Button>
-          <Button variant="danger" onClick={del}>
+          <Button variant="danger" onClick={() => setConfirmDelete(true)}>
             {t("delete")}
           </Button>
         </span>
@@ -478,6 +479,16 @@ function WorkerRow({
           onConfirm={(prompt) => void run(prompt)}
         />
       )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title={t("workers_delete")}
+          description={t("workers_delete_confirm").replace("{name}", worker.name)}
+          confirmLabel={t("delete")}
+          onConfirm={() => void del()}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
     </Card>
     </div>
   );
@@ -503,20 +514,15 @@ function RunAgentModal({
   const role = roleLabel(worker, t);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={t("workers_run_agent")}
-    >
-      <button aria-label={t("cancel")} onClick={onCancel} className="absolute inset-0 bg-black/40" />
-      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl border border-line bg-surface shadow-xl">
+    <Modal onClose={onCancel} labelledBy="run-agent-title" className="overflow-hidden">
+      <div>
         <div className="border-b border-line px-4 py-3">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <h3 id="run-agent-title" className="flex flex-wrap items-center gap-2 text-sm font-semibold text-fg">
             {t("workers_run_agent")}
             <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
               {worker.name}
             </span>
+            {worker.model && <Badge tone="blue">{shortModel(worker.model)}</Badge>}
           </h3>
           <div className="mt-0.5 text-xs text-fg-dim">{role}</div>
         </div>
@@ -549,7 +555,7 @@ function RunAgentModal({
           </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

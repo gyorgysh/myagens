@@ -3,7 +3,7 @@ import { api, AuthError, type SecretView } from "../api.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import { toast } from "../lib/useToast.ts";
 import { useListAnimate } from "../lib/useListAnimate.ts";
-import { Badge, Button, Callout, Card, Empty, Input, Label } from "./ui.tsx";
+import { Badge, Button, Callout, Card, ConfirmDialog, Empty, Input, Label } from "./ui.tsx";
 import { VaultArt } from "./onboarding.tsx";
 
 const blank = { name: "", value: "", description: "" };
@@ -23,6 +23,7 @@ export function VaultView({ onAuthError }: { onAuthError: () => void }) {
   const [importBlob, setImportBlob] = useState("");
   const [importPass, setImportPass] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
   const [listRef] = useListAnimate();
 
   const load = () =>
@@ -115,7 +116,7 @@ export function VaultView({ onAuthError }: { onAuthError: () => void }) {
   };
 
   const rotate = async () => {
-    if (!confirm(t("vault_rotate_confirm"))) return;
+    setConfirmRotate(false);
     setBusy(true);
     try {
       const { rotated } = await api.rotateVaultKey();
@@ -285,7 +286,7 @@ export function VaultView({ onAuthError }: { onAuthError: () => void }) {
 
         {/* Rotate */}
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Button onClick={rotate} disabled={busy}>
+          <Button onClick={() => setConfirmRotate(true)} disabled={busy}>
             {t("vault_rotate")}
           </Button>
           <span className="text-xs text-fg-faint">
@@ -353,6 +354,17 @@ export function VaultView({ onAuthError }: { onAuthError: () => void }) {
           </div>
         </div>
       </div>
+
+      {confirmRotate && (
+        <ConfirmDialog
+          title={t("vault_rotate")}
+          description={t("vault_rotate_confirm")}
+          confirmLabel={t("vault_rotate")}
+          busy={busy}
+          onConfirm={rotate}
+          onCancel={() => setConfirmRotate(false)}
+        />
+      )}
     </Card>
   );
 }

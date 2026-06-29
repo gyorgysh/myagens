@@ -262,6 +262,9 @@ export const hu: Translations = {
   inbox_bulk_delegated: "{n} javaslat delegálva ✓",
   inbox_bulk_delegated_lead: "{n} javaslat delegálva neki: {lead} ✓",
   inbox_bulk_dismissed: "{n} javaslat elvetve ✓",
+  inbox_bulk_run_together: "Futtatás egy feladatként",
+  inbox_bulk_run_together_confirm: "Futtatod a(z) {n} kijelölt javaslatot egyetlen kombinált feladatként?",
+  inbox_bulk_combined: "{n} javaslat egy delegált futtatásba vonva ✓",
   // Postaláda "mi ez" infódoboz
   inbox_info_title: "Mi a Postaláda?",
   inbox_info_body:

@@ -259,6 +259,9 @@ export const en = {
   inbox_bulk_delegated: "Delegated {n} suggestions ✓",
   inbox_bulk_delegated_lead: "Delegated {n} suggestions to {lead} ✓",
   inbox_bulk_dismissed: "Dismissed {n} suggestions ✓",
+  inbox_bulk_run_together: "Run as one task",
+  inbox_bulk_run_together_confirm: "Run {n} selected suggestions as a single combined task?",
+  inbox_bulk_combined: "Combined {n} suggestions into one delegated run ✓",
   // Inbox "what is this" info box
   inbox_info_title: "What is the Inbox?",
   inbox_info_body:

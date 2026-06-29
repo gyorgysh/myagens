@@ -159,6 +159,27 @@ export function InboxView({ onAuthError }: { onAuthError: () => void }) {
     toast.success(t("inbox_bulk_dismissed").replace("{n}", String(ids.length)));
   };
 
+  // Merge the selected suggestions into a single combined task and delegate it
+  // as one autonomous run, then dismiss the originals (Tasks-board parity).
+  const bulkRunTogether = async () => {
+    const ids = [...selected];
+    const n = ids.length;
+    if (!n) return;
+    if (!confirm(t("inbox_bulk_run_together_confirm").replace("{n}", String(n)))) return;
+    const picked = all.filter((s) => selected.has(s.id));
+    const combinedTitle = picked.map((s) => s.title).join("; ");
+    const combinedNotes = picked
+      .map((s) => `### ${s.title}\n${s.detail ?? ""}`.trim())
+      .join("\n\n");
+    const combined = await api.createTask({ title: combinedTitle, notes: combinedNotes, column: "backlog" });
+    await api.delegateTask(combined.id).catch(() => {});
+    // Dismiss the originals now that they are merged into the combined run.
+    await Promise.all(ids.map((id) => api.dismissSuggestion(id).catch(() => {})));
+    exitSelectMode();
+    await load();
+    toast.success(t("inbox_bulk_combined").replace("{n}", String(n)));
+  };
+
   if (error) return <Empty>Failed to load: {error}</Empty>;
 
   const items = all.filter((s) => s.status === filter);
@@ -269,6 +290,13 @@ export function InboxView({ onAuthError }: { onAuthError: () => void }) {
               className="flex min-h-[44px] items-center rounded border border-line px-2.5 text-xs text-fg-dim hover:bg-surface-2 disabled:opacity-40 transition-colors"
             >
               {t("inbox_bulk_dismiss").replace("{n}", String(selected.size))}
+            </button>
+            <button
+              onClick={bulkRunTogether}
+              disabled={selected.size < 2}
+              className="flex min-h-[44px] items-center rounded border border-line px-2.5 text-xs text-fg-dim hover:bg-surface-2 disabled:opacity-40 transition-colors"
+            >
+              {t("inbox_bulk_run_together")}
             </button>
             <button
               onClick={exitSelectMode}

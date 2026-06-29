@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { api, type Worker, type MainAgent, type DelegationRecord } from "../api.ts";
+import { api, type Worker, type MainAgent, type DelegationRecord, type CouncilRule } from "../api.ts";
 import { Card, Empty, Badge, InfoCard, Skeleton, Avatar } from "./ui.tsx";
 import { CrewArt } from "./onboarding.tsx";
 import { relTime } from "../lib/format.ts";
 import { useI18n } from "../lib/useI18n.ts";
+import type { TranslationKey } from "../i18n/en.ts";
 import { useSubscription } from "../lib/useSubscription.ts";
 
 interface CouncilVote {
@@ -13,6 +14,8 @@ interface CouncilVote {
   vote: "support" | "oppose" | "abstain";
   reason: string;
   concern: string;
+  /** Domain relevance weight (0..1); absent on legacy sessions. */
+  relevance?: number;
 }
 
 interface CouncilSession {
@@ -22,6 +25,12 @@ interface CouncilSession {
   supportCount: number;
   opposeCount: number;
   abstainCount: number;
+  /** Relevance-weighted tallies + rule outcome (absent on legacy sessions). */
+  weightedSupport?: number;
+  weightedOppose?: number;
+  rule?: CouncilRule;
+  passed?: boolean;
+  weighted?: boolean;
   createdAt: number;
   noQuorum?: boolean;
 }
@@ -40,6 +49,7 @@ export function CrewView({
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [delegations, setDelegations] = useState<DelegationRecord[]>([]);
   const [council, setCouncil] = useState<CouncilSession[]>([]);
+  const [councilRule, setCouncilRuleState] = useState<CouncilRule>("majority");
   const [proposal, setProposal] = useState("");
   const [voting, setVoting] = useState(false);
   const [voteElapsed, setVoteElapsed] = useState(0);
@@ -53,12 +63,14 @@ export function CrewView({
       api.workers(),
       api.delegations(30),
       api.council(20),
+      api.councilRule(),
     ])
-      .then(([a, w, d, c]) => {
+      .then(([a, w, d, c, r]) => {
         setAtlas(a);
         setWorkers(w.workers);
         setDelegations(d.delegations);
         setCouncil(c.sessions as unknown as CouncilSession[]);
+        setCouncilRuleState(r.rule);
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoaded(true));
@@ -292,6 +304,29 @@ export function CrewView({
       <Card title={t("crew_council")}>
         <p className="mb-3 text-sm text-fg-dim">{t("crew_council_desc")}</p>
 
+        {/* Decision rule selector */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-fg-dim">{t("crew_council_rule")}</span>
+          <div className="inline-flex overflow-hidden rounded-lg border border-line">
+            {(["majority", "supermajority", "unanimous"] as CouncilRule[]).map((r) => (
+              <button
+                key={r}
+                onClick={() => {
+                  if (r === councilRule) return;
+                  setCouncilRuleState(r);
+                  void api.setCouncilRule(r).catch((e) => setError(String(e)));
+                }}
+                className={`px-3 py-1 text-xs font-medium transition ${
+                  councilRule === r ? "bg-accent text-white" : "bg-surface text-fg-dim hover:text-fg"
+                }`}
+              >
+                {t(`crew_council_rule_${r}` as TranslationKey)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="mb-3 text-xs text-fg-faint">{t(`crew_council_rule_${councilRule}_hint` as TranslationKey)}</p>
+
         {/* Trigger a new vote */}
         <div className="mb-4 rounded-lg border border-accent/30 bg-accent/5 p-3">
           <textarea
@@ -482,8 +517,14 @@ function CouncilCard({
   const [open, setOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const total = session.votes.length;
-  const winner =
-    session.supportCount > session.opposeCount
+  // Outcome under the configured rule when available (new sessions), else fall
+  // back to the raw head-count for legacy sessions that predate weighting.
+  const outcome: "support" | "oppose" | null =
+    session.passed !== undefined
+      ? session.passed
+        ? "support"
+        : "oppose"
+      : session.supportCount > session.opposeCount
       ? "support"
       : session.opposeCount > session.supportCount
       ? "oppose"
@@ -527,11 +568,18 @@ function CouncilCard({
             <Badge tone="green">✅ {session.supportCount}</Badge>
             <Badge tone="amber">❌ {session.opposeCount}</Badge>
             {session.abstainCount > 0 && <Badge tone="zinc">⬜ {session.abstainCount}</Badge>}
+            {session.rule && (
+              <Badge tone="zinc">{t(`crew_council_rule_${session.rule}` as TranslationKey)}</Badge>
+            )}
             {total > 0 && (
-              <Badge tone={winner === "support" ? "green" : winner === "oppose" ? "amber" : "zinc"}>
-                {winner === "support"
+              <Badge tone={outcome === "support" ? "green" : outcome === "oppose" ? "amber" : "zinc"}>
+                {session.passed !== undefined
+                  ? session.passed
+                    ? t("crew_council_passes")
+                    : t("crew_council_fails")
+                  : outcome === "support"
                   ? t("crew_council_support")
-                  : winner === "oppose"
+                  : outcome === "oppose"
                   ? t("crew_council_oppose")
                   : "Tied"}
               </Badge>
@@ -572,6 +620,14 @@ function CouncilCard({
                       ? t("crew_council_oppose")
                       : t("crew_council_abstain")}
                   </Badge>
+                  {session.weighted && v.relevance !== undefined && (
+                    <span
+                      className="ml-auto shrink-0 tabular-nums text-fg-faint"
+                      title={t("crew_council_relevance")}
+                    >
+                      {Math.round(v.relevance * 100)}%
+                    </span>
+                  )}
                 </div>
                 <p className="text-fg-muted">→ {v.reason}</p>
                 <p className="text-fg-faint">⚠ {v.concern}</p>

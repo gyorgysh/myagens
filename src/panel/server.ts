@@ -97,7 +97,7 @@ import { ptyManager } from "../core/ptyManager.js";
 import { tunnelManager, BASIC_AUTH_USER } from "../core/tunnelManager.js";
 import { PanelHub } from "./hub.js";
 import { runTurn } from "../claude/runner.js";
-import { runCouncil, deleteCouncilSession } from "../core/council.js";
+import { runCouncil, deleteCouncilSession, getCouncilRule, setCouncilRule, type CouncilRule } from "../core/council.js";
 
 const STATIC_DIR = join(repoRoot, "panel", "dist");
 
@@ -1593,6 +1593,18 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     } catch {
       return { sessions: [] };
     }
+  });
+
+  // Get / set the council decision rule (majority / supermajority / unanimous)
+  app.get("/api/council/rule", async () => ({ rule: getCouncilRule() }));
+
+  app.put("/api/council/rule", async (req, reply) => {
+    const { rule } = (req.body ?? {}) as { rule?: string };
+    const valid: CouncilRule[] = ["majority", "supermajority", "unanimous"];
+    if (!rule || !valid.includes(rule as CouncilRule)) {
+      return reply.code(400).send({ error: "rule must be majority, supermajority, or unanimous" });
+    }
+    return { rule: setCouncilRule(rule as CouncilRule) };
   });
 
   // Trigger a council vote (same flow as the Telegram /council command)

@@ -441,6 +441,9 @@ export interface DelegationRecord {
   type?: string;
 }
 
+/** Council decision rule applied to the relevance-weighted tallies. */
+export type CouncilRule = "majority" | "supermajority" | "unanimous";
+
 export interface WorkerRun {
   id: string;
   workerId: string;
@@ -1035,6 +1038,10 @@ export const api = {
     req<{ session: Record<string, unknown> }>("POST", "/api/council", { proposal }),
 
   deleteCouncilSession: (id: string) => req<{ ok: boolean }>("DELETE", `/api/council/${id}`),
+
+  councilRule: () => get<{ rule: CouncilRule }>("/api/council/rule"),
+  setCouncilRule: (rule: CouncilRule) =>
+    req<{ rule: CouncilRule }>("PUT", "/api/council/rule", { rule }),
 
   languages: () => get<{ languages: Record<string, string> }>("/api/languages"),
 

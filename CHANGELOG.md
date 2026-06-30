@@ -3,6 +3,28 @@
 All notable changes to MyHQ are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myhq`.
 
+## [0.5.8] - 2026-06-30
+
+### Added
+- **PostgreSQL and SQLite database connectors**: two new live integrations (connectors 9 and 10). Each exposes `list_tables`, `describe_schema`, and a read-only `query` tool (SELECT/WITH only, guarded by `assertReadOnlySql`), plus a write-scoped `execute` tool gated behind `WRITE_TOOLS`. PostgreSQL uses a lazily-loaded `pg` client from a connection-string credential; SQLite uses Node's built-in `node:sqlite` opened read-only. ([9a3e884](https://github.com/gyorgysh/myhq/commit/9a3e884))
+- **Unreal Engine MCP connector**: connects to the official Epic UE 5.8 MCP plugin running in the local editor via SSE at `http://127.0.0.1:8000/mcp`. No credential required to activate; an optional vault URL can override the default endpoint. ([42b8a52](https://github.com/gyorgysh/myhq/commit/42b8a52))
+- **Unity MCP connector**: targets the `mcp-unity` package (CoderGamester) via stdio transport. The credential is the path to the server script inside the Unity project's package cache; the SDK spawns the Node.js server as a child process per turn. ([1fe87b7](https://github.com/gyorgysh/myhq/commit/1fe87b7))
+- **Connector brand icons**: `simple-icons` v16 added to the panel; each connector card header now shows a 20px brand SVG that reveals its brand hex colour on hover. ([0d1864f](https://github.com/gyorgysh/myhq/commit/0d1864f))
+- **Connector info modal**: each connector card has a help button that opens a modal with a plain-English description, credential format, numbered setup steps, colour-coded tool badges (read = green, write = amber), and a contextual tip. ([3dc9979](https://github.com/gyorgysh/myhq/commit/3dc9979))
+- **Keyboard shortcuts card**: a collapsible card at the bottom of the System (Health) panel view lists all panel-wide keyboard shortcuts (Cmd+K palette, Esc, arrows, Enter/Shift+Enter in chat). ([e06bffd](https://github.com/gyorgysh/myhq/commit/e06bffd))
+- **Default Paths (known paths)**: a new Settings panel section for named folder shortcuts (`{ label, path }` pairs). These are injected into the system prompt every turn so agents know key directories without being told each time, and appear as quick-pick chips in the Workers panel when setting a worker `cwd`. Persisted in `mainAgent.json`; settable via `PUT /api/agent` with `knownPaths`. ([e9b65cf](https://github.com/gyorgysh/myhq/commit/e9b65cf), [81003fe](https://github.com/gyorgysh/myhq/commit/81003fe), [163d427](https://github.com/gyorgysh/myhq/commit/163d427))
+- **Playbook size warning**: the panel warns when `work.md` or `CLAUDE.md` in the active session directory grows beyond a size threshold (both are injected into the system prompt on every turn) and offers a one-click trim for `work.md`. ([843195b](https://github.com/gyorgysh/myhq/commit/843195b))
+- **macOS installer Xcode licence preflight**: before running Homebrew, the installer now checks whether the Xcode licence has been accepted and offers to accept it automatically, preventing silent mid-install failures when the full Xcode.app is the selected developer dir. ([086d105](https://github.com/gyorgysh/myhq/commit/086d105))
+
+### Fixed
+- **`knownPaths` not persisted**: the backend was silently dropping the `knownPaths` field from `PUT /api/agent` — it was never destructured or passed to `setMainSettings()`, so saves returned 200 but persisted nothing. ([163d427](https://github.com/gyorgysh/myhq/commit/163d427))
+- **Unified `WORKDIR` default to `~/MyHQ-Workspace`**: the agent working directory now defaults to `~/MyHQ-Workspace` across all platforms, auto-created on first run. The Windows installer previously defaulted the WORKDIR prompt to `<InstallDir>\data`, conflating it with the bot's internal state storage. `.env.example` updated to document the default. ([ab9e6f4](https://github.com/gyorgysh/myhq/commit/ab9e6f4), [be705b1](https://github.com/gyorgysh/myhq/commit/be705b1))
+- **Update output placement**: in-panel update progress output is now rendered inside the top status card directly under the Apply button, instead of a separate card at the bottom of the Updates view where it wasn't immediately visible. ([f11cb17](https://github.com/gyorgysh/myhq/commit/f11cb17))
+- **Installer sudo prompt clarity**: the first time the installer elevates to sudo, it now prints a clear notice that the password field shows nothing on screen. ([29363f0](https://github.com/gyorgysh/myhq/commit/29363f0))
+
+### Changed
+- **Em dash cleanup**: replaced all em dashes used as prose connectors in user-facing strings (panel and Telegram i18n files, `work.md`) with context-appropriate punctuation — commas, colons, periods, or parentheses. Code comments, UI placeholders (`— none —`), and numeric ranges are unchanged. ([8cb54b0](https://github.com/gyorgysh/myhq/commit/8cb54b0))
+
 ## [0.5.7] - 2026-06-30
 
 ### Added

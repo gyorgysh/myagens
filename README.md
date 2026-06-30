@@ -200,7 +200,7 @@ On Windows (elevated PowerShell):
 | --- | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | yes | Token from @BotFather (Atlas's bot) |
 | `ALLOWED_USER_IDS` | yes | Comma-separated numeric Telegram user ids |
-| `WORKDIR` | no | Directory Atlas starts in (default: `data/`) |
+| `WORKDIR` | no | Directory Atlas starts in (default: `~/MyHQ-Workspace`, auto-created on first run) |
 | `STATE_FILE` | no | Session + usage persistence path (default `data/state.json`) |
 | `CLAUDE_MODEL` | no | Default model id (default `claude-opus-4-8`) |
 | `ANTHROPIC_API_KEY` | no | API key; omit to use `claude` CLI login |

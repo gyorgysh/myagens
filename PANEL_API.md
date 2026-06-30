@@ -285,13 +285,20 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
     "autonomy": "standard",
     "defaultLanguage": "en",
     "fallbackProviderId": "<provider-id>",
-    "dryRun": false
+    "dryRun": false,
+    "knownPaths": [
+      { "label": "Projects", "path": "/Users/you/dev" },
+      { "label": "Data", "path": "/Users/you/data" }
+    ]
   }'
 # fallbackProviderId: when set, autonomous turns switch to this provider/model
 #   automatically when the usage probe shows the Anthropic plan is rate-limited.
 #   Interactive turns are never redirected.
 # dryRun: when true, mutating tools (Bash, Write, Edit, MultiEdit, NotebookEdit)
 #   are intercepted and described ("would run X") without executing.
+# knownPaths: named directory shortcuts ({ label, path } pairs) injected into
+#   the system prompt each turn so agents know key folder locations. Also shown
+#   as quick-pick chips in the Workers panel when setting a worker cwd.
 
 # Toggle semantic memory embeddings
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent/embeddings \

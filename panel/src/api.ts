@@ -326,6 +326,8 @@ export interface Worker {
   /** Byte size of CLAUDE.md in the worker's cwd (0 if absent). The SDK auto-loads
    *  it as project context on every turn; large files cost tokens. */
   claudeMdBytes?: number;
+  /** Telegram streaming mode override for Lead bots. Empty string = use global default. */
+  streamMode?: "" | "rich" | "draft" | "edit";
 }
 
 export interface Skill {

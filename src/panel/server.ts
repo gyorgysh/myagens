@@ -573,6 +573,7 @@ function workerView(w: Worker) {
     language: w.language ?? "",
     webhookUrl: w.webhookUrl ?? "",
     avatar: w.avatar ?? "",
+    streamMode: w.streamMode ?? "",
     /** True when the worker is in auto_until_error and hit a tool error. */
     escalated: w.escalated === true,
     // True when this Lead has a live Telegram bot listening (role lead + token

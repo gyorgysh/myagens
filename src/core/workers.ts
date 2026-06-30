@@ -82,6 +82,12 @@ export interface Worker {
   /** Optional URL POSTed a JSON outcome payload when a run completes. */
   webhookUrl?: string;
   /**
+   * Telegram streaming mode for Lead bots. Falls back to the global STREAM_MODE
+   * config when unset. "rich" = Bot API 10.1 rich messages (default), "draft" =
+   * Bot API 9.3 animated preview, "edit" = edit-in-place (legacy, professional look).
+   */
+  streamMode?: "rich" | "draft" | "edit";
+  /**
    * Persisted escalation state for `auto_until_error` autonomy.
    * When set, this worker has hit a tool error and is in supervised cooldown.
    * Cleared when the next run starts (same semantics as `resetEscalation` for

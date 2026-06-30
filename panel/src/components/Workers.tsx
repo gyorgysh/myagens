@@ -37,6 +37,7 @@ const emptyForm = {
   persona: "",
   autonomy: "full" as Autonomy,
   language: "",
+  streamMode: "" as "" | "rich" | "draft" | "edit",
   webhookUrl: "",
   avatar: "",
 };
@@ -479,6 +480,7 @@ function WorkerRow({
               persona: worker.persona ?? "",
               autonomy: worker.autonomy ?? "full",
               language: worker.language ?? "",
+              streamMode: (worker.streamMode ?? "") as "" | "rich" | "draft" | "edit",
               webhookUrl: worker.webhookUrl ?? "",
               avatar: worker.avatar ?? "",
             }}
@@ -665,13 +667,13 @@ function WorkerWizard({
   const [created, setCreated] = useState<Set<number>>(new Set());
   const [genError, setGenError] = useState<string | null>(null);
 
-  // Prefill the path with the user's home dir so the field is never empty on
+  // Prefill the path with the default workspace so the field is never empty on
   // load (the Add button stays usable). The user can change it freely.
   useEffect(() => {
     api
       .me()
       .then((m) => {
-        setAnswers((a) => (a.cwd.trim() ? a : { ...a, cwd: m.homeDir }));
+        setAnswers((a) => (a.cwd.trim() ? a : { ...a, cwd: m.defaultWorkdir }));
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -706,6 +708,7 @@ function WorkerWizard({
         persona: String(c.persona ?? ""),
         autonomy: (c.autonomy ?? "full") as Autonomy,
         language: String(c.language ?? ""),
+        streamMode: "" as "" | "rich" | "draft" | "edit",
         webhookUrl: "",
         avatar: String(c.avatar ?? ""),
       }));
@@ -1528,6 +1531,21 @@ function WorkerForm({
             ))}
           </Select>
         </div>
+        {form.role === "lead" && (
+          <div>
+            <Label>{t("workers_stream_mode_label")}</Label>
+            <Select
+              value={form.streamMode}
+              onChange={(e) => setForm({ ...form, streamMode: e.target.value as "" | "rich" | "draft" | "edit" })}
+            >
+              <option value="">{t("workers_stream_mode_default")}</option>
+              <option value="rich">{t("workers_stream_mode_rich")}</option>
+              <option value="draft">{t("workers_stream_mode_draft")}</option>
+              <option value="edit">{t("workers_stream_mode_edit")}</option>
+            </Select>
+            <p className="mt-1 text-xs text-fg-faint">{t("workers_stream_mode_hint")}</p>
+          </div>
+        )}
       </div>
       <div>
         <Label>{t("workers_webhook")}</Label>

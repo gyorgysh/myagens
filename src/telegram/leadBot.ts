@@ -16,6 +16,8 @@ import { isAuthorized } from "../auth.js";
 import { resolveSecret } from "../core/vault.js";
 import { getProvider } from "../core/providers.js";
 import { TelegramStreamer } from "./streamer.js";
+import { DraftStreamer } from "./draftStreamer.js";
+import { RichDraftStreamer } from "./richDraftStreamer.js";
 import { setBotProfilePhoto } from "./botPhoto.js";
 import { AskQuestionManager } from "./askQuestion.js";
 import { sendExpandableQuote, sendFormattedMarkdown } from "./send.js";
@@ -70,11 +72,24 @@ export class LeadBot {
     s.busy = true;
     s.abort = new AbortController();
 
-    // Lead bots always use the edit streamer: it edits a single message in
-    // place as text accumulates and updates the tool-status line inline, giving
-    // a clean, professional look suited to background worker bots.
-    const placeholder = await tg.sendMessage(chatId, t("bot_working", langForChat(chatId)));
-    const streamer = new TelegramStreamer(tg, chatId, placeholder.message_id);
+    // Stream mode: per-lead override falls back to global STREAM_MODE config.
+    const mode = lead.streamMode ?? config.STREAM_MODE;
+    const parkedOnUser = () => hasPendingAsk(chatId) || asks.hasPending(chatId);
+    let streamer;
+    if (mode === "rich") {
+      const draft = new RichDraftStreamer(tg, chatId);
+      draft.setPaused(parkedOnUser);
+      await draft.start();
+      streamer = draft;
+    } else if (mode === "draft") {
+      const draft = new DraftStreamer(tg, chatId);
+      draft.setPaused(parkedOnUser);
+      await draft.start();
+      streamer = draft;
+    } else {
+      const placeholder = await tg.sendMessage(chatId, t("bot_working", langForChat(chatId)));
+      streamer = new TelegramStreamer(tg, chatId, placeholder.message_id);
+    }
 
     await tg.sendChatAction(chatId, "typing").catch(() => {});
     const typing = setInterval(() => {

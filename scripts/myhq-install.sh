@@ -116,6 +116,61 @@ detect_pkg_mgr() {
   done
 }
 
+# --- Xcode / Command Line Tools (macOS) -------------------------------------
+# Homebrew and any native build (node-pty, vosk, the Claude CLI's deps) lean on
+# Apple's developer toolchain. Two things bite people mid-install:
+#   1. The Command Line Tools aren't installed at all.
+#   2. The full Xcode.app is selected as the active developer dir but its
+#      licence was never accepted — every `xcodebuild`/`clang` invocation then
+#      aborts with "agreeing to the Xcode/iOS license requires admin". Homebrew
+#      inherits that failure and dies partway through, after we've already made
+#      progress, which is exactly the crash this guards against.
+# We surface both up front so the run doesn't blow up half-way.
+ensure_xcode_license() {
+  [ "$OS" = "mac" ] || return 0
+
+  # Command Line Tools: if neither CLT nor a selected developer dir exists,
+  # kick off the GUI installer and let the user finish it before we continue.
+  if ! xcode-select -p >/dev/null 2>&1; then
+    say "Installing the Xcode Command Line Tools (needed to build native deps)…"
+    xcode-select --install >/dev/null 2>&1 || true
+    say "A system dialog should appear — finish that install, then press Return here."
+    [ -n "$TTY" ] && read -r _ <"$TTY" || true
+    xcode-select -p >/dev/null 2>&1 || \
+      warn "Command Line Tools still not detected — install them, then re-run this installer."
+  fi
+
+  # Licence: only the full Xcode.app enforces it. `xcodebuild -license check`
+  # (or running clang under a full-Xcode developer dir) exits non-zero with a
+  # licence message until it's accepted. Probe cheaply and only escalate if so.
+  command -v xcodebuild >/dev/null 2>&1 || { ok "Command Line Tools ready."; return 0; }
+  if xcodebuild -license check >/dev/null 2>&1; then
+    ok "Xcode licence already accepted."
+    return 0
+  fi
+
+  warn "Xcode is installed but its licence hasn't been accepted — native builds (Homebrew, node-pty) would fail mid-install."
+  if [ -z "$TTY" ] && [ "${MYHQ_YES:-0}" != "1" ]; then
+    warn "No terminal to accept it. Run ${B}sudo xcodebuild -license accept${R} once, then re-run this installer."
+    return 0
+  fi
+  if confirm "Accept the Xcode licence now? (runs 'sudo xcodebuild -license accept')" "Y"; then
+    need_sudo
+    # Point the developer dir at the full Xcode if it's present but not selected,
+    # so the licence we accept is the one the toolchain will actually use.
+    if [ -d /Applications/Xcode.app ]; then
+      $SUDO xcode-select -s /Applications/Xcode.app/Contents/Developer 2>/dev/null || true
+    fi
+    if $SUDO xcodebuild -license accept 2>/dev/null; then
+      ok "Xcode licence accepted."
+    else
+      warn "Couldn't accept the licence automatically — run ${B}sudo xcodebuild -license accept${R} manually, then re-run."
+    fi
+  else
+    warn "Skipped — Homebrew and native builds may fail until you run ${B}sudo xcodebuild -license accept${R}."
+  fi
+}
+
 # --- prerequisites ----------------------------------------------------------
 ensure_homebrew() {
   [ "$OS" = "mac" ] || return 0
@@ -738,6 +793,7 @@ main() {
     "${DIM}Claude Code, driven from Telegram.${R}"
   detect_os
   check_ram_swap
+  ensure_xcode_license
   ensure_homebrew
   ensure_node
   ensure_git

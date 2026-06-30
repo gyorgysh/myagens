@@ -467,7 +467,7 @@ function Pill({
   return (
     <button
       onClick={onClick}
-      className={`flex shrink-0 items-center gap-2 rounded-xl border px-3 py-1.5 text-left transition-colors ${
+      className={`flex w-32 shrink-0 items-center gap-2 rounded-xl border px-3 py-1.5 text-left transition-colors ${
         active
           ? "border-accent/50 bg-accent/10"
           : "border-line bg-surface hover:border-accent/30"
@@ -621,12 +621,12 @@ function AgentChat({
     <div className="flex flex-wrap items-center justify-between gap-2 pb-3 pt-3">
       <div className="min-w-0">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-fg">
-          {view?.name ?? "…"}
-          <span className="rounded-full bg-blue-400/10 px-2 py-0.5 text-xs font-medium text-blue-400">
+          <span className="truncate">{view?.name ?? "…"}</span>
+          <span className="shrink-0 rounded-full bg-blue-400/10 px-2 py-0.5 text-xs font-medium text-blue-400">
             {t("chat_agent_private")}
           </span>
         </h2>
-        {role && <div className="mt-0.5 text-xs text-fg-dim">{role}</div>}
+        {role && <div className="mt-0.5 max-w-[32ch] truncate text-xs text-fg-dim" title={role}>{role}</div>}
         {editingCwd ? (
           <input
             autoFocus

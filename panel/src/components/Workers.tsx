@@ -437,9 +437,19 @@ function WorkerRow({
         </span>
       </div>
 
-      <div className="mt-1 truncate font-mono text-xs text-fg-faint" title={worker.cwd}>
-        {worker.cwd || t("workers_no_cwd")}
-        {worker.nextRunAt && ` · ${t("workers_next").replace("{time}", relTime(worker.nextRunAt))}`}
+      <div className="mt-1 flex items-center gap-1.5">
+        <span className="min-w-0 truncate font-mono text-xs text-fg-faint" title={worker.cwd}>
+          {worker.cwd || t("workers_no_cwd")}
+          {worker.nextRunAt && ` · ${t("workers_next").replace("{time}", relTime(worker.nextRunAt))}`}
+        </span>
+        {(worker.claudeMdBytes ?? 0) > 6144 && (
+          <span
+            className="shrink-0 cursor-default text-xs text-warn-fg"
+            title={`${t("worker_claude_md_warn").replace("{kb}", "6")} ${t("worker_claude_md_warn_cwd")}`}
+          >
+            ⚠
+          </span>
+        )}
       </div>
 
       {worker.role === "lead" && (

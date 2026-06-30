@@ -200,6 +200,8 @@ export interface PromptView {
   defaultWork?: string;
   /** Whether the live playbook matches the shipped default (false = customized). */
   matchesDefault?: boolean;
+  /** Byte size of work.md (0 if absent). */
+  workBytes: number;
 }
 
 export interface ClaudeFile {
@@ -321,6 +323,9 @@ export interface Worker {
   listening?: boolean;
   /** True when autonomy is auto_until_error and the worker has hit a tool error. */
   escalated?: boolean;
+  /** Byte size of CLAUDE.md in the worker's cwd (0 if absent). The SDK auto-loads
+   *  it as project context on every turn; large files cost tokens. */
+  claudeMdBytes?: number;
 }
 
 export interface Skill {
@@ -807,6 +812,8 @@ export interface MainAgent {
   embeddingEnvMode: "auto" | "on" | "off";
   /** True when embeddings are in auto-detect mode (vs. a manual pin or off). */
   embeddingAuto: boolean;
+  /** Named directory shortcuts injected into the system prompt each turn. */
+  knownPaths: Array<{ label: string; path: string }>;
 }
 
 export interface Provider {

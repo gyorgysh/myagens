@@ -1,8 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getPersonality, WORK_FILE } from "../prompt.js";
 import { audit } from "./audit.js";
+
+// Warn the user when work.md exceeds this threshold. It is injected into the
+// system prompt by the bot on every turn, so keeping it lean directly reduces
+// token cost and latency. The shipped default is ~3.3 KB, so 6 KB gives a
+// comfortable margin before flagging genuinely grown files.
+export const PROMPT_FILE_SIZE_WARN_BYTES = 6144;
 
 export interface PromptView {
   /** The fixed personality block compiled into the build (read-only). */
@@ -16,6 +22,8 @@ export interface PromptView {
   defaultWork?: string;
   /** Whether the live playbook matches the shipped default (false = customized). */
   matchesDefault?: boolean;
+  /** Byte size of work.md (0 if absent). */
+  workBytes: number;
 }
 
 /**
@@ -44,6 +52,14 @@ function normalize(s: string): string {
   return s.replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "").trimEnd();
 }
 
+function safeStatBytes(path: string): number {
+  try {
+    return existsSync(path) ? statSync(path).size : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function getPrompt(): PromptView {
   let work = "";
   let exists = false;
@@ -60,6 +76,9 @@ export function getPrompt(): PromptView {
     defaultWork === undefined
       ? undefined
       : normalize(work) === normalize(defaultWork);
+
+  const workBytes = safeStatBytes(WORK_FILE);
+
   return {
     personality: getPersonality(),
     workFile: WORK_FILE,
@@ -67,6 +86,7 @@ export function getPrompt(): PromptView {
     exists,
     defaultWork,
     matchesDefault,
+    workBytes,
   };
 }
 

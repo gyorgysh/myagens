@@ -385,7 +385,7 @@ function Configure-Env {
             default { $model = "claude-opus-4-8" }
         }
     }
-    $workdir = Ask "Agent working directory (where files go)" (Join-Path $InstallDir "data")
+    $workdir = Ask "Agent working directory (where files go)" (Join-Path $env:USERPROFILE "MyHQ-Workspace")
     $lang    = Ask "Default agent language (en, hu, fr, …)" "en"
 
     # Panel

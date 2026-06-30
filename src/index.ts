@@ -1,3 +1,4 @@
+import { mkdirSync } from "node:fs";
 import { config, allowedUserIds, regeneratedPanelToken } from "./config.js";
 import { buildBot } from "./bot.js";
 import { sessions } from "./session/manager.js";
@@ -19,6 +20,17 @@ import { registerIdleGate, whenSettled } from "./core/activity.js";
 import { acquireInstanceLock } from "./core/singleton.js";
 
 async function main(): Promise<void> {
+  // Ensure the working directory exists. ~/MyHQ-Workspace is the unified
+  // default across Windows, macOS, and Linux — always created on boot so
+  // agents always have a valid cwd. If WORKDIR is overridden in .env the
+  // user's chosen path is created instead. mkdirSync with recursive:true is
+  // a no-op when the folder already exists.
+  try {
+    mkdirSync(config.WORKDIR, { recursive: true });
+  } catch {
+    // Non-fatal: permission denied or unsupported fs.
+  }
+
   if (config.ANTHROPIC_API_KEY) {
     process.env.ANTHROPIC_API_KEY = config.ANTHROPIC_API_KEY;
   }

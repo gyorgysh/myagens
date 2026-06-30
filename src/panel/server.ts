@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import fastifyStatic from "@fastify/static";
@@ -73,6 +73,7 @@ import { searchConversations } from "../core/conversationSearch.js";
 import { webhookTriggers, signWebhookBody, panelBaseHint } from "../core/webhookTriggers.js";
 import { vault, importProviderSecrets, resolveSecret, vaultUsages } from "../core/vault.js";
 import { backupManifest, exportBackup, importBackup } from "../core/backup.js";
+import { dataPath } from "../core/jsonStore.js";
 import {
   listProviders,
   listProviderViews,
@@ -533,6 +534,15 @@ function creatorName(id: string): string {
 
 /** Panel view of a worker: registry fields + derived run state. */
 function workerView(w: Worker) {
+  // CLAUDE.md in the worker's own cwd is auto-loaded by the SDK on every turn
+  // via settingSources "project". Flag it when it's large so the panel can
+  // nudge the user to trim it or point the worker at a different directory.
+  let claudeMdBytes = 0;
+  try {
+    const p = join(w.cwd, "CLAUDE.md");
+    if (existsSync(p)) claudeMdBytes = statSync(p).size;
+  } catch { /* non-fatal */ }
+
   return {
     id: w.id,
     name: w.name,
@@ -568,6 +578,9 @@ function workerView(w: Worker) {
     // True when this Lead has a live Telegram bot listening (role lead + token
     // + enabled). The panel warns when a Lead is enabled but has no token.
     listening: w.role === "lead" && !!w.telegramToken && w.enabled,
+    // Byte size of CLAUDE.md in the worker's cwd (0 if absent). The SDK
+    // auto-loads it as project context on every turn; large files cost tokens.
+    claudeMdBytes,
   };
 }
 
@@ -1750,7 +1763,7 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
   app.get("/api/council", async (req) => {
     const limitParam = (req.query as { limit?: string }).limit;
     const limit = Math.min(parseInt(limitParam ?? "20", 10), 100);
-    const file = join(config.WORKDIR, "..", "council.jsonl");
+    const file = dataPath("council.jsonl");
     if (!existsSync(file)) return { sessions: [] };
     try {
       const sessions = readFileSync(file, "utf8")
@@ -1803,7 +1816,7 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
   app.get("/api/delegations", async (req) => {
     const limitParam = (req.query as { limit?: string }).limit;
     const limit = Math.min(parseInt(limitParam ?? "50", 10), 200);
-    const file = join(config.WORKDIR, "..", "delegations.jsonl");
+    const file = dataPath("delegations.jsonl");
     if (!existsSync(file)) return { delegations: [] };
     try {
       const lines = readFileSync(file, "utf8")

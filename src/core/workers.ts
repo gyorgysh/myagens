@@ -193,7 +193,7 @@ export class WorkerManager {
     const worker: Worker = {
       id: randomBytes(4).toString("hex"),
       name: input.name.trim() || "Untitled",
-      cwd: input.cwd.trim(),
+      cwd: input.cwd?.trim() || config.WORKDIR,
       prompt: input.prompt,
       model: input.model?.trim() || undefined,
       providerId: input.providerId || undefined,

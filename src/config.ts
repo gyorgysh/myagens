@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { config as loadEnv } from "dotenv";
@@ -7,15 +8,17 @@ import { z } from "zod";
 
 loadEnv();
 
-// Default working directory: a gitignored `data/` folder at the repo root, so
-// files the agent creates (and uploads) stay out of the project tree.
+// Default working directory: ~/MyHQ-Workspace, a cross-platform projects folder
+// that exists on Linux, macOS, and Windows. The name is intentionally distinct
+// from ~/myhq (the service install dir) so they never collide, even on
+// case-insensitive macOS. Created on first use if absent. Override with WORKDIR.
 // Resolves to <repo>/data from both src/config.ts and dist/config.js.
 // dirname twice: src/config.ts or dist/config.js -> repo root in both layouts.
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const defaultWorkdir = join(repoRoot, "data");
-// Session/usage state lives alongside in the gitignored data/ folder so it
+const defaultWorkdir = join(homedir(), "MyHQ-Workspace");
+// Session/usage state lives in the gitignored data/ folder so it
 // survives restarts without leaking into any agent working directory.
-const defaultStateFile = join(defaultWorkdir, "state.json");
+const defaultStateFile = join(repoRoot, "data", "state.json");
 
 const csvIds = z
   .string()

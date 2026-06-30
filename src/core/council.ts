@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 import { runTurn, AUTO_ALLOWED_TOOLS } from "../claude/runner.js";
 import { memoryMcp } from "../mcp/memory.js";
@@ -8,12 +8,12 @@ import { getSkill } from "./skills.js";
 import { getProvider } from "./providers.js";
 import { resolveSecret } from "./vault.js";
 import { embedBatch, cosineSimilarity } from "./embeddings.js";
-import { loadJson, saveJson } from "./jsonStore.js";
+import { loadJson, saveJson, dataPath } from "./jsonStore.js";
 import { audit } from "./audit.js";
 import { config } from "../config.js";
 import { log } from "../logger.js";
 
-const COUNCIL_FILE = join(config.WORKDIR, "..", "council.jsonl");
+const COUNCIL_FILE = dataPath("council.jsonl");
 const RULE_FILE = "councilRule.json";
 
 /**

@@ -1,5 +1,5 @@
 import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { Telegram } from "telegraf";
 import { z } from "zod";
@@ -18,9 +18,10 @@ import { getLeadProtocol } from "../prompt.js";
 import { config } from "../config.js";
 import { log, redactSecrets } from "../logger.js";
 import { registerAsk } from "../core/crewAsk.js";
+import { dataPath } from "../core/jsonStore.js";
 import type { Autonomy } from "../session/manager.js";
 
-const DELEGATIONS_FILE = join(config.WORKDIR, "..", "delegations.jsonl");
+const DELEGATIONS_FILE = dataPath("delegations.jsonl");
 
 /** Append one record to the delegation log. */
 function logDelegation(record: Record<string, unknown>): void {

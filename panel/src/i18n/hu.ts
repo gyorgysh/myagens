@@ -1371,6 +1371,15 @@ export const hu: Translations = {
   connectors_none_configured_desc: "Válassz egy csatlakozót lent, és látod pontosan, milyen titok kell hozzá (API token, OAuth kulcs vagy app-jelszó). Tárold azt a titkot a széfben, majd csatold ide, hogy a flotta megkapja az adott integráció eszközeit.",
   connectors_add_credential: "Széf megnyitása",
   connectors_no_secret: "Még nincs hozzá illő titok a széfben. Tárolj egyet, majd válaszd ki itt.",
+  connectors_info_open: "Beállítási útmutató",
+  connectors_info_summary_label: "Mire való",
+  connectors_info_credential_label: "Szükséges hitelesítő adat",
+  connectors_info_steps_label: "Beállítási lépések",
+  connectors_info_tools_label: "Elérhető eszközök",
+  connectors_info_read_tools: "Olvasási hatókör",
+  connectors_info_write_tools: "Írási hatókör (kiegészítő)",
+  connectors_info_tip_label: "Tipp",
+  connectors_info_close: "Értettem",
 
   // Általános webhook eszközök (egyéni HTTP végpontok mint ágens eszközök)
   webhooks_title: "Egyéni webhook eszközök",

@@ -1366,6 +1366,15 @@ export const en = {
   connectors_none_configured_desc: "Pick a connector below to see exactly which secret it needs (an API token, OAuth key, or app password). Vault that secret, then attach it here to give the fleet that integration's tools.",
   connectors_add_credential: "Open the vault",
   connectors_no_secret: "No matching secret in the vault yet. Vault one, then select it here.",
+  connectors_info_open: "How to set up",
+  connectors_info_summary_label: "What it does",
+  connectors_info_credential_label: "Credential needed",
+  connectors_info_steps_label: "Setup steps",
+  connectors_info_tools_label: "Tools unlocked",
+  connectors_info_read_tools: "Read scope",
+  connectors_info_write_tools: "Write scope (additional)",
+  connectors_info_tip_label: "Tip",
+  connectors_info_close: "Got it",
 
   // Generic webhook tools (custom HTTP endpoints as agent tools)
   webhooks_title: "Custom webhook tools",

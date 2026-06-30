@@ -1,16 +1,170 @@
 import { useEffect, useState } from "react";
+import { HelpCircle, X } from "lucide-react";
 import { api, AuthError, type Connector, type ConnectorScope, type SecretView } from "../api.ts";
-import { Badge, Button, Card, Empty, Label, Select } from "./ui.tsx";
+import { Badge, Button, Card, Empty, Label, Modal, Select } from "./ui.tsx";
 import { ConnectorsArt } from "./onboarding.tsx";
 import { useI18n } from "../lib/useI18n.ts";
 import { getConnectorIcon } from "../lib/connectorIcons.ts";
+import { CONNECTOR_HELP } from "../lib/connectorHelp.ts";
 import type { Tab } from "./Sidebar.tsx";
+
+// ─── Info modal ─────────────────────────────────────────────────────────────
+
+function ConnectorInfoModal({
+  connector,
+  onClose,
+}: {
+  connector: Connector;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const help = CONNECTOR_HELP[connector.id];
+  const icon = getConnectorIcon(connector.id);
+
+  return (
+    <Modal onClose={onClose} size="md" labelledBy="conn-info-title" closeButton={false}>
+      <div className="flex flex-col gap-0">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 border-b border-line p-4">
+          <div className="flex items-center gap-2.5">
+            {icon && (
+              <svg
+                role="img"
+                viewBox="0 0 24 24"
+                aria-label={icon.title}
+                className="h-6 w-6 shrink-0"
+                style={{ color: `#${icon.hex}` }}
+                fill="currentColor"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path d={icon.path} />
+              </svg>
+            )}
+            <h2 id="conn-info-title" className="text-base font-semibold text-fg">
+              {connector.name}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label={t("close")}
+            className="shrink-0 rounded p-1 text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg-muted"
+          >
+            <X className="h-4 w-4" strokeWidth={2} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="max-h-[70vh] overflow-y-auto">
+          {help ? (
+            <div className="space-y-4 p-4">
+              {/* What it does */}
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-fg-dim">
+                  {t("connectors_info_summary_label")}
+                </p>
+                <p className="text-sm text-fg">{help.summary}</p>
+              </section>
+
+              {/* Credential needed */}
+              <section className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-2.5">
+                <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-accent">
+                  {t("connectors_info_credential_label")}
+                </p>
+                <p className="text-sm text-fg">{help.credentialLabel}</p>
+              </section>
+
+              {/* Setup steps */}
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-dim">
+                  {t("connectors_info_steps_label")}
+                </p>
+                <ol className="space-y-2">
+                  {help.steps.map((step, i) => (
+                    <li key={i} className="flex gap-3 text-sm text-fg-dim">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-semibold text-accent">
+                        {i + 1}
+                      </span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+
+              {/* Tools unlocked */}
+              <section>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-dim">
+                  {t("connectors_info_tools_label")}
+                </p>
+                <div className="space-y-2">
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-fg-dim">
+                      {t("connectors_info_read_tools")}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {help.readTools.map((tool) => (
+                        <span
+                          key={tool}
+                          className="inline-flex rounded-md bg-ok-subtle px-2 py-0.5 text-xs font-medium text-ok-fg"
+                        >
+                          {tool}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {help.writeTools.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-xs font-medium text-fg-dim">
+                        {t("connectors_info_write_tools")}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {help.writeTools.map((tool) => (
+                          <span
+                            key={tool}
+                            className="inline-flex rounded-md bg-warn-subtle px-2 py-0.5 text-xs font-medium text-warn-fg"
+                          >
+                            {tool}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* Tip */}
+              {help.tip && (
+                <section className="rounded-lg border border-line bg-surface-2/50 px-3 py-2.5">
+                  <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-fg-dim">
+                    {t("connectors_info_tip_label")}
+                  </p>
+                  <p className="text-sm text-fg-dim">{help.tip}</p>
+                </section>
+              )}
+            </div>
+          ) : (
+            <p className="p-4 text-sm text-fg-dim">{connector.description}</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end border-t border-line p-3">
+          <Button variant="primary" onClick={onClose}>
+            {t("connectors_info_close")}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Main view ──────────────────────────────────────────────────────────────
 
 export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => void; onGoto?: (t: Tab) => void }) {
   const { t } = useI18n();
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [secrets, setSecrets] = useState<SecretView[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [infoConnector, setInfoConnector] = useState<Connector | null>(null);
 
   const load = () =>
     Promise.all([api.connectors(), api.vault()])
@@ -95,11 +249,21 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
                     )}
                     <span className="font-medium text-fg">{c.name}</span>
                   </div>
-                  {live ? (
-                    <Badge tone="green">{t("connectors_live")}</Badge>
-                  ) : (
-                    <Badge tone="amber">{t("connectors_coming_soon")}</Badge>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {live ? (
+                      <Badge tone="green">{t("connectors_live")}</Badge>
+                    ) : (
+                      <Badge tone="amber">{t("connectors_coming_soon")}</Badge>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setInfoConnector(c)}
+                      aria-label={t("connectors_info_open")}
+                      className="rounded p-0.5 text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg-muted"
+                    >
+                      <HelpCircle className="h-4 w-4" strokeWidth={1.75} />
+                    </button>
+                  </div>
                 </div>
                 <p className="mt-1 text-sm text-fg-dim">{c.description}</p>
                 <p className="mt-2 text-xs text-fg-faint">
@@ -161,6 +325,13 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
           })}
           </div>
         </>
+      )}
+
+      {infoConnector && (
+        <ConnectorInfoModal
+          connector={infoConnector}
+          onClose={() => setInfoConnector(null)}
+        />
       )}
     </Card>
   );

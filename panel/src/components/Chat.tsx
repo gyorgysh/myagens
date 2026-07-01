@@ -940,7 +940,7 @@ function ChatPane({
       )}
 
       <div
-        className={`relative flex flex-col gap-2 border-t border-line pt-3 ${runsActive ? "pb-14 md:pb-12" : ""}`}
+        className={`relative flex flex-col gap-2 border-t border-line pt-3 transition-[padding] duration-200 ease-out ${runsActive ? "pb-14 md:pb-12" : ""}`}
         onDragOver={(e) => {
           if (e.dataTransfer?.types?.includes("Files")) {
             e.preventDefault();

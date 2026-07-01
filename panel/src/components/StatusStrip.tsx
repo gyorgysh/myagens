@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useActiveRuns, type ActiveRun } from "../lib/useActiveRuns.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import { uptime } from "../lib/format.ts";
@@ -36,22 +36,46 @@ export function StatusStrip({ enabled = true }: { enabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState<string | null>(null);
   const now = useNow(runs.length > 0);
+  const active = runs.length > 0;
 
-  // Collapse and clear focus once nothing is running.
+  // Keep the strip mounted (and remember the last runs) briefly after the last
+  // run ends so the exit transition can play out instead of vanishing instantly.
+  const [mounted, setMounted] = useState(active);
+  const [shown, setShown] = useState(active);
+  const lastRunsRef = useRef<ActiveRun[]>(runs);
+  if (active) lastRunsRef.current = runs;
+
   useEffect(() => {
-    if (runs.length === 0) {
-      setOpen(false);
-      setFocused(null);
+    if (active) {
+      setMounted(true);
+      // Next frame: flip to the "shown" state so the enter transition runs from
+      // the off-screen/transparent starting styles.
+      const id = requestAnimationFrame(() => setShown(true));
+      return () => cancelAnimationFrame(id);
     }
-  }, [runs.length]);
+    // Run just ended: play the exit transition, then unmount.
+    setShown(false);
+    setOpen(false);
+    setFocused(null);
+    const id = setTimeout(() => setMounted(false), 200);
+    return () => clearTimeout(id);
+  }, [active]);
 
-  if (runs.length === 0) return null;
+  if (!mounted) return null;
 
-  const newest = runs[0];
+  // While exiting we render the last known runs so the content doesn't blank out
+  // mid-animation.
+  const display = active ? runs : lastRunsRef.current;
+  const newest = display[0];
+  if (!newest) return null;
   const elapsed = (r: ActiveRun) => uptime((now - r.startedAt) / 1000);
 
   return (
-    <div className="fixed inset-x-0 bottom-16 z-40 md:bottom-0">
+    <div
+      className={`fixed inset-x-0 bottom-16 z-40 transform-gpu transition-all duration-200 ease-out md:bottom-0 ${
+        shown ? "translate-y-0 opacity-100" : "translate-y-full opacity-0"
+      }`}
+    >
       {/* Expanded panel (above the bar). */}
       {open && (
         <div className="mx-auto max-h-[60vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl border border-b-0 border-line bg-surface p-3 shadow-xl">
@@ -68,7 +92,7 @@ export function StatusStrip({ enabled = true }: { enabled?: boolean }) {
             </button>
           </div>
           <ul className="flex flex-col gap-2">
-            {runs.map((r) => {
+            {display.map((r) => {
               const tool = shortTool(r.tool);
               const isOpen = focused === r.key;
               return (
@@ -108,9 +132,9 @@ export function StatusStrip({ enabled = true }: { enabled?: boolean }) {
       >
         <Loader2 size={14} className="shrink-0 animate-spin text-accent" />
         <span className="shrink-0 text-xs font-medium text-fg-muted">
-          {runs.length === 1
+          {display.length === 1
             ? t("status_strip_one")
-            : t("status_strip_n").replace("{n}", String(runs.length))}
+            : t("status_strip_n").replace("{n}", String(display.length))}
         </span>
         <span className="mx-1 text-fg-faint" aria-hidden>·</span>
         <span className="min-w-0 flex-1 truncate text-xs text-fg-dim">{newest.label}</span>

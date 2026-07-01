@@ -16,6 +16,7 @@ import { PlaybookSizeBanner } from "./components/PlaybookSizeBanner.tsx";
 import { CommandPalette } from "./components/CommandPalette.tsx";
 import { ShortcutsModal } from "./components/ShortcutsModal.tsx";
 import { StatusStrip } from "./components/StatusStrip.tsx";
+import { useActiveRuns } from "./lib/useActiveRuns.ts";
 import { useSuggestionEvents } from "./lib/useSuggestionEvents.ts";
 // Lazy — loaded on first visit to that tab.
 const CrewView       = lazy(() => import("./components/Crew.tsx").then((m) => ({ default: m.CrewView })));
@@ -86,6 +87,13 @@ export function App() {
   const [inboxPending, setInboxPending] = useState(0);
   const { theme, toggle, set } = useTheme();
   const { t } = useI18n();
+
+  // Whenever an autonomous run is in flight the global StatusStrip is pinned to
+  // the bottom of the viewport. Normal-flow pages (everything except the
+  // full-height command/chat/terminal views, which own their own space) would
+  // otherwise have their footer/content covered by it, so we reserve the strip's
+  // height once here at the shared layout level rather than per page.
+  const runsActive = useActiveRuns(true).length > 0;
 
   // Accept a token passed in the URL (?token=…) — used by the installer's
   // one-click login link so the first visit authenticates without pasting the
@@ -306,7 +314,16 @@ export function App() {
         <PresenceBanner />
         <PlaybookSizeBanner onGotoPrompt={() => select("prompt")} />
 
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 sm:px-6 md:pb-6">
+        <main
+          className={`mx-auto w-full max-w-6xl flex-1 px-4 pt-6 transition-[padding] duration-200 sm:px-6 ${
+            // Full-height command/chat/terminal views own their vertical space
+            // (Chat reserves for the strip itself), so only reserve extra bottom
+            // room on normal-flow pages when a run is active.
+            runsActive && tab !== "command" && !isCommandChild(tab)
+              ? "pb-36 md:pb-16"
+              : "pb-24 md:pb-6"
+          }`}
+        >
           {/* Desktop breadcrumb: Home → current view. Hidden on mobile (the top
               bar already shows it) and skipped for the dashboard itself and the
               full-height chat/terminal views (which own their vertical space). */}

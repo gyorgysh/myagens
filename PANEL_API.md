@@ -53,6 +53,7 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/workers \
 #   systemPrompt  extra domain knowledge appended to the system prompt
 #   skillId       id of a saved skill whose body augments the system prompt
 #   telegramToken vault:<id> reference for this Lead's own Telegram bot token
+#   streamMode    "rich" | "draft" | "edit" streaming backend override for this Lead's bot (falls back to STREAM_MODE)
 #   persona       character/tone instructions (separate from domain knowledge)
 #   autonomy      "supervised" | "standard" | "full"
 #   language      BCP 47 code, e.g. "en", "hu", "es"
@@ -251,6 +252,32 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/memories/<i
 
 # Delete
 curl -X DELETE -H "$AUTH" $BASE/api/memories/<id>
+
+# Export the whole store (all tiers, embeddings stripped) as portable JSON
+curl -H "$AUTH" $BASE/api/memories/export -o memories.json
+
+# Import a dump; entries are deduped by normalized text, hot entries re-checked against the injection guard
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/memories/import \
+  -d @memories.json
+# -> { "imported": <n>, "skipped": <n> }
+```
+
+### Prompt templates
+
+```bash
+# List templates (each includes computed "variables": string[] extracted from {{name}} slots)
+curl -H "$AUTH" $BASE/api/templates
+
+# Create a template
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/templates \
+  -d '{ "name": "Daily standup", "description": "Morning check-in", "body": "Summarize {{project}} status for {{date}}." }'
+
+# Update a template (partial)
+curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/templates/<id> \
+  -d '{ "body": "Summarize {{project}} status for {{date}}, flag blockers." }'
+
+# Delete
+curl -X DELETE -H "$AUTH" $BASE/api/templates/<id>
 ```
 
 ### Skills
@@ -653,11 +680,11 @@ A few more endpoints exist, mostly mirroring panel views:
 - `GET /api/logs/summary`: usage insights (`?hours=72`) — most-used tools and shell commands tallied from persisted "Tool use" entries.
 - `GET /api/update`, `POST /api/update/check|run|restore`: in-panel update check, apply, and rollback.
 - `GET /api/update/changelog`: the locally served `CHANGELOG.md` (`{ content }`); used as the Updates view's fallback when GitHub is unreachable.
-- `GET /api/connectors`, `PUT /api/connectors/<id>`: the external-connector catalogue. All eight (Notion, Google Calendar, Gmail, Google Drive, Apple Calendar, Apple Mail, Slack, GitHub) are live; `PUT` takes `{ enabled, secretId, scope }` where `scope` is `read` (default) or `write` (gates the write tools).
-- `GET /api/chat`, `POST /api/chat/send|stop|clear|approve`, `PUT /api/chat/settings`: the panel's own Claude chat session (talks to Atlas). The autonomy level is set per-chat from the toolbar (replacing the removed `PANEL_CHAT_BYPASS` env flag).
+- `GET /api/connectors`, `PUT /api/connectors/<id>`: the external-connector catalogue. All twelve (Notion, Google Calendar, Gmail, Google Drive, Apple Calendar, Apple Mail, Slack, GitHub, Unreal Engine, Unity, PostgreSQL, SQLite) are live; `PUT` takes `{ enabled, secretId, scope, expiresAt }` where `scope` is `read` (default) or `write` (gates the write tools), and `expiresAt` is an optional epoch-ms credential expiry (`null` clears it, omit to leave unchanged). `GET` returns a derived `tokenStatus` of `"none" | "ok" | "expiring" | "expired"` per connector.
+- `GET /api/chat`, `POST /api/chat/send|stop|clear|approve`, `PUT /api/chat/settings`: the panel's own Claude chat session (talks to Atlas). The autonomy level is set per-chat from the toolbar (replacing the removed `PANEL_CHAT_BYPASS` env flag). `POST /api/chat/send` also accepts an optional `images` array (base64 data URLs, from attach/drag-drop/paste in the composer) passed to the agent as inline vision content.
 - `POST /api/chat/react`: react to an assistant reply with `{ reaction: "up" | "down", text }`. A thumbs-up files the response text as a durable memory; a thumbs-down is recorded. Returns 400 for any other reaction.
 - `GET /api/asks`, `POST /api/asks/resolve`: the pending `AskUserQuestion` queue and its resolver, used to render interactive question widgets in panel chat. Resolve with `{ id, optionIndices?, text? }`.
-- `GET /api/agent-chat/<id>`, `POST /api/agent-chat/<id>/send|stop|clear`, `PUT /api/agent-chat/<id>/settings`: an interactive chat with a specific worker/Lead by id.
+- `GET /api/agent-chat/<id>`, `POST /api/agent-chat/<id>/send|stop|clear`, `PUT /api/agent-chat/<id>/settings`: an interactive chat with a specific worker/Lead by id. `POST /api/agent-chat/<id>/send` accepts the same optional `images` array as the main chat.
 - `GET /api/usage/agents`: per-agent token + cost totals and a daily-by-role breakdown.
 - `GET /api/memories/stats`: counts by tier and embedding coverage.
 - `POST /api/agent/embeddings/auto`: re-enter embeddings auto-mode (clears the pin and re-probes the local backends).

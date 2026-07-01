@@ -236,7 +236,9 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
  * (unlike a native `<datalist>`, which hides once the field matches an option).
  * The list is filtered as you type but never fully collapses — you can always
  * see and pick from the built-in suggestions plus any live-fetched provider
- * models, and any custom id can still be typed by hand.
+ * models, and any custom id can still be typed by hand. Opening the dropdown on
+ * an already-committed value shows the full list (the value is not treated as a
+ * search query), and a clear "x" button resets the field to browse afresh.
  *
  * Pass `onFetch` to render a "fetch" button that loads provider models on
  * demand; results are merged into the dropdown ahead of the static suggestions.
@@ -264,6 +266,10 @@ export function ModelSelect({
   const [fetched, setFetched] = useState<string[]>([]);
   const [fetching, setFetching] = useState(false);
   const [active, setActive] = useState(0);
+  // Whether the user has actively edited the input since the dropdown opened.
+  // Until they do, we show the full list rather than filtering by the committed
+  // value, so a picked value never collapses the options down to just itself.
+  const [editing, setEditing] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -272,11 +278,23 @@ export function ModelSelect({
   // Merge fetched models (first, they're the most relevant) with the static
   // suggestions, de-duped and preserving order.
   const all = [...new Set([...fetched, ...suggestions])];
-  const q = value.trim().toLowerCase();
+  // Only filter once the user actively edits the field. When the dropdown is
+  // opened on a committed value (via focus/click/chevron), `editing` is false so
+  // the whole list stays visible to browse and re-pick — the committed value is
+  // not treated as a search query. This is the fix for the "stuck on picked
+  // value" bug where filtering `all` by the exact committed id collapsed the
+  // options down to that single entry.
+  const q = editing ? value.trim().toLowerCase() : "";
   // Filter as the user types, but if nothing matches keep the full list visible
   // so the dropdown never goes empty just because a custom id was typed.
   const filtered = q ? all.filter((m) => m.toLowerCase().includes(q)) : all;
   const options = filtered.length ? filtered : all;
+
+  // Once the dropdown closes, forget any in-progress search so the next open
+  // (on the now-committed value) shows the full list again instead of filtering.
+  useEffect(() => {
+    if (!open) setEditing(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -327,7 +345,16 @@ export function ModelSelect({
 
   const pick = (m: string) => {
     onChange(m);
+    setEditing(false);
     setOpen(false);
+    inputRef.current?.focus();
+  };
+
+  const clear = () => {
+    onChange("");
+    setEditing(false);
+    setActive(0);
+    setOpen(true);
     inputRef.current?.focus();
   };
 
@@ -361,14 +388,28 @@ export function ModelSelect({
           aria-autocomplete="list"
           onChange={(e) => {
             onChange(e.target.value);
+            setEditing(true);
             setActive(0);
             if (!open) setOpen(true);
           }}
           onFocus={() => setOpen(true)}
           onClick={() => setOpen(true)}
           onKeyDown={onKey}
-          className={`${fieldClass} cursor-text pr-9`}
+          className={`${fieldClass} cursor-text ${value ? "pr-16" : "pr-9"}`}
         />
+        {/* Clear button: resets the field and reopens the full list, a quick
+            escape hatch when a picked value needs to be swapped out. */}
+        {value && !disabled && (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Clear"
+            onClick={clear}
+            className="absolute right-9 top-0 flex h-full w-9 items-center justify-center text-fg-dim transition-colors hover:text-fg"
+          >
+            <X size={14} aria-hidden />
+          </button>
+        )}
         {/* Chevron toggles the dropdown without stealing the input's value. */}
         <button
           type="button"
@@ -376,6 +417,7 @@ export function ModelSelect({
           aria-label="Toggle options"
           disabled={disabled}
           onClick={() => {
+            setEditing(false);
             setOpen((o) => !o);
             inputRef.current?.focus();
           }}

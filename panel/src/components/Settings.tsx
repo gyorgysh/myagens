@@ -593,7 +593,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
               <ModelSelect
                 value={model}
                 onChange={setModel}
-                suggestions={MODEL_SUGGESTIONS}
+                suggestions={providerId ? [] : MODEL_SUGGESTIONS}
                 onFetch={providerId ? fetchModels : undefined}
                 fetchLabel={t("fetch")}
                 placeholder={providerId ? t("settings_model_local") : t("settings_model_default")}
@@ -709,7 +709,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
                 <ModelSelect
                   value={fallbackModel}
                   onChange={setFallbackModel}
-                  suggestions={MODEL_SUGGESTIONS}
+                  suggestions={fallbackProviderId ? [] : MODEL_SUGGESTIONS}
                   onFetch={
                     fallbackProviderId
                       ? () => api.providerModels(fallbackProviderId).then((r) => r.models).catch(() => [])

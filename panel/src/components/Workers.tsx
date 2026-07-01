@@ -1063,7 +1063,7 @@ function WizardConfigEditor({
           <ModelSelect
             value={form.model}
             onChange={(model) => onChange({ model })}
-            suggestions={MODEL_SUGGESTIONS}
+            suggestions={form.providerId ? [] : MODEL_SUGGESTIONS}
             onFetch={form.providerId ? fetchModels : undefined}
             fetchLabel={t("fetch")}
             placeholder={form.providerId ? t("workers_model_local") : t("workers_model_default")}
@@ -1360,7 +1360,7 @@ function WorkerForm({
           <ModelSelect
             value={form.model}
             onChange={(model) => setForm({ ...form, model })}
-            suggestions={MODEL_SUGGESTIONS}
+            suggestions={form.providerId ? [] : MODEL_SUGGESTIONS}
             onFetch={form.providerId ? fetchModels : undefined}
             fetchLabel={t("fetch")}
             placeholder={form.providerId ? t("workers_model_local") : t("workers_model_default")}

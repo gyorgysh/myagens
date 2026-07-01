@@ -19,6 +19,7 @@ import {
   Plug,
   Webhook,
   MessageSquareQuote,
+  FileText,
   Sparkles,
   Pencil,
   Activity,
@@ -47,6 +48,7 @@ export type Tab =
   | "inbox"
   | "tasks"
   | "skills"
+  | "templates"
   | "prompt"
   | "memory"
   | "vault"
@@ -91,6 +93,7 @@ export const MORE_NAV: Item[] = [
   { id: "vault", labelKey: "nav_vault", icon: KeyRound, hintKey: "nav_vault_hint" },
   { id: "connectors", labelKey: "nav_connectors", icon: Plug, hintKey: "nav_connectors_hint" },
   { id: "prompt", labelKey: "nav_prompt", icon: MessageSquareQuote, hintKey: "nav_prompt_hint" },
+  { id: "templates", labelKey: "nav_templates", icon: FileText, hintKey: "nav_templates_hint" },
   { id: "skills", labelKey: "nav_skills", icon: Sparkles, hintKey: "nav_skills_hint" },
   { id: "setup", labelKey: "nav_setup", icon: Pencil, hintKey: "nav_setup_hint" },
 ];
@@ -133,6 +136,7 @@ export const NAV: Group[] = [
       { id: "vault", labelKey: "nav_vault", icon: KeyRound, hintKey: "nav_vault_hint" },
       { id: "connectors", labelKey: "nav_connectors", icon: Plug, hintKey: "nav_connectors_hint" },
       { id: "prompt", labelKey: "nav_prompt", icon: MessageSquareQuote, hintKey: "nav_prompt_hint" },
+      { id: "templates", labelKey: "nav_templates", icon: FileText, hintKey: "nav_templates_hint" },
       { id: "skills", labelKey: "nav_skills", icon: Sparkles, hintKey: "nav_skills_hint" },
       { id: "setup", labelKey: "nav_setup", icon: Pencil, hintKey: "nav_setup_hint" },
     ],

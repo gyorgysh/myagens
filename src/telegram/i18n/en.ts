@@ -240,6 +240,9 @@ export const en = {
   cmd_voice_on_no_tts: "🔊 Voice replies ON, but TTS isn't configured. {hint}",
   cmd_voice_on: "🔊 Voice replies ON. I'll also speak my answers as a voice message.",
   cmd_voice_off: "🔇 Voice replies OFF.",
+  cmd_templates_empty:
+    "📄 No saved templates yet. Add reusable prompts in the panel under Templates.",
+  cmd_templates_header: "📄 <b>Prompt templates</b>",
   cmd_council_usage:
     "Usage: /council <your idea or proposal>\nExample: /council Should we migrate the database to PostgreSQL?",
   cmd_council_ack: "🗳 <b>Calling the council…</b>\n<i>{proposal}</i>",

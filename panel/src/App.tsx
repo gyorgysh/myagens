@@ -25,6 +25,7 @@ const WebhookTriggersView = lazy(() => import("./components/WebhookTriggers.tsx"
 const UsageView      = lazy(() => import("./components/Usage.tsx").then((m) => ({ default: m.UsageView })));
 const PromptView_    = lazy(() => import("./components/Prompt.tsx").then((m) => ({ default: m.PromptView_ })));
 const SkillsView     = lazy(() => import("./components/Skills.tsx").then((m) => ({ default: m.SkillsView })));
+const TemplatesView  = lazy(() => import("./components/Templates.tsx").then((m) => ({ default: m.TemplatesView })));
 const MemoryView     = lazy(() => import("./components/Memory.tsx").then((m) => ({ default: m.MemoryView })));
 const VaultView      = lazy(() => import("./components/Vault.tsx").then((m) => ({ default: m.VaultView })));
 const BackupView     = lazy(() => import("./components/Backup.tsx").then((m) => ({ default: m.BackupView })));
@@ -336,6 +337,7 @@ export function App() {
             {tab === "inbox" && <InboxView onAuthError={onAuthError} />}
             {tab === "tasks" && <TasksView onAuthError={onAuthError} />}
             {tab === "skills" && <SkillsView onAuthError={onAuthError} />}
+            {tab === "templates" && <TemplatesView onAuthError={onAuthError} />}
             {tab === "memory" && <MemoryView onAuthError={onAuthError} />}
             {tab === "vault" && <VaultView onAuthError={onAuthError} />}
             {tab === "backup" && <BackupView onAuthError={onAuthError} />}

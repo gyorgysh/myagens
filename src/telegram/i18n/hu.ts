@@ -233,6 +233,9 @@ export const hu: Record<keyof typeof en, string> = {
   cmd_voice_on_no_tts: "🔊 Hangválaszok BE, de a TTS nincs konfigurálva. {hint}",
   cmd_voice_on: "🔊 Hangválaszok BE. Hangüzenetként is felolvasom a válaszaimat.",
   cmd_voice_off: "🔇 Hangválaszok KI.",
+  cmd_templates_empty:
+    "📄 Még nincs mentett sablon. Adj hozzá újrahasznosítható promptokat a panelen a Sablonok alatt.",
+  cmd_templates_header: "📄 <b>Prompt sablonok</b>",
   cmd_council_usage:
     "Használat: /council <ötleted vagy javaslatod>\nPélda: /council Érdemes-e PostgreSQL-re migrálni az adatbázist?",
   cmd_council_ack: "🗳 <b>A tanács összehívása…</b>\n<i>{proposal}</i>",

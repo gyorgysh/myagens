@@ -342,6 +342,18 @@ export interface Skill {
   updatedAt: number;
 }
 
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  description: string;
+  body: string;
+  /** Distinct `{{variable}}` names referenced in the body, in order. */
+  variables: string[];
+  useCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type PlanType = "pro" | "max" | "api";
 
 export interface ClaudeAccount {
@@ -965,6 +977,13 @@ export const api = {
   createSkill: (s: Partial<Skill>) => req<Skill>("POST", "/api/skills", s),
   updateSkill: (id: string, s: Partial<Skill>) => req<Skill>("PUT", `/api/skills/${id}`, s),
   deleteSkill: (id: string) => req<{ ok: boolean }>("DELETE", `/api/skills/${id}`),
+
+  templates: () => get<{ templates: PromptTemplate[] }>("/api/templates"),
+  createTemplate: (t: { name: string; description?: string; body: string }) =>
+    req<PromptTemplate>("POST", "/api/templates", t),
+  updateTemplate: (id: string, t: { name?: string; description?: string; body?: string }) =>
+    req<PromptTemplate>("PUT", `/api/templates/${id}`, t),
+  deleteTemplate: (id: string) => req<{ ok: boolean }>("DELETE", `/api/templates/${id}`),
 
   claudeFiles: () => get<{ roots: ClaudeRoot[] }>("/api/claude-files"),
   claudeFile: (path: string) =>

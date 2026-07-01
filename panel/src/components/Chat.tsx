@@ -7,6 +7,7 @@ import { Markdown } from "../lib/markdown.tsx";
 import { roleLabel } from "../lib/agentRole.ts";
 import { avatarPng64Src, resolveAvatarSlug } from "../lib/avatar.ts";
 import { Button } from "./ui.tsx";
+import { TemplatePicker } from "./Templates.tsx";
 import { toast } from "../lib/useToast.ts";
 import { Settings2, Plus, ClipboardList, Zap, ShieldCheck, HelpCircle, Pencil, ThumbsUp, ThumbsDown } from "lucide-react";
 
@@ -847,20 +848,19 @@ function ChatPane({
       )}
 
       <div className="flex flex-col gap-2 border-t border-line pt-3">
-        {(planning !== undefined && onPlanningChange) || (autonomy !== undefined && onAutonomyChange) ? (
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div>
-              {planning !== undefined && onPlanningChange && (
-                <ModePill planning={planning} onChange={onPlanningChange} />
-              )}
-            </div>
-            <div>
-              {autonomy !== undefined && onAutonomyChange && (
-                <AutonomyPill autonomy={autonomy} onChange={onAutonomyChange} />
-              )}
-            </div>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            {planning !== undefined && onPlanningChange && (
+              <ModePill planning={planning} onChange={onPlanningChange} />
+            )}
+            <TemplatePicker onPick={(tpl) => setText((cur) => (cur.trim() ? `${cur}\n${tpl}` : tpl))} />
           </div>
-        ) : null}
+          <div>
+            {autonomy !== undefined && onAutonomyChange && (
+              <AutonomyPill autonomy={autonomy} onChange={onAutonomyChange} />
+            )}
+          </div>
+        </div>
         <div className="flex items-end gap-2">
           <textarea
             value={text}

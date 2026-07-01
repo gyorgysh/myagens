@@ -11,6 +11,7 @@ import { sendDiff } from "./telegram/gitFlow.js";
 import { sendProjectsMenu } from "./telegram/projects.js";
 import { sendInbox } from "./telegram/inboxFlow.js";
 import { schedules, parseWhen, describeSpec } from "./schedule/manager.js";
+import { listTemplates, templateVariables } from "./core/templates.js";
 import * as git from "./git.js";
 import { escapeHtml } from "./telegram/formatting.js";
 import type { UsageStat } from "./session/store.js";
@@ -662,6 +663,23 @@ export function registerCommands(bot: Telegraf): void {
   bot.command("inbox", async (ctx) => {
     log.info("Command /inbox", { chatId: ctx.chat.id });
     await sendInbox(ctx.telegram, ctx.chat.id);
+  });
+
+  bot.command("templates", async (ctx) => {
+    const lang = langForChat(ctx.chat.id);
+    log.info("Command /templates", { chatId: ctx.chat.id });
+    const templates = listTemplates();
+    if (templates.length === 0) {
+      await ctx.replyWithHTML(t("cmd_templates_empty", lang));
+      return;
+    }
+    const lines = templates.map((tpl) => {
+      const vars = templateVariables(tpl.body);
+      const varList = vars.length ? " · " + vars.map((v) => `<code>{{${escapeHtml(v)}}}</code>`).join(" ") : "";
+      const desc = tpl.description ? `\n  <i>${escapeHtml(tpl.description)}</i>` : "";
+      return `• <b>${escapeHtml(tpl.name)}</b>${varList}${desc}\n<pre>${escapeHtml(tpl.body)}</pre>`;
+    });
+    await ctx.replyWithHTML(t("cmd_templates_header", lang) + "\n" + lines.join("\n"));
   });
 
   bot.command("council", async (ctx) => {

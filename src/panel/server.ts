@@ -33,6 +33,13 @@ import { agentUsage } from "../core/agentUsage.js";
 import { isValidWebhookUrl } from "../core/webhook.js";
 import { getPrompt, restorePlaybook, savePlaybook } from "../core/playbook.js";
 import { listSkills, createSkill, updateSkill, deleteSkill } from "../core/skills.js";
+import {
+  listTemplates,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+  templateVariables,
+} from "../core/templates.js";
 import { listClaudeFiles, readClaudeFile, writeClaudeFile } from "../core/claudeFiles.js";
 import {
   listTasks,
@@ -1021,6 +1028,24 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   });
   app.delete("/api/skills/:id", async (req, reply) => {
     if (!deleteSkill((req.params as { id: string }).id))
+      return reply.code(404).send({ error: "not found" });
+    return { ok: true };
+  });
+
+  // --- prompt templates (reusable turn prompts with {{variable}} slots) ---
+  const withVars = (t: ReturnType<typeof listTemplates>[number]) => ({
+    ...t,
+    variables: templateVariables(t.body),
+  });
+  app.get("/api/templates", async () => ({ templates: listTemplates().map(withVars) }));
+  app.post("/api/templates", async (req) => withVars(createTemplate(req.body as never)));
+  app.put("/api/templates/:id", async (req, reply) => {
+    const updated = updateTemplate((req.params as { id: string }).id, req.body as never);
+    if (!updated) return reply.code(404).send({ error: "not found" });
+    return withVars(updated);
+  });
+  app.delete("/api/templates/:id", async (req, reply) => {
+    if (!deleteTemplate((req.params as { id: string }).id))
       return reply.code(404).send({ error: "not found" });
     return { ok: true };
   });

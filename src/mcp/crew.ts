@@ -145,7 +145,7 @@ export function createCrewMcp(opts: CrewMcpOptions) {
           const startedAt = Date.now();
           let output = "";
           try {
-            const res = await getBackend().runTurn({
+            const res = await getBackend(lead.backendId).runTurn({
               prompt,
               cwd: lead.cwd,
               model: lead.model,

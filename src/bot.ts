@@ -718,7 +718,7 @@ async function handleUserPrompt(
   let loopAborted = false;
 
   try {
-    const res = await getBackend().runTurn({
+    const res = await getBackend(mainRun.backendId).runTurn({
       prompt,
       images,
       cwd,

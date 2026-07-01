@@ -46,6 +46,10 @@ export interface Worker {
   model?: string;
   /** Optional model-endpoint provider (local LM Studio/Ollama, a proxy, …). */
   providerId?: string;
+  /** Agent backend id (see core/backends.ts); "" / unset = the default Claude
+   *  Agent SDK backend. Lets one worker run on Grok/Codex while others stay
+   *  on Claude. */
+  backendId?: string;
   /** Extra persona instructions appended to the system prompt. */
   systemPrompt?: string;
   /** Optional skill whose body augments the system prompt. */
@@ -204,6 +208,7 @@ export class WorkerManager {
       prompt: input.prompt,
       model: input.model?.trim() || undefined,
       providerId: input.providerId || undefined,
+      backendId: input.backendId || undefined,
       systemPrompt: input.systemPrompt?.trim() || undefined,
       skillId: input.skillId || undefined,
       schedule: parseSchedule(input.when),
@@ -235,6 +240,7 @@ export class WorkerManager {
     if (input.prompt !== undefined) w.prompt = input.prompt;
     if (input.model !== undefined) w.model = input.model.trim() || undefined;
     if (input.providerId !== undefined) w.providerId = input.providerId || undefined;
+    if (input.backendId !== undefined) w.backendId = input.backendId || undefined;
     if (input.systemPrompt !== undefined) w.systemPrompt = input.systemPrompt.trim() || undefined;
     if (input.skillId !== undefined) w.skillId = input.skillId || undefined;
     if (input.enabled !== undefined) w.enabled = input.enabled;
@@ -382,7 +388,7 @@ export class WorkerManager {
     const transcript = new RunLogWriter(run.id, { kind: "worker", ownerId: w.id, ownerName: w.name });
 
     try {
-      const res = await getBackend().runTurn({
+      const res = await getBackend(w.backendId).runTurn({
         prompt: promptOverride?.trim() || w.prompt,
         cwd: w.cwd,
         model: w.model,
@@ -514,6 +520,7 @@ export interface WorkerInput {
   prompt: string;
   model?: string;
   providerId?: string;
+  backendId?: string;
   systemPrompt?: string;
   skillId?: string;
   /** Schedule token: "30m", "2h", "HH:MM", or "" / undefined for manual-only. */

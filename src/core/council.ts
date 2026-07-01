@@ -128,11 +128,12 @@ async function castVote(
   env?: Record<string, string | undefined>,
   systemPromptAppend?: string,
   persona?: string,
+  backendId?: string,
 ): Promise<Pick<CouncilVote, "vote" | "reason" | "concern">> {
   const abort = new AbortController();
   let output = "";
   try {
-    await getBackend().runTurn({
+    await getBackend(backendId).runTurn({
       prompt,
       cwd,
       model,
@@ -244,7 +245,7 @@ export async function runCouncil(proposal: string): Promise<CouncilSession> {
       `or replace SUPPORT with OPPOSE or ABSTAIN.`;
 
     log.info("Council vote starting", { lead: lead.name, leadId: lead.id, model: lead.model ?? config.CLAUDE_MODEL });
-    const parsed = await castVote(lead.id, lead.name, portfolio, prompt, lead.cwd || config.WORKDIR, lead.model, env, domainContext, lead.persona);
+    const parsed = await castVote(lead.id, lead.name, portfolio, prompt, lead.cwd || config.WORKDIR, lead.model, env, domainContext, lead.persona, lead.backendId);
     return { leadId: lead.id, leadName: lead.name, portfolio: lead.portfolio, relevance: relAt(idx + 1), ...parsed };
   });
 

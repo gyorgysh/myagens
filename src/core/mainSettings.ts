@@ -4,6 +4,7 @@ import { getProvider, listProviders } from "./providers.js";
 import { resolveSecret } from "./vault.js";
 import { audit } from "./audit.js";
 import { loadProbeResult } from "./usageProbe.js";
+import { listBackends } from "./backends.js";
 import { log } from "../logger.js";
 import type { Autonomy } from "../session/manager.js";
 
@@ -24,6 +25,10 @@ interface MainSettings {
   model?: string;
   /** Provider for a local/proxy endpoint; "" = Anthropic via process env. */
   providerId?: string;
+  /** Agent backend id (see core/backends.ts); "" / unset = the default Claude
+   *  Agent SDK backend. A hidden/advanced option — set via /model <backendId>
+   *  or the panel API, not surfaced as a headline UI choice. */
+  backendId?: string;
   /**
    * Character and tone override for Atlas. If set, injected into the system
    * prompt after the base personality block. Separate from systemPrompt (domain
@@ -114,6 +119,8 @@ export function mainSettingsView() {
     providerName: provider?.name,
     providerBaseUrl: provider?.baseUrl,
     providers: listProviders().map((p) => ({ id: p.id, name: p.name })),
+    backendId: s.backendId ?? "",
+    backends: listBackends().map((b) => ({ id: b.id, displayName: b.displayName })),
     persona: s.persona ?? "",
     autonomy: s.autonomy ?? "standard",
     defaultLanguage: s.defaultLanguage ?? config.DEFAULT_LANGUAGE,
@@ -130,6 +137,7 @@ export function mainSettingsView() {
 export function setMainSettings(patch: {
   model?: string;
   providerId?: string;
+  backendId?: string;
   persona?: string;
   autonomy?: Autonomy;
   defaultLanguage?: string;
@@ -142,6 +150,7 @@ export function setMainSettings(patch: {
   const s = load();
   if (patch.model !== undefined) s.model = patch.model.trim() || undefined;
   if (patch.providerId !== undefined) s.providerId = patch.providerId || undefined;
+  if (patch.backendId !== undefined) s.backendId = patch.backendId || undefined;
   if (patch.persona !== undefined) s.persona = patch.persona.trim() || undefined;
   if (patch.autonomy !== undefined) s.autonomy = patch.autonomy || undefined;
   if (patch.defaultLanguage !== undefined) s.defaultLanguage = patch.defaultLanguage || undefined;
@@ -164,6 +173,7 @@ export function setMainSettings(patch: {
   audit("mainAgent.update", {
     model: s.model,
     providerId: s.providerId,
+    backendId: s.backendId,
     dryRun: s.dryRun,
     fallbackProviderId: s.fallbackProviderId,
   });
@@ -175,6 +185,7 @@ export function setMainSettings(patch: {
 export function resolveMainRun(): {
   model?: string;
   env?: Record<string, string | undefined>;
+  backendId?: string;
   persona?: string;
   autonomy: Autonomy;
   defaultLanguage?: string;
@@ -192,6 +203,7 @@ export function resolveMainRun(): {
   return {
     model: s.model || undefined,
     env,
+    backendId: s.backendId || undefined,
     persona: s.persona || undefined,
     autonomy: s.autonomy ?? "standard",
     defaultLanguage: s.defaultLanguage || undefined,
@@ -277,6 +289,9 @@ export function resolveMainRunFor(opts: { autonomous: boolean }): ReturnType<typ
       ANTHROPIC_AUTH_TOKEN: resolveSecret(provider.authToken),
       ANTHROPIC_API_KEY: undefined,
     },
+    // Rate-limit fallback only ever repoints the Claude Agent SDK at a
+    // different Anthropic-shaped endpoint — it doesn't switch backend.
+    backendId: base.backendId,
     persona: base.persona,
     autonomy: base.autonomy,
     defaultLanguage: base.defaultLanguage,

@@ -50,6 +50,10 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/workers \
 #   parentId      id of the Lead this Assistant reports to
 #   model         model id override (e.g. "claude-sonnet-5")
 #   providerId    id of a saved provider preset (for local models)
+#   backendId     agent backend id — "" / omit = Claude (default); "grok-cli" or "codex-cli"
+#                 to run this one agent on a different backend (see GET /api/agent's
+#                 `backends` list for what's registered). Advanced/hidden option: not
+#                 surfaced as a panel dropdown, set it directly via this API.
 #   systemPrompt  extra domain knowledge appended to the system prompt
 #   skillId       id of a saved skill whose body augments the system prompt
 #   telegramToken vault:<id> reference for this Lead's own Telegram bot token
@@ -338,6 +342,11 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
 # knownPaths: named directory shortcuts ({ label, path } pairs) injected into
 #   the system prompt each turn so agents know key folder locations. Also shown
 #   as quick-pick chips in the Workers panel when setting a worker cwd.
+# backendId: agent backend id — "" / omit = Claude (default). GET /api/agent's
+#   response includes `backends` (every registered id + display name, e.g.
+#   "grok-cli"/"codex-cli"). Advanced/hidden option: not a panel dropdown: set
+#   via this API, or in Telegram via `/model <backendId>` or
+#   `/model <backendId>:<model>` (e.g. `/model codex-cli:gpt-5.1-codex`).
 
 # Toggle semantic memory embeddings
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent/embeddings \

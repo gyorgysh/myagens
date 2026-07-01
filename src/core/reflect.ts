@@ -62,7 +62,7 @@ export async function reflectOnTurn(
 
   const mainRun = resolveMainRun();
   try {
-    await getBackend().runTurn({
+    await getBackend(mainRun.backendId).runTurn({
       prompt,
       cwd: config.WORKDIR,
       model: mainRun.model,

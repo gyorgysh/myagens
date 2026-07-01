@@ -432,7 +432,7 @@ export class TaskDelegator {
         }
       : undefined;
     try {
-      const res = await getBackend().runTurn({
+      const res = await getBackend(lead?.backendId).runTurn({
         prompt,
         cwd: lead?.cwd || config.WORKDIR,
         resume,

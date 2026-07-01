@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { Telegraf, Telegram } from "telegraf";
 import { mainSettingsView, setMainSettings } from "./core/mainSettings.js";
+import { listBackends } from "./core/backends.js";
 import { config } from "./config.js";
 import { AGENT_LANGUAGES, isValidLanguage, languageName } from "./core/languages.js";
 import { runCouncil, formatCouncilTelegram } from "./core/council.js";
@@ -48,6 +49,28 @@ const MODEL_SHORTCUTS: { label: string; model: string }[] = [
 
 const MODEL_CB_PREFIX = "mdl:";
 
+/**
+ * Parse a `/model` argument for the hidden agent-backend switch: a bare
+ * registered backend id (e.g. "grok-cli") switches backend and resets the
+ * model to that backend's own default; "<backendId>:<model>" sets both. Any
+ * other value is a plain model id for whichever backend is already active —
+ * existing behavior, unchanged. Not surfaced in the shortcut-button grid
+ * (Claude only); reachable only by typing it, matching how provider/local
+ * models are already a type-only option here.
+ */
+function parseModelArg(arg: string): { model?: string; backendId?: string } {
+  const backendIds = new Set(listBackends().map((b) => b.id));
+  const colonIdx = arg.indexOf(":");
+  if (colonIdx > -1) {
+    const maybeBackend = arg.slice(0, colonIdx).trim();
+    if (backendIds.has(maybeBackend)) {
+      return { backendId: maybeBackend, model: arg.slice(colonIdx + 1).trim() };
+    }
+  }
+  if (backendIds.has(arg)) return { backendId: arg, model: "" };
+  return { model: arg };
+}
+
 export function isModelCallback(data: string): boolean {
   return data.startsWith(MODEL_CB_PREFIX);
 }
@@ -60,7 +83,11 @@ export async function resolveModelCallback(
   data: string,
 ): Promise<string> {
   const model = data.slice(MODEL_CB_PREFIX.length);
-  setMainSettings({ model, providerId: "" });
+  // The shortcut grid is Claude-only, so pressing one also switches back to
+  // the Claude backend — otherwise a user on grok-cli/codex-cli who taps a
+  // Claude model shortcut would keep the other backend with a mismatched
+  // Claude model id (that backend's CLI would reject or misinterpret it).
+  setMainSettings({ model, providerId: "", backendId: "" });
   log.info("Model changed via Telegram", { chatId, model });
   if (messageId) {
     await sendModelMenu(tg, chatId, messageId).catch(() => {});
@@ -642,10 +669,13 @@ export function registerCommands(bot: Telegraf): void {
     const lang = langForChat(ctx.chat.id);
     const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
     if (arg) {
-      // /model <name> — set directly without opening the menu.
-      setMainSettings({ model: arg, providerId: "" });
-      log.info("Command /model set", { chatId: ctx.chat.id, model: arg });
-      await ctx.replyWithHTML(t("cmd_model_set", lang, { model: escapeHtml(arg) }));
+      // /model <name> — set directly without opening the menu. Also accepts
+      // a bare backend id or "<backendId>:<model>" (see parseModelArg).
+      const parsed = parseModelArg(arg);
+      setMainSettings({ providerId: "", ...parsed });
+      log.info("Command /model set", { chatId: ctx.chat.id, ...parsed });
+      const label = parsed.backendId ? `${parsed.backendId}${parsed.model ? `:${parsed.model}` : ""}` : arg;
+      await ctx.replyWithHTML(t("cmd_model_set", lang, { model: escapeHtml(label) }));
     } else {
       log.info("Command /model", { chatId: ctx.chat.id });
       await sendModelMenu(ctx.telegram, ctx.chat.id);

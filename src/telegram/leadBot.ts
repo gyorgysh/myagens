@@ -149,7 +149,7 @@ export class LeadBot {
       });
 
       log.info("Lead turn starting", { lead: lead.name, leadId: lead.id, chatId, model: lead.model ?? config.CLAUDE_MODEL });
-      const res = await getBackend().runTurn({
+      const res = await getBackend(lead.backendId).runTurn({
         prompt,
         images,
         cwd: s.cwd,

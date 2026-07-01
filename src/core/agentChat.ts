@@ -220,7 +220,7 @@ export class AgentChatManager {
     s.abort = abort;
     let output = "";
     try {
-      const res = await getBackend().runTurn({
+      const res = await getBackend(w.backendId).runTurn({
         prompt: text,
         images,
         cwd: s.cwd || w.cwd || config.WORKDIR,

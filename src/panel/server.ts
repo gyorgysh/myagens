@@ -577,6 +577,7 @@ function workerView(w: Worker) {
     prompt: w.prompt,
     model: w.model ?? "",
     providerId: w.providerId ?? "",
+    backendId: w.backendId ?? "",
     systemPrompt: w.systemPrompt ?? "",
     skillId: w.skillId ?? "",
     schedule: describeWorkerSchedule(w),
@@ -683,6 +684,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     const {
       model,
       providerId,
+      backendId,
       persona,
       autonomy,
       defaultLanguage,
@@ -694,6 +696,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     } = (req.body ?? {}) as {
       model?: string;
       providerId?: string;
+      backendId?: string;
       persona?: string;
       autonomy?: string;
       defaultLanguage?: string;
@@ -706,6 +709,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     setMainSettings({
       model,
       providerId,
+      backendId,
       persona,
       autonomy: autonomy as "supervised" | "standard" | "full" | "auto_until_error" | undefined,
       defaultLanguage,
@@ -1767,7 +1771,7 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
       // Use os.tmpdir() as the cwd when none is provided: avoids loading the
       // project's CLAUDE.md (which can be very large) into a config-gen turn.
       const wizardCwd = cwd?.trim() || tmpdir();
-      const result = await getBackend().runTurn({
+      const result = await getBackend(mainRun.backendId).runTurn({
         prompt,
         cwd: wizardCwd,
         model: mainRun.model,

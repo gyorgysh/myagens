@@ -35,6 +35,7 @@ import {
   Power,
   Menu,
   Images,
+  ShieldAlert,
   type LucideIcon,
 } from "lucide-react";
 
@@ -59,6 +60,7 @@ export type Tab =
   | "gallery"
   | "updates"
   | "logs"
+  | "audit"
   | "sessions"
   | "schedules"
   | "webhooks"
@@ -113,6 +115,7 @@ export const NAV: Group[] = [
     items: [
       { id: "health", labelKey: "nav_health", icon: LayoutDashboard, hintKey: "nav_health_hint" },
       { id: "logs", labelKey: "nav_logs", icon: ScrollText, hintKey: "nav_logs_hint" },
+      { id: "audit", labelKey: "nav_audit", icon: ShieldAlert, hintKey: "nav_audit_hint" },
       { id: "heartbeat", labelKey: "nav_heartbeat", icon: HeartPulse, hintKey: "nav_heartbeat_hint" },
       { id: "sessions", labelKey: "nav_sessions", icon: History, hintKey: "nav_sessions_hint" },
       { id: "usage", labelKey: "nav_usage", icon: TrendingUp, hintKey: "nav_usage_hint" },

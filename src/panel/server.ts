@@ -104,7 +104,8 @@ import { lmStudioStatus, connectLmStudio } from "../core/lmstudio.js";
 import { serviceInstalled, restartService } from "../core/agentControl.js";
 import { isActive } from "../core/activity.js";
 import { getUpdateStatus, checkForUpdate, runUpdate, runRestore } from "../core/updateControl.js";
-import { recentAudit } from "../core/audit.js";
+import { recentAudit, searchAudit, auditFacets } from "../core/audit.js";
+import { detectAnomalies, ANOMALY_DEFAULTS } from "../core/anomaly.js";
 import { approvalQueue, APPROVAL_ACTIONS } from "../core/approvals.js";
 import { askQueue } from "../core/askQueue.js";
 import { push } from "../core/push.js";
@@ -868,6 +869,36 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     dailyByRole: agentUsage.dailyByRole(),
   }));
   app.get("/api/audit", async () => ({ events: recentAudit() }));
+  // Searchable audit view: filter by actor (source), action, resource (action
+  // prefix), free text, and a time floor. Reads the full retained log.
+  app.get("/api/audit/search", async (req) => {
+    const q = (req.query ?? {}) as Record<string, string | undefined>;
+    const num = (v: string | undefined) => {
+      const n = v ? Number(v) : NaN;
+      return Number.isFinite(n) ? n : undefined;
+    };
+    return {
+      events: searchAudit({
+        q: q.q,
+        actor: q.actor,
+        action: q.action,
+        resource: q.resource,
+        since: num(q.since),
+        limit: num(q.limit),
+      }),
+    };
+  });
+  // Distinct actors / resources / actions for the panel's filter dropdowns.
+  app.get("/api/audit/facets", async () => auditFacets());
+  // Preview the anomaly detector against the current audit log using either the
+  // saved heartbeat config or defaults (so the panel can show findings before
+  // anomaly alerting is even enabled).
+  app.get("/api/audit/anomalies", async () => {
+    const cfg = heartbeat.view().config.anomaly ?? ANOMALY_DEFAULTS;
+    // Force a scan regardless of the persisted enabled flag, so the preview
+    // always returns findings; the live heartbeat still respects `enabled`.
+    return { anomalies: detectAnomalies({ ...cfg, enabled: true }) };
+  });
   app.get("/api/approvals", async () => ({ approvals: approvalQueue.list() }));
   app.post("/api/approvals/resolve", async (req, reply) => {
     const { id, action } = (req.body ?? {}) as { id?: string; action?: string };

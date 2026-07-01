@@ -486,6 +486,20 @@ curl -H "$AUTH" $BASE/api/usage
 
 # Recent audit log
 curl -H "$AUTH" $BASE/api/audit
+
+# Search / filter the audit log. All params optional:
+#   q=<text>  actor=<source>  action=<verb>  resource=<prefix>
+#   since=<epoch-ms>  limit=<n, default 500>
+curl -H "$AUTH" "$BASE/api/audit/search?resource=vault&action=vault.rotate&limit=100"
+
+# Facet lists for the filter dropdowns (distinct actors / resources / actions,
+# ranked by frequency).
+curl -H "$AUTH" $BASE/api/audit/facets
+
+# Anomaly detector — live scan of the recent audit log (delete bursts, off-hours
+# vault access, new privileged grants). Read-only preview; alerting is driven by
+# the heartbeat loop (see /api/heartbeat, anomaly config).
+curl -H "$AUTH" $BASE/api/audit/anomalies
 ```
 
 ### Council votes

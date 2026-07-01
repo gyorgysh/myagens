@@ -136,6 +136,7 @@ export function HeartbeatView_({ onAuthError }: { onAuthError: () => void }) {
                 { key: "disk" as HeartbeatSignalKey, label: "hb_disk" as TranslationKey },
                 { key: "stale" as HeartbeatSignalKey, label: "hb_stale_card" as TranslationKey },
                 { key: "calendar" as HeartbeatSignalKey, label: "hb_calendar" as TranslationKey },
+                { key: "anomaly" as HeartbeatSignalKey, label: "hb_anomaly_title" as TranslationKey },
               ] satisfies Array<{ key: HeartbeatSignalKey; label: TranslationKey }>
             ).map(({ key, label }) => {
               const muted = (c.mutedSignals ?? []).includes(key);
@@ -209,6 +210,61 @@ export function HeartbeatView_({ onAuthError }: { onAuthError: () => void }) {
             </div>
           </div>
         </div>
+      </Card>
+
+      <Card title={t("hb_anomaly_title")}>
+        <p className="mb-3 text-sm text-fg-dim">{t("hb_anomaly_desc")}</p>
+        <label className="flex cursor-pointer items-start gap-2.5">
+          <input
+            type="checkbox"
+            checked={c.anomaly.enabled}
+            onChange={(e) => save({ anomaly: { ...c.anomaly, enabled: e.target.checked } })}
+            className="mt-0.5 h-4 w-4 accent-accent"
+          />
+          <span>
+            <span className="text-sm font-medium text-fg">{t("hb_anomaly_enable")}</span>
+            <span className="block text-xs text-fg-faint">{t("hb_anomaly_enable_hint")}</span>
+          </span>
+        </label>
+        {c.anomaly.enabled && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <Label>{t("hb_anomaly_delete_window")}</Label>
+              <NumberField
+                value={c.anomaly.deleteWindowMin}
+                onCommit={(n) => save({ anomaly: { ...c.anomaly, deleteWindowMin: Math.max(1, n) } })}
+              />
+            </div>
+            <div>
+              <Label>{t("hb_anomaly_delete_threshold")}</Label>
+              <NumberField
+                value={c.anomaly.deleteThreshold}
+                onCommit={(n) => save({ anomaly: { ...c.anomaly, deleteThreshold: Math.max(1, n) } })}
+              />
+            </div>
+            <div>
+              <Label>{t("hb_anomaly_lookback")}</Label>
+              <NumberField
+                value={c.anomaly.lookbackMin}
+                onCommit={(n) => save({ anomaly: { ...c.anomaly, lookbackMin: Math.max(1, n) } })}
+              />
+            </div>
+            <div>
+              <Label>{t("hb_anomaly_work_start")}</Label>
+              <TimeField
+                value={c.anomaly.workStart}
+                onCommit={(v) => save({ anomaly: { ...c.anomaly, workStart: v } })}
+              />
+            </div>
+            <div>
+              <Label>{t("hb_anomaly_work_end")}</Label>
+              <TimeField
+                value={c.anomaly.workEnd}
+                onCommit={(v) => save({ anomaly: { ...c.anomaly, workEnd: v } })}
+              />
+            </div>
+          </div>
+        )}
       </Card>
 
       <Card title={t("hb_recent_alerts")}>

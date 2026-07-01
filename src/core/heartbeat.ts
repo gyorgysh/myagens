@@ -12,6 +12,7 @@ import {
 import { usageSummary } from "./snapshot.js";
 import { loadProbeResult, runProbe } from "./usageProbe.js";
 import { collectCalendarSignals, anyCalendarConnected } from "./calendarSignals.js";
+import { detectAnomalies, ANOMALY_DEFAULTS, type AnomalyConfig } from "./anomaly.js";
 
 const FILE = "heartbeat.json";
 const TICK_MS = 60_000; // wake-up granularity; actual cadence is config.intervalMs
@@ -20,7 +21,7 @@ const ALERT_HISTORY = 50;
 
 export type HeartbeatMode = "off" | "alert" | "active";
 
-export type HeartbeatSignalKey = "cpu" | "mem" | "swap" | "disk" | "stale" | "spend" | "calendar";
+export type HeartbeatSignalKey = "cpu" | "mem" | "swap" | "disk" | "stale" | "spend" | "calendar" | "anomaly";
 
 export interface HeartbeatConfig {
   mode: HeartbeatMode;
@@ -62,6 +63,12 @@ export interface HeartbeatConfig {
    */
   quietStart?: string;
   quietEnd?: string;
+  /**
+   * Audit-log anomaly detection: scans the append-only action log for
+   * suspicious patterns (delete bursts, off-hours vault access, new grants) and
+   * surfaces findings as heartbeat signals. Opt-in; off by default.
+   */
+  anomaly: AnomalyConfig;
 }
 
 interface Signal {
@@ -133,6 +140,7 @@ const DEFAULTS: HeartbeatConfig = {
   calendarEnabled: false,
   calendarWindowMin: 720, // 12h lookahead
   calendarLeadMin: 30,
+  anomaly: { ...ANOMALY_DEFAULTS },
 };
 
 export interface HeartbeatDeps {
@@ -190,7 +198,7 @@ export class HeartbeatManager {
     }
     if (typeof patch.spendAlertEnabled === "boolean") c.spendAlertEnabled = patch.spendAlertEnabled;
     if (Array.isArray(patch.mutedSignals)) {
-      const valid: HeartbeatSignalKey[] = ["cpu", "mem", "swap", "disk", "stale", "spend", "calendar"];
+      const valid: HeartbeatSignalKey[] = ["cpu", "mem", "swap", "disk", "stale", "spend", "calendar", "anomaly"];
       c.mutedSignals = patch.mutedSignals.filter((s): s is HeartbeatSignalKey => valid.includes(s as HeartbeatSignalKey));
     }
     if (typeof patch.calendarEnabled === "boolean") c.calendarEnabled = patch.calendarEnabled;
@@ -198,11 +206,23 @@ export class HeartbeatManager {
     if (typeof patch.calendarLeadMin === "number") c.calendarLeadMin = Math.max(1, patch.calendarLeadMin);
     if (patch.quietStart !== undefined) c.quietStart = isHHMM(patch.quietStart) ? patch.quietStart : undefined;
     if (patch.quietEnd !== undefined) c.quietEnd = isHHMM(patch.quietEnd) ? patch.quietEnd : undefined;
+    if (patch.anomaly) {
+      const a = c.anomaly ?? { ...ANOMALY_DEFAULTS };
+      const p = patch.anomaly;
+      if (typeof p.enabled === "boolean") a.enabled = p.enabled;
+      if (typeof p.deleteWindowMin === "number") a.deleteWindowMin = Math.max(1, p.deleteWindowMin);
+      if (typeof p.deleteThreshold === "number") a.deleteThreshold = Math.max(1, p.deleteThreshold);
+      if (typeof p.lookbackMin === "number") a.lookbackMin = Math.max(1, p.lookbackMin);
+      if (typeof p.workStart === "string" && isHHMM(p.workStart)) a.workStart = p.workStart;
+      if (typeof p.workEnd === "string" && isHHMM(p.workEnd)) a.workEnd = p.workEnd;
+      c.anomaly = a;
+    }
     // Ensure fields exist on legacy configs loaded from disk.
     if (!Array.isArray(c.mutedSignals)) c.mutedSignals = [];
     if (typeof c.calendarEnabled !== "boolean") c.calendarEnabled = false;
     if (typeof c.calendarWindowMin !== "number") c.calendarWindowMin = 720;
     if (typeof c.calendarLeadMin !== "number") c.calendarLeadMin = 30;
+    if (!c.anomaly || typeof c.anomaly !== "object") c.anomaly = { ...ANOMALY_DEFAULTS };
     this.persist();
     audit("heartbeat.config", { mode: c.mode, intervalMs: c.intervalMs });
     return c;
@@ -308,6 +328,17 @@ export class HeartbeatManager {
         for (const s of calSignals) out.push({ key: s.key, text: s.text });
       } catch (err) {
         log.warn("Heartbeat calendar probe failed", { error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    // Audit-log anomaly detection: delete bursts, off-hours vault access, new grants.
+    if (!muted.has("anomaly") && c.anomaly?.enabled) {
+      try {
+        for (const a of detectAnomalies(c.anomaly)) {
+          const sev = a.severity === "critical" ? "🔴" : "🟠";
+          out.push({ key: `anomaly:${a.key}`, text: `${sev} Anomaly: ${a.text}` });
+        }
+      } catch (err) {
+        log.warn("Heartbeat anomaly scan failed", { error: err instanceof Error ? err.message : String(err) });
       }
     }
     return out;

@@ -621,7 +621,23 @@ export interface BrandingView {
 }
 
 export type HeartbeatMode = "off" | "alert" | "active";
-export type HeartbeatSignalKey = "cpu" | "mem" | "swap" | "disk" | "stale" | "spend" | "calendar";
+export type HeartbeatSignalKey =
+  | "cpu"
+  | "mem"
+  | "swap"
+  | "disk"
+  | "stale"
+  | "spend"
+  | "calendar"
+  | "anomaly";
+export interface AnomalyConfig {
+  enabled: boolean;
+  deleteWindowMin: number;
+  deleteThreshold: number;
+  workStart: string;
+  workEnd: string;
+  lookbackMin: number;
+}
 export interface HeartbeatConfig {
   mode: HeartbeatMode;
   intervalMs: number;
@@ -637,6 +653,7 @@ export interface HeartbeatConfig {
   calendarLeadMin: number;
   quietStart?: string;
   quietEnd?: string;
+  anomaly: AnomalyConfig;
 }
 export interface HeartbeatView {
   config: HeartbeatConfig;
@@ -957,6 +974,34 @@ export interface PushView {
   subscriptions: Array<{ id: string; label?: string; createdAt: number }>;
 }
 
+export interface AuditEvent {
+  ts: number;
+  source: string;
+  action: string;
+  detail?: Record<string, unknown>;
+}
+export interface AuditFacets {
+  actors: string[];
+  resources: string[];
+  actions: string[];
+}
+export interface Anomaly {
+  key: string;
+  kind: "delete-burst" | "vault-offhours" | "new-grant";
+  severity: "warning" | "critical";
+  text: string;
+  ts: number;
+  count: number;
+}
+export interface AuditQueryParams {
+  q?: string;
+  actor?: string;
+  action?: string;
+  resource?: string;
+  since?: number;
+  limit?: number;
+}
+
 export const api = {
   me: () =>
     get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; updateCount: number; atlasName: string; brandName: string; branding?: Branding; brandingUnlocked?: boolean; subscriptionPlan: boolean; defaultWorkdir: string; homeDir: string; platform: string; allowedUserCount: number; panelHost: string; panelPort: number; tunnelEnabled: boolean; terminalEnabled: boolean }>("/api/me"),
@@ -1172,6 +1217,18 @@ export const api = {
   heartbeat: () => get<HeartbeatView>("/api/heartbeat"),
   saveHeartbeat: (c: Partial<HeartbeatConfig>) => req<HeartbeatView>("PUT", "/api/heartbeat", c),
   runHeartbeat: () => req<{ signals: number }>("POST", "/api/heartbeat/run"),
+
+  audit: () => get<{ events: AuditEvent[] }>("/api/audit"),
+  searchAudit: (params: AuditQueryParams = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") qs.set(k, String(v));
+    }
+    const s = qs.toString();
+    return get<{ events: AuditEvent[] }>(`/api/audit/search${s ? `?${s}` : ""}`);
+  },
+  auditFacets: () => get<AuditFacets>("/api/audit/facets"),
+  auditAnomalies: () => get<{ anomalies: Anomaly[] }>("/api/audit/anomalies"),
 
   vault: () =>
     get<{

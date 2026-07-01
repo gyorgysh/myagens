@@ -30,6 +30,13 @@ let shuttingDown = false;
 // child. Set to true as soon as a restart is in flight; cleared when the new
 // child is actually running (or on error).
 let restarting = false;
+// Set right before we deliberately SIGTERM a child (planned restart or
+// shutdown). The bot catches SIGTERM itself and calls process.exit(0), so
+// Node reports the exit as `signal: null`, not "SIGTERM" — without this flag
+// the crash handler below can't tell a planned restart from a real crash and
+// queues a redundant extra restart on top of the immediate one, causing an
+// endless restart loop.
+let killingForRestart = false;
 
 // Crash-loop backoff: consecutive unexpected exits ramp the delay up
 // (2s, 5s, 10s, 20s, capped at 30s) so a persistently broken start doesn't
@@ -49,7 +56,10 @@ function startChild() {
   });
   child.on("exit", (code, signal) => {
     child = null;
-    if (shuttingDown || signal === "SIGTERM") return;
+    if (shuttingDown || signal === "SIGTERM" || killingForRestart) {
+      killingForRestart = false;
+      return;
+    }
     // Unexpected exit (crash). Auto-restart with backoff instead of killing
     // the whole dev session, so a transient startup error doesn't require
     // manually re-running `npm run dev`.
@@ -86,6 +96,7 @@ function applyRestart() {
   // (avoids two bots fighting over the Telegram long-poll / panel port).
   const old = child;
   child = null;
+  killingForRestart = true;
   old.once("exit", () => startChild());
   old.kill("SIGTERM");
 }

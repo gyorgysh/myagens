@@ -1232,11 +1232,20 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   // --- external connectors ---
   app.get("/api/connectors", async () => ({ connectors: listConnectors() }));
   app.put("/api/connectors/:id", async (req, reply) => {
-    const body = (req.body ?? {}) as { secretId?: string; enabled?: boolean; scope?: string };
+    const body = (req.body ?? {}) as {
+      secretId?: string;
+      enabled?: boolean;
+      scope?: string;
+      expiresAt?: number | null;
+    };
+    // null clears expiry, a number sets it, undefined leaves it untouched.
+    const expiresAt =
+      body.expiresAt === null ? null : typeof body.expiresAt === "number" ? body.expiresAt : undefined;
     const updated = setConnector((req.params as { id: string }).id, {
       secretId: body.secretId,
       enabled: body.enabled,
       scope: body.scope === "write" ? "write" : body.scope === "read" ? "read" : undefined,
+      expiresAt,
     });
     if (!updated) return reply.code(404).send({ error: "not found" });
     return updated;

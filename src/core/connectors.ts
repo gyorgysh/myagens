@@ -59,6 +59,26 @@ interface ConnectorConfig {
   enabled: boolean;
   /** Access scope; defaults to read-only when unset. */
   scope?: ConnectorScope;
+  /**
+   * Optional epoch-ms at which the stored OAuth/token credential expires. Set
+   * for connectors whose tokens are short-lived (Google access tokens et al.)
+   * so the panel can warn before they go stale. Undefined = no known expiry.
+   */
+  expiresAt?: number;
+}
+
+/** How soon (ms) before expiry we start warning. */
+const EXPIRY_WARN_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+/** Credential freshness derived from `expiresAt`. */
+export type ConnectorTokenStatus = "none" | "ok" | "expiring" | "expired";
+
+/** Classify a connector's credential freshness from its expiry timestamp. */
+export function tokenStatus(expiresAt: number | undefined, now = Date.now()): ConnectorTokenStatus {
+  if (expiresAt === undefined) return "none";
+  if (expiresAt <= now) return "expired";
+  if (expiresAt - now <= EXPIRY_WARN_WINDOW_MS) return "expiring";
+  return "ok";
 }
 
 interface ConnectorFile {
@@ -71,6 +91,10 @@ export interface ConnectorView extends ConnectorDef {
   enabled: boolean;
   /** Resolved access scope (defaults to read-only). */
   scope: ConnectorScope;
+  /** Epoch-ms token expiry, if tracked. */
+  expiresAt?: number;
+  /** Derived credential freshness from `expiresAt`. */
+  tokenStatus: ConnectorTokenStatus;
 }
 
 function load(): ConnectorFile {
@@ -79,17 +103,22 @@ function load(): ConnectorFile {
 
 export function listConnectors(): ConnectorView[] {
   const { config } = load();
-  return CONNECTORS.map((c) => ({
-    ...c,
-    secretId: config[c.id]?.secretId,
-    enabled: config[c.id]?.enabled ?? false,
-    scope: config[c.id]?.scope ?? "read",
-  }));
+  return CONNECTORS.map((c) => {
+    const expiresAt = config[c.id]?.expiresAt;
+    return {
+      ...c,
+      secretId: config[c.id]?.secretId,
+      enabled: config[c.id]?.enabled ?? false,
+      scope: config[c.id]?.scope ?? "read",
+      expiresAt,
+      tokenStatus: tokenStatus(expiresAt),
+    };
+  });
 }
 
 export function setConnector(
   id: string,
-  patch: { secretId?: string; enabled?: boolean; scope?: ConnectorScope },
+  patch: { secretId?: string; enabled?: boolean; scope?: ConnectorScope; expiresAt?: number | null },
 ): ConnectorView | undefined {
   const def = CONNECTORS.find((c) => c.id === id);
   if (!def) return undefined;
@@ -100,6 +129,9 @@ export function setConnector(
   if (patch.scope !== undefined && (patch.scope === "read" || patch.scope === "write")) {
     cur.scope = patch.scope;
   }
+  // null clears the expiry; a positive number sets it; undefined leaves it be.
+  if (patch.expiresAt === null) cur.expiresAt = undefined;
+  else if (typeof patch.expiresAt === "number" && patch.expiresAt > 0) cur.expiresAt = patch.expiresAt;
   file.config[id] = cur;
   saveJson<ConnectorFile>(FILE, file);
   audit("connector.update", { id, enabled: cur.enabled, scope: cur.scope ?? "read" });

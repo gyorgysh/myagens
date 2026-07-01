@@ -527,6 +527,8 @@ export interface RunLogEvent {
 
 export type ConnectorScope = "read" | "write";
 
+export type ConnectorTokenStatus = "none" | "ok" | "expiring" | "expired";
+
 export interface Connector {
   id: string;
   name: string;
@@ -537,6 +539,10 @@ export interface Connector {
   secretId?: string;
   enabled: boolean;
   scope: ConnectorScope;
+  /** Epoch-ms token expiry, if tracked. */
+  expiresAt?: number;
+  /** Derived credential freshness from `expiresAt`. */
+  tokenStatus: ConnectorTokenStatus;
 }
 
 export type WebhookParamIn = "query" | "header" | "body" | "path";
@@ -1083,8 +1089,10 @@ export const api = {
   status: () => get<StatusSnapshot>("/api/status"),
 
   connectors: () => get<{ connectors: Connector[] }>("/api/connectors"),
-  saveConnector: (id: string, c: { secretId?: string; enabled?: boolean; scope?: ConnectorScope }) =>
-    req<Connector>("PUT", `/api/connectors/${id}`, c),
+  saveConnector: (
+    id: string,
+    c: { secretId?: string; enabled?: boolean; scope?: ConnectorScope; expiresAt?: number | null },
+  ) => req<Connector>("PUT", `/api/connectors/${id}`, c),
 
   webhookTools: () => get<{ tools: WebhookTool[] }>("/api/webhook-tools"),
   createWebhookTool: (t: WebhookToolInput) => req<WebhookTool>("POST", "/api/webhook-tools", t),

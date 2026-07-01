@@ -8,6 +8,15 @@ import { getConnectorIcon } from "../lib/connectorIcons.ts";
 import { CONNECTOR_HELP } from "../lib/connectorHelp.ts";
 import type { Tab } from "./Sidebar.tsx";
 
+/** Epoch-ms → `YYYY-MM-DDTHH:mm` for a `datetime-local` input (local tz). */
+function toLocalInput(ms: number | undefined): string {
+  if (ms === undefined) return "";
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // ─── Info modal ─────────────────────────────────────────────────────────────
 
 function ConnectorInfoModal({
@@ -194,6 +203,12 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
     await api.saveConnector(id, { scope }).catch(() => void load());
   };
 
+  // Set (or clear, via null) the token expiry; server re-derives tokenStatus.
+  const setExpiry = async (id: string, expiresAt: number | null) => {
+    await api.saveConnector(id, { expiresAt }).catch(() => {});
+    void load();
+  };
+
   const noneConfigured = connectors.length > 0 && !connectors.some((c) => c.secretId);
   const noSecrets = secrets.length === 0;
 
@@ -254,6 +269,12 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
                       <Badge tone="green">{t("connectors_live")}</Badge>
                     ) : (
                       <Badge tone="amber">{t("connectors_coming_soon")}</Badge>
+                    )}
+                    {c.tokenStatus === "expired" && (
+                      <Badge tone="critical">{t("connectors_token_expired")}</Badge>
+                    )}
+                    {c.tokenStatus === "expiring" && (
+                      <Badge tone="amber">{t("connectors_token_expiring")}</Badge>
                     )}
                     <button
                       type="button"
@@ -319,6 +340,38 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
                 )}
                 {live && c.enabled && c.secretId && (
                   <p className="mt-1 text-xs text-accent">{t("connectors_active")}</p>
+                )}
+                {live && c.secretId && (
+                  <div className="mt-2">
+                    <Label>{t("connectors_expiry")}</Label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        type="datetime-local"
+                        value={toLocalInput(c.expiresAt)}
+                        onChange={(e) => {
+                          const ms = e.target.value ? new Date(e.target.value).getTime() : null;
+                          void setExpiry(c.id, Number.isFinite(ms as number) ? ms : null);
+                        }}
+                        className="rounded border border-line bg-surface px-2 py-1 text-xs text-fg"
+                      />
+                      {c.expiresAt !== undefined && (
+                        <button
+                          type="button"
+                          onClick={() => void setExpiry(c.id, null)}
+                          className="text-xs text-fg-faint underline hover:text-fg-dim"
+                        >
+                          {t("connectors_expiry_clear")}
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-fg-faint">
+                      {c.tokenStatus === "expired"
+                        ? t("connectors_expiry_expired_hint")
+                        : c.tokenStatus === "expiring"
+                          ? t("connectors_expiry_expiring_hint")
+                          : t("connectors_expiry_hint")}
+                    </p>
+                  </div>
                 )}
               </div>
             );

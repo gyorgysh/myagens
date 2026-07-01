@@ -1,13 +1,12 @@
 import { runTurn as claudeAgentSdkRunTurn, type RunOptions, type RunResult } from "../claude/runner.js";
+import { runTurn as grokRunTurn } from "../grok/runner.js";
 
 /**
- * One agent runtime this bot can drive a turn through. Today there is exactly
- * one — the real Claude Agent SDK, which spawns the headless `claude` CLI and
- * gets its whole tool belt (Read/Write/Edit/Bash/Glob/Grep/...), permission
- * hook, and resumable sessions for free. This interface is the seam a future
- * backend (a generic OpenAI/xAI-compatible tool-loop adapter, or a Codex CLI
- * adapter) would implement, so every caller below already goes through the
- * registry rather than importing `runTurn` directly.
+ * One agent runtime this bot can drive a turn through — the Claude Agent SDK
+ * (spawns the `claude` CLI) or the Grok CLI (spawns `grok`), each wrapping a
+ * provider's own agentic CLI product (tool belt, sandboxing, permission modes
+ * included) rather than reimplementing one. Every caller below already goes
+ * through this registry rather than importing a runner's `runTurn` directly.
  */
 export interface AgentBackend {
   id: string;
@@ -21,7 +20,16 @@ const CLAUDE_AGENT_SDK: AgentBackend = {
   runTurn: claudeAgentSdkRunTurn,
 };
 
-const backends = new Map<string, AgentBackend>([[CLAUDE_AGENT_SDK.id, CLAUDE_AGENT_SDK]]);
+const GROK_CLI: AgentBackend = {
+  id: "grok-cli",
+  displayName: "Grok (CLI)",
+  runTurn: grokRunTurn,
+};
+
+const backends = new Map<string, AgentBackend>([
+  [CLAUDE_AGENT_SDK.id, CLAUDE_AGENT_SDK],
+  [GROK_CLI.id, GROK_CLI],
+]);
 
 /** Look up a backend by id, falling back to the default (Claude Agent SDK)
  *  when the id is unset or doesn't match a registered backend. */

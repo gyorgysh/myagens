@@ -72,6 +72,25 @@ export interface MemoryInput {
   tier?: "hot" | "warm" | "cold";
 }
 
+/** A single entry in an export dump: an entry stripped of its embedding data. */
+export type ExportedMemory = Omit<MemoryEntry, "embedding" | "embeddingModel">;
+
+/** Portable memory dump produced by `export()` and consumed by `import()`. */
+export interface MemoryExport {
+  version: 1;
+  exportedAt: number;
+  entries: ExportedMemory[];
+}
+
+/** A loosely-typed entry from an untrusted import payload. */
+export interface ImportedMemory {
+  text?: unknown;
+  tags?: unknown;
+  salience?: unknown;
+  tier?: unknown;
+  createdAt?: unknown;
+}
+
 /** Split text into lowercased word tokens of length >= 3 for matching. */
 function tokenize(text: string): string[] {
   return (text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((t) => t.length >= 3);
@@ -443,6 +462,68 @@ export class MemoryStore {
   /** All entries including cold, unordered (for maintenance compaction). */
   allRaw(): MemoryEntry[] {
     return this.entries;
+  }
+
+  /**
+   * Portable JSON dump of every entry (hot/warm/cold) for migration or backup.
+   * Embeddings are dropped — they're large, model-specific, and recomputed on
+   * import — so the payload stays small and portable across machines/models.
+   */
+  export(): MemoryExport {
+    return {
+      version: 1,
+      exportedAt: Date.now(),
+      entries: this.entries.map(({ embedding, embeddingModel, ...rest }) => rest),
+    };
+  }
+
+  /**
+   * Merge exported entries into the store. Dedup is by normalized text: an entry
+   * whose text already exists (case-insensitively) is skipped, keeping the local
+   * copy. New entries are inserted with a fresh id, their tier passed through the
+   * hot-tier injection guard, and an embedding computed in the background.
+   * Returns how many were imported vs. skipped as duplicates.
+   */
+  import(entries: ImportedMemory[]): { imported: number; skipped: number } {
+    const now = Date.now();
+    const seen = new Set(this.entries.map((e) => e.text.toLowerCase()));
+    let imported = 0;
+    let skipped = 0;
+    const fresh: MemoryEntry[] = [];
+    for (const raw of entries) {
+      const text = stripLoneSurrogates(String(raw.text ?? "")).trim();
+      if (!text) continue;
+      const key = text.toLowerCase();
+      if (seen.has(key)) {
+        skipped++;
+        continue;
+      }
+      seen.add(key);
+      const tier = ((): "hot" | "warm" | "cold" => {
+        const t = raw.tier === "hot" || raw.tier === "cold" ? raw.tier : "warm";
+        return this.guardHotTier(t, text);
+      })();
+      const entry: MemoryEntry = {
+        id: randomBytes(4).toString("hex"),
+        text,
+        tags: dedupeTags(Array.isArray(raw.tags) ? raw.tags.map(String) : []),
+        salience: clampSalience(typeof raw.salience === "number" ? raw.salience : undefined, 0.5),
+        tier,
+        useCount: 0,
+        createdAt: typeof raw.createdAt === "number" ? raw.createdAt : now,
+        updatedAt: now,
+      };
+      fresh.push(entry);
+      imported++;
+    }
+    if (fresh.length) {
+      this.entries.push(...fresh);
+      this.persist();
+      audit("memory.import", { imported, skipped });
+      // Backfill embeddings for the new entries in the background.
+      void this.ensureEmbeddings().catch(() => {});
+    }
+    return { imported, skipped };
   }
 
   /** Replace all entries (used by maintenance compaction after dedup/prune). */

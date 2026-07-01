@@ -1179,6 +1179,20 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       return reply.code(404).send({ error: "not found" });
     return { ok: true };
   });
+  // Portable JSON dump of every entry (hot/warm/cold), embeddings stripped.
+  app.get("/api/memories/export", async (_req, reply) => {
+    const dump = memory.export();
+    reply.header("content-disposition", `attachment; filename="memories-${new Date().toISOString().slice(0, 10)}.json"`);
+    return dump;
+  });
+  // Merge an exported dump; dedup by text. Body is the export object or a bare array.
+  app.post("/api/memories/import", async (req, reply) => {
+    const body = req.body as { entries?: unknown } | unknown[];
+    const rawEntries = Array.isArray(body) ? body : (body?.entries as unknown);
+    if (!Array.isArray(rawEntries))
+      return reply.code(400).send({ error: "expected an array of entries or { entries: [...] }" });
+    return memory.import(rawEntries as never);
+  });
 
   // --- conversation search (live chat + run transcripts) ---
   app.get("/api/conversations/search", async (req) => {

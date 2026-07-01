@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, AuthError, type MemoryEntry, type MemoryStats, type MemoryTier } from "../api.ts";
 import { useI18n } from "../lib/useI18n.ts";
 import { toast } from "../lib/useToast.ts";
@@ -81,6 +81,7 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
   const [bulkMode, setBulkMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [listRef] = useListAnimate();
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   // The unfiltered list endpoint already returns every tier (incl. cold); the
   // `all` flag only widens *search* to cold entries. So only ask for cold when
@@ -279,6 +280,46 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
     });
   };
 
+  // Download the full store as a portable JSON file (embeddings stripped server-side).
+  const exportMemories = async () => {
+    try {
+      const dump = await api.exportMemories();
+      const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `memories-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      toast.error(String(e));
+    }
+  };
+
+  // Read a chosen JSON file and merge its entries (dedup by text, server-side).
+  const importMemories = async (file: File) => {
+    try {
+      const parsed = JSON.parse(await file.text());
+      const entries = Array.isArray(parsed) ? parsed : parsed?.entries;
+      if (!Array.isArray(entries)) {
+        toast.error(t("memory_import_bad_file"));
+        return;
+      }
+      const res = await api.importMemories(entries);
+      toast.success(
+        t("memory_import_done")
+          .replace("{imported}", String(res.imported))
+          .replace("{skipped}", String(res.skipped)),
+      );
+      void loadStats();
+      void load(query.trim() || undefined);
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      toast.error(t("memory_import_bad_file"));
+    }
+  };
+
   return (
     <Card
       title={t("memory_title")}
@@ -295,7 +336,22 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
             <Button onClick={exitBulk}>{t("cancel")}</Button>
           </div>
         ) : (
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void importMemories(file);
+                e.target.value = "";
+              }}
+            />
+            <Button onClick={() => importInputRef.current?.click()}>{t("memory_import")}</Button>
+            {entries.length > 0 && (
+              <Button onClick={exportMemories}>{t("memory_export")}</Button>
+            )}
             {entries.length > 0 && (
               <Button onClick={() => setBulkMode(true)}>{t("memory_bulk_select")}</Button>
             )}

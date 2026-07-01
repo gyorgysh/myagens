@@ -662,6 +662,12 @@ export interface MemoryEntry {
   embedded?: boolean;
 }
 
+export interface MemoryExport {
+  version: 1;
+  exportedAt: number;
+  entries: Array<Omit<MemoryEntry, "embedded">>;
+}
+
 export interface MemoryStats {
   total: number;
   byTier: Record<MemoryTier, number>;
@@ -1147,6 +1153,9 @@ export const api = {
   setMemoryTier: (id: string, tier: MemoryTier) =>
     req<MemoryEntry>("PATCH", `/api/memories/${id}/tier`, { tier }),
   deleteMemory: (id: string) => req<{ ok: boolean }>("DELETE", `/api/memories/${id}`),
+  exportMemories: () => get<MemoryExport>("/api/memories/export"),
+  importMemories: (entries: unknown) =>
+    req<{ imported: number; skipped: number }>("POST", "/api/memories/import", { entries }),
 
   suggestions: (status?: SuggestionStatus) =>
     get<{ suggestions: Suggestion[] }>(`/api/suggestions${status ? `?status=${status}` : ""}`),

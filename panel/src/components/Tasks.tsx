@@ -1074,7 +1074,7 @@ function Card({
             <span className="min-w-0 flex-1 text-sm text-fg">{task.title}</span>
             {task.recurrence && (
               <span
-                className="mt-0.5 flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent"
+                className="mt-0.5 flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1 py-0.5 text-xs text-accent"
                 title={t(`tasks_repeat_${task.recurrence.rule.kind}` as TranslationKey)}
               >
                 <Repeat size={10} />

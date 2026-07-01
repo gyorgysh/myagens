@@ -1381,7 +1381,7 @@ function Bubble({
     return (
       <div className="flex flex-col items-end gap-1">
         {m.planning && (
-          <span className="mr-1 inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+          <span className="mr-1 inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/5 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-accent">
             <ClipboardList size={11} />
             {t("chat_planning_badge")}
           </span>

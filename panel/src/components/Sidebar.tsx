@@ -640,7 +640,7 @@ export function Sidebar({
           onClick={onSignOut}
           title={t("sign_out")}
           aria-label={t("sign_out")}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg"
+          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg"
         >
           <span className="flex h-5 w-5 shrink-0 items-center justify-center leading-none">
             <Power className="h-[18px] w-[18px]" strokeWidth={1.75} />

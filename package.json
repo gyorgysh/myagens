@@ -8,6 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "predev": "npm run build:panel",
     "dev": "concurrently -k -n bot,panel -c blue,green \"npm run dev:bot\" \"npm run panel:watch\"",
     "dev:bot": "node scripts/dev-bot.mjs",
     "build": "npm run build:panel && tsc -p tsconfig.json",

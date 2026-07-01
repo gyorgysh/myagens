@@ -152,7 +152,18 @@ async function main(): Promise<void> {
     { command: "help", description: "Show help" },
   ]), "setMyCommands");
 
-  const shutdown = (signal: "SIGINT" | "SIGTERM") => {
+  // Cleared by shutdown() so a pending polling-retry backoff can't fire
+  // startPolling() again after we've already begun (or finished) exiting.
+  let pollRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  let shuttingDown = false;
+
+  const shutdown = (signal: "SIGINT" | "SIGTERM", opts: { exitCode?: number } = {}) => {
+    // Idempotent: SIGINT/SIGTERM only fire once each (process.once below), but
+    // an unrecoverable polling failure now also calls this directly, so guard
+    // against a real signal arriving mid-way through that failure-triggered exit.
+    if (shuttingDown) return;
+    shuttingDown = true;
+    if (pollRetryTimer) clearTimeout(pollRetryTimer);
     log.info(`${signal} — shutting down`);
 
     // Stop accepting new turns and new scheduled work.
@@ -192,7 +203,11 @@ async function main(): Promise<void> {
       // is deliberately NOT unref'd: a lingering open handle (an orphaned relay,
       // a half-closed socket) must not be able to keep the old process alive past
       // a clean shutdown, or it overlaps with the restart-spawned new instance.
-      setTimeout(() => { process.exit(0); }, 500);
+      // A nonzero code (used when this shutdown was triggered by an unrecoverable
+      // polling failure, not SIGINT/SIGTERM) matters for systemd's
+      // `Restart=on-failure` — exit 0 would look like an intentional stop and
+      // the service would NOT come back. launchd's KeepAlive restarts either way.
+      setTimeout(() => { process.exit(opts.exitCode ?? 0); }, 500);
     };
 
     const deadline = setTimeout(() => {
@@ -269,14 +284,50 @@ async function main(): Promise<void> {
     }
   }
 
-  log.info("Bot starting (long polling)…");
-  // launch() resolves only once polling stops; log just before it begins.
-  void bot
-    .launch(() => log.info("Bot is listening for updates"))
-    .catch((err) => {
-      log.error("Polling stopped", { error: errText(err) });
-      process.exit(1);
+  // launch() resolves cleanly when polling is stopped intentionally (our own
+  // bot.stop() in shutdown() aborts the in-flight getUpdates fetch, which the
+  // polling loop treats as a normal exit, not an error). It only *rejects* on
+  // an unrecoverable failure — a bad token (401) or a 409 Conflict from a
+  // second getUpdates poller on the same token (Telegraf already retries
+  // ordinary network blips internally, forever, so those never reach here).
+  // A 409 in particular is often self-resolving within seconds (the other
+  // poller releasing the token), so try a few in-place relaunches with
+  // backoff before paying for a full process restart.
+  const POLL_RETRY_MS = [2000, 5000, 10000, 20000, 30000];
+  const POLL_HEALTHY_AFTER_MS = 30_000;
+  let pollAttempt = 0;
+
+  const startPolling = () => {
+    log.info(pollAttempt === 0 ? "Bot starting (long polling)…" : "Bot retrying polling…", {
+      attempt: pollAttempt,
     });
+    const startedAt = Date.now();
+    void bot
+      .launch(() => log.info("Bot is listening for updates"))
+      .catch((err) => {
+        if (isTelegramAuthError(err)) {
+          log.error("Polling stopped — bad token, restarting process", { error: errText(err) });
+          shutdown("SIGTERM", { exitCode: 1 });
+          return;
+        }
+        // Ran long enough to count as a healthy stretch — forget past failures.
+        if (Date.now() - startedAt > POLL_HEALTHY_AFTER_MS) pollAttempt = 0;
+        if (pollAttempt >= POLL_RETRY_MS.length) {
+          log.error("Polling kept failing — restarting whole process", {
+            error: errText(err),
+            attempts: pollAttempt + 1,
+          });
+          shutdown("SIGTERM", { exitCode: 1 });
+          return;
+        }
+        const delayMs = POLL_RETRY_MS[pollAttempt];
+        pollAttempt++;
+        log.error("Polling stopped, retrying", { error: errText(err), attempt: pollAttempt, delayMs });
+        pollRetryTimer = setTimeout(startPolling, delayMs);
+      });
+  };
+
+  startPolling();
 }
 
 function errText(err: unknown): string {

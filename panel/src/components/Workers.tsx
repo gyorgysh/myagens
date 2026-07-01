@@ -6,6 +6,7 @@ import {
   type WorkerRun,
   type Autonomy,
   type NamedProvider,
+  type NamedBackend,
   type ProviderKind,
 } from "../api.ts";
 import { useWorkerEvents, type LiveRun } from "../lib/useWorkerEvents.ts";
@@ -29,6 +30,7 @@ const emptyForm = {
   prompt: "",
   model: "",
   providerId: "",
+  backendId: "",
   systemPrompt: "",
   skillId: "",
   when: "",
@@ -120,6 +122,7 @@ export function WorkersView({
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [skills, setSkills] = useState<Named[]>([]);
   const [providers, setProviders] = useState<NamedProvider[]>([]);
+  const [backends, setBackends] = useState<NamedBackend[]>([]);
   const [creating, setCreating] = useState(false);
   const [wizarding, setWizarding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,6 +147,7 @@ export function WorkersView({
         setWorkers(r.workers);
         setSkills(r.skills);
         setProviders(r.providers);
+        setBackends(r.backends);
       })
       .catch((e) => (e instanceof AuthError ? onAuthError() : setError(errorMessage(e, t))));
 
@@ -199,6 +203,7 @@ export function WorkersView({
           <WorkerForm
             skills={skills}
             providers={providers}
+            backends={backends}
             workers={workers}
             initial={emptyForm}
             onCancel={() => setCreating(false)}
@@ -237,6 +242,7 @@ export function WorkersView({
               worker={w}
               skills={skills}
               providers={providers}
+              backends={backends}
               workers={workers}
               live={live[w.id]}
               onChange={load}
@@ -272,6 +278,7 @@ function WorkerRow({
   worker,
   skills,
   providers,
+  backends,
   workers,
   live,
   onChange,
@@ -282,6 +289,7 @@ function WorkerRow({
   worker: Worker;
   skills: Named[];
   providers: NamedProvider[];
+  backends: NamedBackend[];
   workers: Worker[];
   live?: LiveRun;
   onChange: () => void;
@@ -457,6 +465,7 @@ function WorkerRow({
           <WorkerForm
             skills={skills}
             providers={providers}
+            backends={backends}
             workers={workers}
             seedId={worker.id}
             initial={{
@@ -465,6 +474,7 @@ function WorkerRow({
               prompt: worker.prompt,
               model: worker.model,
               providerId: worker.providerId,
+              backendId: worker.backendId ?? "",
               systemPrompt: worker.systemPrompt,
               skillId: worker.skillId,
               when: worker.when,
@@ -693,6 +703,9 @@ function WorkerWizard({
         prompt: String(c.prompt ?? ""),
         model: String(c.model ?? ""),
         providerId: String(c.providerId ?? ""),
+        // The wizard doesn't draft a backend choice — new workers it creates
+        // always start on the default Claude backend.
+        backendId: "",
         systemPrompt: String(c.systemPrompt ?? ""),
         skillId: String(c.skillId ?? ""),
         when: String(c.when ?? answers.schedule ?? ""),
@@ -1177,6 +1190,7 @@ function AvatarPicker({
 function WorkerForm({
   skills,
   providers,
+  backends,
   workers,
   initial,
   seedId,
@@ -1187,6 +1201,7 @@ function WorkerForm({
 }: {
   skills: Named[];
   providers: NamedProvider[];
+  backends: NamedBackend[];
   workers: Worker[];
   initial: Form;
   /** Stable id seeding the avatar's deterministic default (worker id when
@@ -1341,6 +1356,23 @@ function WorkerForm({
         />
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <Label>{t("workers_ai_backend")}</Label>
+          <Select
+            value={form.backendId}
+            onChange={(e) => setForm({ ...form, backendId: e.target.value })}
+          >
+            <option value="">{t("workers_ai_backend_default")}</option>
+            {backends
+              .filter((b) => b.id !== "claude-agent-sdk")
+              .map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.displayName}
+                </option>
+              ))}
+          </Select>
+          <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_hint")}</p>
+        </div>
         <div>
           <Label>{t("workers_provider")}</Label>
           <Select

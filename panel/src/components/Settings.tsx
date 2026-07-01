@@ -445,6 +445,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const [agent, setAgent] = useState<MainAgent | null>(null);
   const [model, setModel] = useState("");
   const [providerId, setProviderId] = useState("");
+  const [backendId, setBackendId] = useState("");
   const [persona, setPersona] = useState("");
   const [autonomy, setAutonomy] = useState<Autonomy>("standard");
   const [dryRun, setDryRun] = useState(false);
@@ -460,6 +461,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         setAgent(a);
         setModel(a.model);
         setProviderId(a.providerId);
+        setBackendId(a.backendId);
         setPersona(a.persona ?? "");
         setAutonomy(a.autonomy ?? "standard");
         setDryRun(a.dryRun === true);
@@ -478,6 +480,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
     agent != null &&
     (model !== agent.model ||
       providerId !== agent.providerId ||
+      backendId !== agent.backendId ||
       persona !== (agent.persona ?? "") ||
       autonomy !== (agent.autonomy ?? "standard") ||
       dryRun !== (agent.dryRun === true) ||
@@ -523,6 +526,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
       const next = await api.saveAgent({
         model,
         providerId,
+        backendId,
         persona,
         autonomy,
         dryRun,
@@ -599,6 +603,18 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
                 placeholder={providerId ? t("settings_model_local") : t("settings_model_default")}
               />
             </div>
+          </div>
+          <div className="mt-3">
+            <Label>{t("settings_ai_backend")}</Label>
+            <Select value={backendId} onChange={(e) => setBackendId(e.target.value)}>
+              <option value="">{t("settings_ai_backend_default")}</option>
+              {agent.backends
+                .filter((b) => b.id !== "claude-agent-sdk")
+                .map((b) => (
+                  <option key={b.id} value={b.id}>{b.displayName}</option>
+                ))}
+            </Select>
+            <p className="mt-1 text-xs text-fg-dim">{t("settings_ai_backend_hint")}</p>
           </div>
         </Accordion>
 

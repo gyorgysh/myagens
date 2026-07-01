@@ -120,6 +120,11 @@ export const en = {
   model: "Model",
   provider: "Provider",
   schedule: "Schedule",
+  // Agent backend (which CLI/runtime drives turns) — a separate concept from
+  // the embeddings "backend" (Ollama/LM Studio) terms elsewhere in this file.
+  settings_ai_backend: "AI backend",
+  settings_ai_backend_default: "Claude (default)",
+  settings_ai_backend_hint: "Advanced: run this agent through a different agentic CLI instead of Claude.",
   enabled: "Enabled",
   disabled: "disabled",
   running: "running",
@@ -910,6 +915,9 @@ export const en = {
   workers_cwd_placeholder_win: "e.g. C:\\Users\\you\\projects\\myapp",
   workers_cwd_default: "Default workspace",
   workers_task_placeholder: "What should this worker do every run?",
+  workers_ai_backend: "AI backend",
+  workers_ai_backend_default: "Claude (default)",
+  workers_ai_backend_hint: "Advanced: run this one agent through a different agentic CLI instead of Claude.",
   workers_provider: "Provider (optional)",
   workers_anthropic_default: "Anthropic (default)",
   workers_model: "Model",

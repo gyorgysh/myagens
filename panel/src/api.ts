@@ -302,6 +302,14 @@ export interface NamedProvider {
   kind: ProviderKind;
 }
 
+/** An agent backend option (which CLI/runtime drives a turn) for the Agent
+ *  settings and worker form selectors — a separate concept from the
+ *  embeddings PreferredBackend or status.ts's BackendStatus. */
+export interface NamedBackend {
+  id: string;
+  displayName: string;
+}
+
 export interface Worker {
   id: string;
   name: string;
@@ -309,6 +317,8 @@ export interface Worker {
   prompt: string;
   model: string;
   providerId: string;
+  /** Agent backend id (see NamedBackend); "" = the default Claude backend. */
+  backendId?: string;
   systemPrompt: string;
   skillId: string;
   schedule: string;
@@ -880,6 +890,12 @@ export interface MainAgent {
   providerName?: string;
   providerBaseUrl?: string;
   providers: Array<{ id: string; name: string }>;
+  /** Agent backend id (which CLI/runtime drives turns); "" = the default
+   *  Claude backend. Not to be confused with the embeddings preferredBackend/
+   *  activeBackend fields below, an unrelated concept. */
+  backendId: string;
+  /** Every registered agent backend, for the selector. */
+  backends: NamedBackend[];
   serviceInstalled: boolean;
   persona: string;
   autonomy: Autonomy;
@@ -1151,7 +1167,7 @@ export const api = {
   runProbe: () => req<{ ok: boolean; message: string }>("POST", "/api/usage-probe/run"),
 
   agent: () => get<MainAgent>("/api/agent"),
-  saveAgent: (s: { model?: string; providerId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; fallbackProviderId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }> }) =>
+  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; fallbackProviderId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }> }) =>
     req<MainAgent>("PUT", "/api/agent", s),
   resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),
@@ -1171,6 +1187,7 @@ export const api = {
       workers: Worker[];
       skills: Array<{ id: string; name: string }>;
       providers: NamedProvider[];
+      backends: NamedBackend[];
     }>("/api/workers"),
   createWorker: (w: Partial<Worker>) => req<Worker>("POST", "/api/workers", w),
   updateWorker: (id: string, w: Partial<Worker>) => req<Worker>("PUT", `/api/workers/${id}`, w),

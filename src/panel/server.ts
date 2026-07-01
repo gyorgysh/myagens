@@ -113,7 +113,7 @@ import { sessions } from "../session/manager.js";
 import { ptyManager } from "../core/ptyManager.js";
 import { tunnelManager, BASIC_AUTH_USER } from "../core/tunnelManager.js";
 import { PanelHub } from "./hub.js";
-import { getBackend } from "../core/backends.js";
+import { getBackend, listBackends } from "../core/backends.js";
 import { runCouncil, deleteCouncilSession, getCouncilRule, setCouncilRule, type CouncilRule } from "../core/council.js";
 
 const STATIC_DIR = join(repoRoot, "panel", "dist");
@@ -1650,6 +1650,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       name: p.name,
       kind: providerKind(p.baseUrl),
     })),
+    backends: listBackends().map((b) => ({ id: b.id, displayName: b.displayName })),
   }));
   app.post("/api/workers", async (req, reply) => {
     const hook = (req.body as { webhookUrl?: string })?.webhookUrl;

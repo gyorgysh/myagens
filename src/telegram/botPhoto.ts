@@ -1,4 +1,5 @@
-import { createReadStream, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Telegram } from "telegraf";
 import { repoRoot } from "../config.js";
@@ -18,9 +19,15 @@ function avatarPngPath(slug: string): string | undefined {
  *
  * Uses the Bot API `setMyProfilePhoto` method, which takes an InputProfilePhoto
  * JSON object plus a multipart file attachment referenced by `attach://`. A bare
- * `-F photo=@file` fails with "photo isn't specified"; telegraf's callApi packs
- * the sibling `{ source }` entry as the named attachment, mirroring the curl
- * form in work.md.
+ * `-F photo=@file` fails with "photo isn't specified".
+ *
+ * telegraf 4.16.3 cannot pack this request: its multipart builder only treats a
+ * field as a file when the object carries a `media` property, so an
+ * InputProfilePhoto (`{ type, photo: "attach://av" }`) plus a sibling
+ * `av: { source }` is silently dropped and Telegram rejects the call. So we
+ * build the multipart form directly against the bot's own token, mirroring the
+ * working curl form in work.md:
+ *   -F 'photo={"type":"static","photo":"attach://av"}' -F "av=@fox.png"
  *
  * Telegram persists the photo, so calling this on every startup is idempotent.
  * Returns true on success; never throws — a photo is cosmetic and must never
@@ -33,13 +40,29 @@ export async function setBotProfilePhoto(tg: Telegram, slug: string): Promise<bo
     return false;
   }
   try {
-    await (tg as unknown as { callApi: (m: string, p: Record<string, unknown>) => Promise<unknown> }).callApi(
-      "setMyProfilePhoto",
-      {
-        photo: { type: "static", photo: "attach://av" },
-        av: { source: createReadStream(path) },
-      },
-    );
+    const { token, options } = tg as unknown as {
+      token: string;
+      options: { apiRoot: string; apiMode?: string };
+    };
+    const apiRoot = options.apiRoot.replace(/\/+$/, "");
+    const apiMode = options.apiMode ?? "bot";
+    const url = `${apiRoot}/${apiMode}${token}/setMyProfilePhoto`;
+
+    const png = await readFile(path);
+    const form = new FormData();
+    form.append("photo", JSON.stringify({ type: "static", photo: "attach://av" }));
+    form.append("av", new Blob([png], { type: "image/png" }), `${slug}.png`);
+
+    const res = await fetch(url, { method: "POST", body: form });
+    const data = (await res.json().catch(() => null)) as { ok?: boolean; description?: string } | null;
+    if (!res.ok || !data?.ok) {
+      log.warn("setMyProfilePhoto rejected", {
+        slug,
+        status: res.status,
+        description: data?.description,
+      });
+      return false;
+    }
     return true;
   } catch (err) {
     log.warn("setMyProfilePhoto failed", { slug, error: String(err) });

@@ -214,6 +214,16 @@ export async function sendVoiceReply(tg: Telegram, chatId: number, markdown: str
       await tg.sendAudio(chatId, { source: audio, filename: "reply.wav" });
     }
   } catch (err) {
-    log.warn("Voice reply failed", { chatId, error: err instanceof Error ? err.message : String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn("Voice reply failed", { chatId, error: message });
+    if (message.includes("terms acceptance")) {
+      const url = message.match(/https?:\/\/\S+/)?.[0]?.replace(/[)\].,]+$/, "");
+      const hint = `Voice reply failed: the TTS model needs one-time terms acceptance in the provider console before it'll work.${url ? ` Accept them here: ${url}` : ""}`;
+      try {
+        await tg.sendMessage(chatId, hint);
+      } catch {
+        // best-effort notice only; a failure here isn't worth surfacing further
+      }
+    }
   }
 }

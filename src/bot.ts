@@ -224,7 +224,8 @@ export function buildBot(): Telegraf {
       }
       log.info("Voice transcribed", { chatId, text: preview(text) });
       await ctx.replyWithHTML(`🎤 <i>${escapeHtml(text)}</i>`).catch(() => {});
-      const run = () => runUserPrompt(permissions, loops, asks, chatId, text, ctx.telegram);
+      const run = () =>
+        runUserPrompt(permissions, loops, asks, chatId, text, ctx.telegram, { inputVoice: true });
       if (await maybeOfferResume(ctx.telegram, chatId, run)) return;
       run();
     } catch (err) {
@@ -427,6 +428,8 @@ interface TurnOptions {
   cwd?: string;
   /** When set, POST a JSON outcome to this webhook once the turn completes. */
   webhook?: { url: string; source: WebhookSource; title: string; id?: string };
+  /** This turn's prompt came from a transcribed voice message, not typed text. */
+  inputVoice?: boolean;
 }
 
 function runUserPrompt(
@@ -459,7 +462,7 @@ async function handleUserPrompt(
   tg: Telegraf["telegram"],
   opts: TurnOptions = {},
 ): Promise<void> {
-  const { images, autonomous = false, webhook } = opts;
+  const { images, autonomous = false, webhook, inputVoice = false } = opts;
   const session = sessions.get(chatId);
   // An autonomous turn (scheduled/heartbeat) that resumes the persisted context
   // counts as "using" it, so the user's next message shouldn't re-offer a resume.
@@ -850,11 +853,10 @@ async function handleUserPrompt(
       // If the agent ended its reply with a \n---\n delimiter, split the output:
       // replace the streamed message(s) with a collapsed expandable blockquote
       // (the full transcript as a log), then send the short reply line as a
-      // normal chat message so the conversation stays clean.
-      const voiceMode = !autonomous && session.voiceReply && ttsEnabled();
+      // normal chat message so the conversation stays clean. Text is always
+      // shown — voice is an addition, never a replacement.
       const splitIdx = res.text.lastIndexOf("\n---\n");
       let spokenText = res.text;
-      let bulkSent = false;
       if (splitIdx !== -1) {
         const bulk = res.text.slice(0, splitIdx).trim();
         const reply = res.text.slice(splitIdx + 5).trim();
@@ -864,27 +866,18 @@ async function handleUserPrompt(
             await tg.deleteMessage(chatId, id).catch(() => {});
           }
           await sendExpandableQuote(tg, chatId, bulk).catch(() => {});
-          bulkSent = true;
-          if (!voiceMode) {
-            await sendFormattedMarkdown(tg, chatId, reply).catch(() => {});
-          }
+          await sendFormattedMarkdown(tg, chatId, reply).catch(() => {});
         }
       }
-      // Voice mode: this is meant to feel like a real voice conversation
-      // (voice in → voice out), so the text answer is dropped and only the
-      // spoken reply goes out. If synthesis/sending fails for any reason,
-      // fall back to the normal text message so the reply is never lost.
+      // Voice-out mirrors voice-in: only speak the reply when this turn's
+      // prompt was itself a voice message and the president has voice replies
+      // on. A typed message always gets a typed answer, even with /voice on —
+      // this stays a conversation that follows how the president is talking,
+      // not a blanket mode switch.
+      const voiceMode = !autonomous && inputVoice && session.voiceReply && ttsEnabled();
       if (voiceMode) {
-        if (!bulkSent) {
-          for (const id of streamer.persistedMessageIds()) {
-            await tg.deleteMessage(chatId, id).catch(() => {});
-          }
-        }
         await tg.sendChatAction(chatId, "record_voice").catch(() => {});
-        const spoke = await sendVoiceReply(tg, chatId, spokenText);
-        if (!spoke) {
-          await sendFormattedMarkdown(tg, chatId, spokenText).catch(() => {});
-        }
+        await sendVoiceReply(tg, chatId, spokenText);
       }
     }
 

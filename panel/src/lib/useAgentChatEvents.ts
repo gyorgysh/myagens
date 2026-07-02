@@ -21,6 +21,7 @@ export function useAgentChatEvents(agentId: string | null, onAuthError: () => vo
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<AgentChatView | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
+  const refreshRef = useRef<() => void>(() => {});
 
   const refresh = useCallback(() => {
     if (!agentId) return;
@@ -36,6 +37,8 @@ export function useAgentChatEvents(agentId: string | null, onAuthError: () => vo
         if (e?.name === "AuthError") onAuthError();
       });
   }, [agentId, onAuthError]);
+
+  refreshRef.current = refresh;
 
   // Re-fetch whenever the selected agent changes.
   useEffect(() => {
@@ -53,6 +56,11 @@ export function useAgentChatEvents(agentId: string | null, onAuthError: () => vo
     const connect = () => {
       if (closed) return;
       ws = openHealthSocket();
+      // Re-sync this agent's transcript on every (re)connect so frames missed
+      // during a socket gap aren't permanently absent.
+      ws.onopen = () => {
+        if (!closed) refreshRef.current();
+      };
       ws.onmessage = (e) => {
         let m: AgentMsg;
         try {

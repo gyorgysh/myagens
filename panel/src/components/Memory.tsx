@@ -291,7 +291,9 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
       a.href = url;
       a.download = `memories-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
-      URL.revokeObjectURL(url);
+      // Defer the revoke: revoking synchronously after click() can abort the
+      // download in some browsers before it starts.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
       if (e instanceof AuthError) return onAuthError();
       toast.error(errorMessage(e, t));

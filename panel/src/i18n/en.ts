@@ -643,6 +643,7 @@ export const en = {
   chat_autonomy_standard: "Standard",
   chat_autonomy_full: "Full",
   chat_autonomy_label: "Autonomy",
+  chat_autonomy_save_failed: "Couldn't change autonomy — reverted.",
   chat_send: "Send",
   chat_images_attach: "Attach images",
   chat_images_remove: "Remove image",

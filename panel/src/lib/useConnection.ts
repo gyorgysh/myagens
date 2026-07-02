@@ -106,6 +106,21 @@ export function useConnection(): Connection {
     clearInterval(countdownTimer.current);
     setRetryIn(0);
 
+    // Detach + close any prior socket before opening a new one. Otherwise its
+    // late-firing onclose (closedRef still false) would scheduleRetry → arm a
+    // timer that later spawns a SECOND live socket alongside this one, so a
+    // backgrounded tab accumulated a ghost socket on every visibility wake.
+    const prev = wsRef.current;
+    if (prev) {
+      prev.onopen = prev.onmessage = prev.onerror = prev.onclose = null;
+      try {
+        prev.close();
+      } catch {
+        /* already gone */
+      }
+      wsRef.current = null;
+    }
+
     let ws: WebSocket;
     try {
       ws = openHealthSocket();
@@ -117,13 +132,15 @@ export function useConnection(): Connection {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (wsRef.current !== ws) return;
       attemptsRef.current = 0;
       setStatus("live");
       armHeartbeat();
     };
     ws.onmessage = () => {
       // Any frame proves the backend is alive; reset the staleness timer.
-      if (status !== "live") setStatus("live");
+      if (wsRef.current !== ws) return;
+      setStatus("live");
       armHeartbeat();
     };
     ws.onerror = () => {
@@ -134,12 +151,13 @@ export function useConnection(): Connection {
       }
     };
     ws.onclose = () => {
-      if (closedRef.current) return;
+      // Ignore a close from a socket we've already replaced (see prev-close above).
+      if (closedRef.current || wsRef.current !== ws) return;
       clearTimeout(heartbeatTimer.current);
       attemptsRef.current += 1;
       scheduleRetry();
     };
-  }, [armHeartbeat, scheduleRetry, status]);
+  }, [armHeartbeat, scheduleRetry]);
 
   // Keep a stable ref so the retry timer always calls the latest connect.
   connectRef.current = connect;

@@ -644,6 +644,7 @@ export const hu: Translations = {
   chat_autonomy_standard: "Normál",
   chat_autonomy_full: "Teljes",
   chat_autonomy_label: "Autonómia",
+  chat_autonomy_save_failed: "Nem sikerült módosítani az autonómiát — visszaállítva.",
   chat_send: "Küldés",
   chat_images_attach: "Képek csatolása",
   chat_images_remove: "Kép eltávolítása",

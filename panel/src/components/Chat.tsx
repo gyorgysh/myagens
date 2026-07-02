@@ -563,11 +563,17 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
     }).catch(() => {});
   }, []);
   const setAutonomy = async (a: Autonomy) => {
+    const prev = autonomy;
     setAutonomyState(a);
     try {
       await api.saveAgent({ autonomy: a });
-    } catch {
-      // Best-effort; UI already reflects the change.
+    } catch (e) {
+      // Roll back on failure. This selector controls whether tool calls prompt,
+      // so leaving it showing a level the server never accepted is misleading
+      // (the user would believe tools are gated when they aren't, or vice versa).
+      setAutonomyState(prev);
+      if (e instanceof AuthError) onAuthError();
+      else toast.error(t("chat_autonomy_save_failed"));
     }
   };
 

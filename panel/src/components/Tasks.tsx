@@ -1338,11 +1338,14 @@ function AddCard({
   const [title, setTitle] = useState("");
 
   const add = async () => {
-    if (!title.trim()) return setAdding(false);
+    const trimmed = title.trim();
+    if (!trimmed) return setAdding(false);
+    // Clear synchronously before awaiting so Enter-then-blur (or a second Enter)
+    // can't fire a duplicate create with the same still-present title.
+    setTitle("");
+    setAdding(false);
     try {
-      await api.createTask({ title, column });
-      setTitle("");
-      setAdding(false);
+      await api.createTask({ title: trimmed, column });
       onAdded();
     } catch (e) {
       if (e instanceof AuthError) onAuthError();

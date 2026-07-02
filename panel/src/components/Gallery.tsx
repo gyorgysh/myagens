@@ -134,7 +134,8 @@ function ImageDetailModal({
       a.href = url;
       a.download = `${image.id}.${ext}`;
       a.click();
-      URL.revokeObjectURL(url);
+      // Defer the revoke so a synchronous revoke can't abort the download.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
       if (e instanceof AuthError) return onAuthError();
       toast.error(errorMessage(e, t));

@@ -48,6 +48,11 @@ export function useTaskEvents(
     const connect = () => {
       if (closed) return;
       ws = openHealthSocket();
+      // Reload the board on every (re)connect so a run whose "end" frame was
+      // missed during a socket gap can't stay stuck showing "running" forever.
+      ws.onopen = () => {
+        if (!closed) onEndRef.current();
+      };
       ws.onmessage = (e) => {
         let m: TaskMsg;
         try {

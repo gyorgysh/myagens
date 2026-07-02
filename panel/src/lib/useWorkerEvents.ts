@@ -29,6 +29,13 @@ export function useWorkerEvents(): Record<string, LiveRun> {
     const connect = () => {
       if (closed) return;
       ws = openHealthSocket();
+      // Clear the live overlay on every (re)connect: a run whose "end" frame was
+      // missed during a socket gap would otherwise stay stuck "running" here. The
+      // authoritative run list (loaded by the Workers view) shows through; any
+      // genuinely-active run re-emits deltas.
+      ws.onopen = () => {
+        if (!closed) setByWorker({});
+      };
       ws.onmessage = (e) => {
         let msg: WorkerMsg;
         try {

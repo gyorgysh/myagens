@@ -33,6 +33,7 @@ export function useChatEvents(onAuthError: () => void) {
   const [approvals, setApprovals] = useState<ApprovalView[]>([]);
   const [asks, setAsks] = useState<AskQuestionView[]>([]);
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
+  const refreshRef = useRef<() => void>(() => {});
 
   const refresh = useCallback(() => {
     api
@@ -49,6 +50,7 @@ export function useChatEvents(onAuthError: () => void) {
       });
   }, [onAuthError]);
 
+  refreshRef.current = refresh;
   useEffect(() => refresh(), [refresh]);
 
   useEffect(() => {
@@ -57,6 +59,12 @@ export function useChatEvents(onAuthError: () => void) {
     const connect = () => {
       if (closed) return;
       ws = openHealthSocket();
+      // Re-sync REST state on every (re)connect: messages sent during a backend
+      // restart / socket gap arrive only as WS events, so without this the
+      // transcript would be missing them until a manual reload.
+      ws.onopen = () => {
+        if (!closed) refreshRef.current();
+      };
       ws.onmessage = (e) => {
         let parsed: unknown;
         try {

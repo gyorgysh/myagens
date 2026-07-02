@@ -68,11 +68,20 @@ export async function reflectOnTurn(
       model: mainRun.model,
       env: mainRun.env,
       systemPromptAppend: SYSTEM,
-      permissionMode: "bypassPermissions",
+      // The reflection prompt embeds the user's prompt + the turn's output tail —
+      // content a supervised session deliberately gated, and which may carry
+      // injected instructions from web/connector content the turn fetched.
+      // Running `bypassPermissions` here would hand that content the full tool
+      // belt (Bash/Write/Edit) unattended. Use `default` mode and hard-restrict
+      // the gate to the two save tools this pass is supposed to use, so a
+      // hijacked reflection can't do anything but write a memory/skill.
+      permissionMode: "default",
       abortController: new AbortController(),
       mcpServers: { memory: memoryMcp, skills: skillsMcp },
-      // bypassPermissions makes this moot, but the field is required.
-      canUseTool: async (_name, input) => ({ behavior: "allow", updatedInput: input }),
+      canUseTool: async (name, input) =>
+        name.startsWith("mcp__memory__") || name.startsWith("mcp__skills__")
+          ? { behavior: "allow", updatedInput: input }
+          : { behavior: "deny", message: "Reflection pass may only write memories/skills." },
       onText: () => {},
       onToolUse: (name) => log.info("Reflect: saved", { tool: name }),
       onSessionId: () => {},

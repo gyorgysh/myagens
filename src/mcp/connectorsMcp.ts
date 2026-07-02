@@ -2294,12 +2294,27 @@ async function pgRun(
   conn: string,
   sql: string,
   params: unknown[] | undefined,
+  readonly = false,
 ): Promise<{ rows: Record<string, unknown>[]; rowCount: number | null } | { error: string }> {
   const pg = await loadPg();
   if (!pg) return { error: "PostgreSQL driver (pg) is not installed on the host." };
   const client = new pg.Client({ connectionString: conn });
   try {
     await client.connect();
+    if (readonly) {
+      // Enforce read-only at the transaction layer rather than by inspecting the
+      // SQL text: Postgres rejects ANY write inside a READ ONLY transaction,
+      // including data-modifying CTEs (`WITH x AS (DELETE … RETURNING *) SELECT …`)
+      // and `SELECT … INTO`, which a leading-keyword check (assertReadOnlySql)
+      // lets through. Roll back afterwards — a read query commits nothing anyway.
+      await client.query("BEGIN TRANSACTION READ ONLY");
+      try {
+        const res = await client.query(sql, params);
+        return { rows: (res.rows ?? []) as Record<string, unknown>[], rowCount: res.rowCount };
+      } finally {
+        await client.query("ROLLBACK").catch(() => {});
+      }
+    }
     const res = await client.query(sql, params);
     return { rows: (res.rows ?? []) as Record<string, unknown>[], rowCount: res.rowCount };
   } catch (err) {
@@ -2329,6 +2344,7 @@ function postgresMcp(conn: string, scope: ConnectorScope) {
             conn,
             `SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE ${where} ORDER BY table_schema, table_name`,
             a.schema ? [a.schema] : undefined,
+            true,
           );
           if ("error" in r) return text(`Error: ${r.error}`);
           return text(formatRows(r.rows));
@@ -2351,6 +2367,7 @@ function postgresMcp(conn: string, scope: ConnectorScope) {
              WHERE table_schema = $1 AND table_name = $2
              ORDER BY ordinal_position`,
             [schema, a.table],
+            true,
           );
           if ("error" in cols) return text(`Error: ${cols.error}`);
           if (!cols.rows.length) return text(`No such table ${schema}.${a.table}.`);
@@ -2361,6 +2378,7 @@ function postgresMcp(conn: string, scope: ConnectorScope) {
              JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
              WHERE i.indrelid = ($1)::regclass AND i.indisprimary`,
             [`${schema}.${a.table}`],
+            true,
           );
           let out = `Columns of ${schema}.${a.table}:\n${formatRows(cols.rows)}`;
           if (!("error" in pk) && pk.rows.length) {
@@ -2381,7 +2399,7 @@ function postgresMcp(conn: string, scope: ConnectorScope) {
         async (a) => {
           const bad = assertReadOnlySql(a.sql);
           if (bad) return text(`Rejected: ${bad}`);
-          const r = await pgRun(conn, a.sql, a.params);
+          const r = await pgRun(conn, a.sql, a.params, true);
           if ("error" in r) return text(`Error: ${r.error}`);
           return text(formatRows(r.rows));
         },

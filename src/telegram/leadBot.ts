@@ -2,7 +2,7 @@ import { Telegraf } from "telegraf";
 import type { Telegram } from "telegraf";
 import type { Worker } from "../core/workers.js";
 import { workers } from "../core/workers.js";
-import { isStaleSession } from "../claude/runner.js";
+import { isStaleSession, AUTO_ALLOWED_TOOLS } from "../claude/runner.js";
 import { getBackend } from "../core/backends.js";
 import type { ImageInput } from "../claude/runner.js";
 import { memoryMcp } from "../mcp/memory.js";
@@ -99,32 +99,45 @@ export class LeadBot {
     // Stream mode: per-lead override falls back to global STREAM_MODE config.
     const mode = lead.streamMode ?? config.STREAM_MODE;
     const parkedOnUser = () => hasPendingAsk(chatId, lead.id) || asks.hasPending(chatId);
-    let streamer;
-    if (mode === "rich") {
-      const draft = new RichDraftStreamer(tg, chatId);
-      draft.setPaused(parkedOnUser);
-      await draft.start();
-      streamer = draft;
-    } else if (mode === "draft") {
-      const draft = new DraftStreamer(tg, chatId);
-      draft.setPaused(parkedOnUser);
-      await draft.start();
-      streamer = draft;
-    } else {
-      const placeholder = await tg.sendMessage(chatId, t("bot_working", langForChat(chatId)));
-      streamer = new TelegramStreamer(tg, chatId, placeholder.message_id);
+    // Streamer setup does network I/O (draft.start() / the placeholder send) and
+    // can reject on a Telegram hiccup. It runs BEFORE the main try/finally below,
+    // so a throw here would skip the finally that clears s.busy — wedging the Lead
+    // "busy" forever (every later message hits the busy guard, and /stop can't help
+    // since no turn is in flight). Guard it here and release busy on failure.
+    let streamer!: TelegramStreamer | DraftStreamer | RichDraftStreamer;
+    try {
+      if (mode === "rich") {
+        const draft = new RichDraftStreamer(tg, chatId);
+        draft.setPaused(parkedOnUser);
+        await draft.start();
+        streamer = draft;
+      } else if (mode === "draft") {
+        const draft = new DraftStreamer(tg, chatId);
+        draft.setPaused(parkedOnUser);
+        await draft.start();
+        streamer = draft;
+      } else {
+        const placeholder = await tg.sendMessage(chatId, t("bot_working", langForChat(chatId)));
+        streamer = new TelegramStreamer(tg, chatId, placeholder.message_id);
+      }
+      await tg.sendChatAction(chatId, "typing").catch(() => {});
+    } catch (err) {
+      log.error("Lead streamer setup failed — releasing busy", { leadId: lead.id, chatId, error: String(err) });
+      s.busy = false;
+      s.busySince = undefined;
+      s.busyPrompt = undefined;
+      s.abort = undefined;
+      return;
     }
 
-    await tg.sendChatAction(chatId, "typing").catch(() => {});
     const typing = setInterval(() => {
       if (hasPendingAsk(chatId, lead.id) || asks.hasPending(chatId)) return;
       void tg.sendChatAction(chatId, "typing").catch(() => {});
     }, 4000);
     let retrying = false;
-    // Lead bots run unattended (bypassPermissions), so there's no human to
-    // prompt when the model gets stuck firing the same tool call in a loop.
-    // Detect it here and abort the turn, mirroring Atlas's autonomous guard, so
-    // an overnight loop can't burn tokens unchecked.
+    // Lead bots run unattended, so there's no human to prompt when the model gets
+    // stuck firing the same tool call in a loop. Detect it here and abort the turn,
+    // mirroring Atlas's autonomous guard, so an overnight loop can't burn tokens.
     const loopDetector = new LoopDetector(config.LOOP_THRESHOLD);
     let loopAborted = false;
     try {
@@ -166,7 +179,19 @@ export class LeadBot {
             const answer = await asks.ask(chatId, input);
             return { behavior: "deny", message: answer };
           }
-          return { behavior: "allow", updatedInput: input };
+          // A Lead runs unattended: there's no human to show approval buttons to.
+          // Only `full` autonomy grants unrestricted tools (via bypassPermissions,
+          // where this gate is a no-op). In every other mode the turn runs in
+          // `default` permission mode and we must gate here — mirroring
+          // WorkerManager.execute, only the read-only/safe set auto-runs; risky
+          // tools (Bash/Write/Edit) are denied rather than silently executed, so
+          // /mode supervised/standard is actually enforced.
+          if (s.autonomy === "full") return { behavior: "allow", updatedInput: input };
+          if (AUTO_ALLOWED_TOOLS.has(name)) return { behavior: "allow", updatedInput: input };
+          return {
+            behavior: "deny",
+            message: "Tool not permitted for an unattended Lead outside 'full' autonomy — set the Lead to full to allow it.",
+          };
         },
         onText: (delta) => {
           streamer.appendText(normalizeAgentText(delta));

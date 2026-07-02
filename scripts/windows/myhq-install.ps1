@@ -85,7 +85,10 @@ function Ask {
 
 function Confirm {
     param([string]$Prompt, [bool]$DefaultYes = $true)
-    if ($AutoYes) { return $true }
+    # -AutoYes accepts the DEFAULT choice, not an unconditional yes. A default-No
+    # prompt guards a destructive/overwrite action (e.g. reconfiguring an existing
+    # .env), so an unattended run declines it rather than clobbering saved state.
+    if ($AutoYes) { return $DefaultYes }
     $hint = if ($DefaultYes) { "[Y/n]" } else { "[y/N]" }
     $ans = Read-Host "$Prompt $hint"
     if ([string]::IsNullOrWhiteSpace($ans)) { return $DefaultYes }
@@ -357,7 +360,7 @@ function Write-Env {
 function Configure-Env {
     $envPath = Join-Path $InstallDir ".env"
     if (Test-Path $envPath) {
-        if (-not (Confirm "A .env already exists. Reconfigure it?")) { return }
+        if (-not (Confirm "A .env already exists. Reconfigure it?" $false)) { return }
     }
 
     Title "Configuration"

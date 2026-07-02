@@ -21,6 +21,19 @@ import { acquireInstanceLock } from "./core/singleton.js";
 import { withRetry, isTelegramAuthError } from "./core/retry.js";
 
 async function main(): Promise<void> {
+  // Last-resort safety net. This long-lived process fans work out to many
+  // fire-and-forget promises (streamer flush timers, watchdogs, per-chat turns).
+  // A single stray rejection would otherwise terminate the whole process under
+  // Node's default unhandledRejection behaviour, taking down every chat,
+  // schedule, and Lead bot. Log and keep running instead; genuine fatal startup
+  // errors still reject main()'s awaited chain and exit below.
+  process.on("unhandledRejection", (reason) => {
+    log.error("Unhandled promise rejection (kept alive)", { error: errText(reason) });
+  });
+  process.on("uncaughtException", (err) => {
+    log.error("Uncaught exception (kept alive)", { error: errText(err) });
+  });
+
   // Ensure the working directory exists. ~/MyHQ-Workspace is the unified
   // default across Windows, macOS, and Linux — always created on boot so
   // agents always have a valid cwd. If WORKDIR is overridden in .env the

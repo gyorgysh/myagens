@@ -1,5 +1,6 @@
 import type { Telegram } from "telegraf";
 import { escapeHtml, markdownToHtml, splitForTelegram } from "./formatting.js";
+import { log } from "../logger.js";
 
 const EDIT_INTERVAL_MS = 250;
 
@@ -62,7 +63,15 @@ export class TelegramStreamer implements Streamer {
     if (this.timer) return;
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.flush();
+      // A timer-driven flush has no caller to await it, so a rejection here would
+      // be unhandled and (under Node's default) crash the whole process — killing
+      // every chat, schedule, and Lead bot. editChunk() rethrows real Telegram
+      // errors (429 rate-limit at this 250ms cadence, or "message to edit not
+      // found" once the caller has deleted the transcript). Swallow them; the next
+      // append/finalize re-renders.
+      void this.flush().catch((err) => {
+        log.debug("Streamer timer flush failed (ignored)", { error: String(err) });
+      });
     }, EDIT_INTERVAL_MS);
   }
 

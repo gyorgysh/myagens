@@ -140,7 +140,12 @@ async function castVote(
       env,
       systemPromptAppend,
       persona,
-      permissionMode: "bypassPermissions",
+      // A council vote is meant to be read-only. Under `bypassPermissions` the
+      // canUseTool gate below is a no-op (the SDK skips it entirely), so the turn
+      // would have had full write/exec on the host despite the deny — use
+      // `default` mode so the gate actually applies and only the safe/read-only
+      // set (Read/Grep/WebFetch/memory reads) runs.
+      permissionMode: "default",
       abortController: abort,
       mcpServers: { memory: memoryMcp },
       canUseTool: async (name, input) => {

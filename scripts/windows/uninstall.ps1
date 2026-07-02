@@ -87,6 +87,23 @@ foreach ($TaskName in $TaskNames) {
     }
 }
 
+# --- Local hostname entry ---------------------------------------------------
+# Remove the tagged 'myagens' line the installer may have added. Only our own
+# tagged line is touched; a hand-made alias is left alone.
+$hostsFile = Join-Path $env:SystemRoot "System32\drivers\etc\hosts"
+if (Test-Path $hostsFile) {
+    $lines = Get-Content -Path $hostsFile -ErrorAction SilentlyContinue
+    $kept  = $lines | Where-Object { $_ -notmatch 'added by MyAgens installer' }
+    if ($kept.Count -ne $lines.Count) {
+        try {
+            Set-Content -Path $hostsFile -Value $kept -Encoding ASCII -ErrorAction Stop
+            Ok "Removed the 'myagens' entry from the hosts file."
+        } catch {
+            Warn "Couldn't edit the hosts file - remove the 'myagens' line by hand if you want."
+        }
+    }
+}
+
 # --- Files ------------------------------------------------------------------
 if (Test-Path $InstallDir) {
     if (Confirm "Delete the install directory ($InstallDir)? This removes the bot, its data, vault and .env" $AutoYes) {

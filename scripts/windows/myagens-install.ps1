@@ -33,6 +33,7 @@
       MYAGENS_PANEL        y | n  (enable the web dashboard)
       MYAGENS_PANEL_PORT   Panel port number (default: 8787)
       MYAGENS_PANEL_TOKEN  Panel access token (auto-generated if empty)
+      MYAGENS_HOSTS        y | n  (add a 'myagens' -> 127.0.0.1 hosts entry)
       MYAGENS_REMOTE       none | ngrok | cloudflare | both (phone access tunnel)
       MYAGENS_YES          Set to 1 to accept all defaults without prompting
 #>
@@ -60,6 +61,8 @@ $Tutorial   = "https://gyorgy.sh/blog/myagens"
 $Script:PanelPortChosen  = ""
 $Script:PanelTokenChosen = ""
 $Script:ServiceMode      = ""   # "service" once the bot is installed as a service
+$Script:HostnameAdded    = $false  # $true once 'myagens' resolves locally (existing or freshly added)
+$Script:HostsFile        = Join-Path $env:SystemRoot "System32\drivers\etc\hosts"
 
 # ---------------------------------------------------------------------------
 # Pretty output helpers
@@ -462,6 +465,53 @@ function Configure-Env {
 }
 
 # ---------------------------------------------------------------------------
+# Local hostname (optional hosts-file entry)
+# ---------------------------------------------------------------------------
+# Map 'myagens' to 127.0.0.1 in the Windows hosts file so the panel is reachable
+# at http://myagens instead of http://127.0.0.1. Local-only convenience; the
+# installer already runs elevated (Ensure-Admin), so the write normally succeeds.
+# Idempotent: a second run detects the existing entry and leaves the file alone.
+function Test-HostnamePresent {
+    if (-not (Test-Path $Script:HostsFile)) { return $false }
+    # Match an active (non-commented) line that lists 'myagens' as a host alias.
+    $pattern = '^\s*[^#].*\bmyagens\b'
+    return [bool](Select-String -Path $Script:HostsFile -Pattern $pattern -Quiet -ErrorAction SilentlyContinue)
+}
+
+function Configure-Hostname {
+    # Only meaningful when the panel is on — otherwise there's nothing to reach.
+    if (-not $Script:PanelPortChosen) { return }
+
+    if (Test-HostnamePresent) {
+        $Script:HostnameAdded = $true
+        Ok "'myagens' already resolves locally — panel reachable at http://myagens:$($Script:PanelPortChosen)."
+        return
+    }
+
+    $choice = $env:MYAGENS_HOSTS
+    if (-not $choice) {
+        Write-Host ""
+        $choice = if (Confirm "Add 'myagens' as a local hostname for this machine?" $true) { "y" } else { "n" }
+    }
+    if ($choice -notmatch '^(y|yes)$') { return }
+
+    try {
+        # The installer runs elevated, so a plain append works. Tag the line so
+        # uninstall can find it and a human reading the file knows who added it.
+        Add-Content -Path $Script:HostsFile -Value "127.0.0.1`tmyagens`t# added by MyAgens installer" -ErrorAction Stop
+        if (Test-HostnamePresent) {
+            $Script:HostnameAdded = $true
+            Ok "Added 'myagens' to the hosts file — panel reachable at http://myagens:$($Script:PanelPortChosen)."
+        } else {
+            Warn "Couldn't update the hosts file — the panel is still reachable at http://127.0.0.1:$($Script:PanelPortChosen)."
+        }
+    } catch {
+        # Don't fail the install over a nice-to-have (e.g. AV lock on the hosts file).
+        Warn "Skipping hostname setup — couldn't write $($Script:HostsFile). Panel stays at http://127.0.0.1:$($Script:PanelPortChosen)."
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Remote access (optional tunnel relay)
 # ---------------------------------------------------------------------------
 function Install-TunnelCli {
@@ -745,6 +795,7 @@ Ensure-ClaudeCLI
 Ensure-Ollama
 Build-App
 Configure-Env
+Configure-Hostname
 Configure-RemoteAccess
 Claude-Login
 Install-Service
@@ -754,11 +805,12 @@ Write-Host "`n"
 Ok "MyAgens installation complete!"
 Write-Host "  Install dir : $InstallDir" -ForegroundColor Cyan
 if ($Script:PanelPortChosen) {
+    $panelHost = if ($Script:HostnameAdded) { "myagens" } else { "127.0.0.1" }
     Write-Host ""
     Write-Host "  Panel login" -ForegroundColor Cyan
     Write-Host "    One-click login link (token included — keep it private):"
-    Write-Host "      $(Get-PanelLoginUrl)" -ForegroundColor Yellow
-    Write-Host "    Or open http://127.0.0.1:$($Script:PanelPortChosen) and paste the token:"
+    Write-Host "      http://${panelHost}:$($Script:PanelPortChosen)/?token=$($Script:PanelTokenChosen)" -ForegroundColor Yellow
+    Write-Host "    Or open http://${panelHost}:$($Script:PanelPortChosen) and paste the token:"
     Write-Host "      $($Script:PanelTokenChosen)" -ForegroundColor Yellow
     Write-Host "      (also saved as PANEL_TOKEN in .env)" -ForegroundColor DarkGray
     Write-Host ""

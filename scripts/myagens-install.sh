@@ -14,6 +14,7 @@
 # MYAGENS_TOKEN, MYAGENS_USER_IDS, MYAGENS_API_KEY, MYAGENS_MODEL, MYAGENS_MODE=service|manual,
 # MYAGENS_VOICE=none|api|vosk, MYAGENS_OPENAI_KEY,
 # MYAGENS_PANEL=y|n, MYAGENS_PANEL_PORT, MYAGENS_PANEL_TOKEN,
+# MYAGENS_HOSTS=y|n (add a 'myagens' -> 127.0.0.1 line to /etc/hosts),
 # MYAGENS_REMOTE=none|ngrok|cloudflare|both, MYAGENS_YES=1.
 
 set -euo pipefail
@@ -575,6 +576,57 @@ configure_panel() {
   printf '%s\n' "  Token: ${B}${token}${R} ${DIM}(also saved to .env — keep it private)${R}" >"${TTY:-/dev/stdout}"
 }
 
+# --- local hostname (optional /etc/hosts entry) ----------------------------
+# Map the friendly name 'myagens' to 127.0.0.1 in /etc/hosts so the panel is
+# reachable at http://myagens instead of http://127.0.0.1. Purely a local
+# convenience: it only affects name resolution on THIS machine, needs root to
+# write /etc/hosts, and is skipped (not fatal) when we can't get it. Idempotent
+# — a second run detects the existing entry and leaves the file untouched.
+HOSTNAME_ADDED=""   # "1" once 'myagens' resolves locally (existing or freshly added)
+HOSTS_FILE="/etc/hosts"
+
+# Returns 0 if 'myagens' is already a hosts alias (any IP, commented lines excluded).
+hostname_present() {
+  [ -f "$HOSTS_FILE" ] || return 1
+  grep -qE '^[[:space:]]*[^#].*[[:space:]]myagens([[:space:]]|$)' "$HOSTS_FILE" 2>/dev/null
+}
+
+configure_hostname() {
+  # Only meaningful when the panel is on — otherwise there's nothing to reach.
+  [ -n "$PANEL_PORT_CHOSEN" ] || return 0
+
+  if hostname_present; then
+    HOSTNAME_ADDED=1
+    ok "'myagens' already resolves locally — panel reachable at http://myagens:${PANEL_PORT_CHOSEN}."
+    return 0
+  fi
+
+  local choice="${MYAGENS_HOSTS:-}"
+  if [ -z "$choice" ]; then
+    printf '\n' >"${TTY:-/dev/stdout}"
+    if confirm "Add 'myagens' as a local hostname for this machine?" "Y"; then choice=y; else choice=n; fi
+  fi
+  case "$choice" in y|Y|yes) : ;; *) return 0 ;; esac
+
+  # Need root to write /etc/hosts. If sudo isn't available, don't fail the whole
+  # install over a nice-to-have — note it and move on. need_sudo() would die when
+  # there's no sudo, so guard that path ourselves.
+  if [ "$(id -u)" -ne 0 ] && ! command -v sudo >/dev/null 2>&1; then
+    warn "Skipping hostname setup — need root to edit ${HOSTS_FILE} and 'sudo' isn't available."
+    return 0
+  fi
+  need_sudo
+
+  # Append atomically-ish via tee. Tag the line so uninstall can find it and a
+  # human reading /etc/hosts knows who added it.
+  if printf '127.0.0.1\tmyagens\t# added by MyAgens installer\n' | $SUDO tee -a "$HOSTS_FILE" >/dev/null 2>&1 && hostname_present; then
+    HOSTNAME_ADDED=1
+    ok "Added 'myagens' to ${HOSTS_FILE} — panel reachable at http://myagens:${PANEL_PORT_CHOSEN}."
+  else
+    warn "Couldn't update ${HOSTS_FILE} — the panel is still reachable at http://127.0.0.1:${PANEL_PORT_CHOSEN}."
+  fi
+}
+
 # --- remote access (optional tunnel relay) ----------------------------------
 # Installs a tunnel CLI (ngrok and/or cloudflared) and flips PANEL_TUNNEL_ENABLED
 # so the user can reach the panel from their phone over a secure public URL,
@@ -773,11 +825,13 @@ open_panel() {
 final_notes() {
   local panel_block=""
   if [ -n "$PANEL_PORT_CHOSEN" ]; then
+    local host="127.0.0.1"
+    [ -n "$HOSTNAME_ADDED" ] && host="myagens"
     panel_block="
 ${B}Panel login${R}
   • One-click login link ${DIM}(token included — keep it private)${R}:
-      ${B}$(panel_login_url)${R}
-  • Or open ${B}http://127.0.0.1:${PANEL_PORT_CHOSEN}${R} and paste the token:
+      ${B}http://${host}:${PANEL_PORT_CHOSEN}/?token=${PANEL_TOKEN_CHOSEN}${R}
+  • Or open ${B}http://${host}:${PANEL_PORT_CHOSEN}${R} and paste the token:
       ${B}${PANEL_TOKEN_CHOSEN}${R}
     ${DIM}(also saved as PANEL_TOKEN in ${APP_DIR}/.env)${R}
 "
@@ -820,6 +874,7 @@ main() {
   configure_env
   claude_login
   configure_panel
+  configure_hostname
   configure_remote_access
   configure_voice
   choose_run_mode

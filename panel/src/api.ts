@@ -937,8 +937,40 @@ export interface Provider {
   // is set and a masked hint of its last few chars.
   hasToken: boolean;
   tokenHint: string;
+  purpose: "chat" | "voice";
   createdAt: number;
   updatedAt: number;
+}
+
+export interface VoiceSettingsView {
+  sttEngine: "openai" | "vosk" | "xai";
+  sttProviderId: string;
+  sttProviderName?: string;
+  sttModel: string;
+  voskModelPath: string;
+  ttsEngine: "openai" | "piper" | "xai";
+  ttsProviderId: string;
+  ttsProviderName?: string;
+  ttsModel: string;
+  ttsVoice: string;
+  piperPath: string;
+  piperModel: string;
+  sendVoiceNotes: boolean;
+  voiceProviders: Array<{ id: string; name: string }>;
+}
+
+export interface VoiceSettingsPatch {
+  sttEngine?: "openai" | "vosk" | "xai" | "";
+  sttProviderId?: string;
+  sttModel?: string;
+  voskModelPath?: string;
+  ttsEngine?: "openai" | "piper" | "xai" | "";
+  ttsProviderId?: string;
+  ttsModel?: string;
+  ttsVoice?: string;
+  piperPath?: string;
+  piperModel?: string;
+  sendVoiceNotes?: boolean;
 }
 
 export interface LogEntry {
@@ -1379,7 +1411,8 @@ export const api = {
   agentChatSettings: (id: string, s: { cwd?: string }) =>
     req<AgentChatView>("PUT", `/api/agent-chat/${id}/settings`, s),
 
-  providers: () => get<{ providers: Provider[] }>("/api/providers"),
+  providers: (purpose?: "chat" | "voice") =>
+    get<{ providers: Provider[] }>(`/api/providers${purpose ? `?purpose=${purpose}` : ""}`),
   createProvider: (p: Partial<Provider>) => req<Provider>("POST", "/api/providers", p),
   updateProvider: (id: string, p: Partial<Provider>) =>
     req<Provider>("PUT", `/api/providers/${id}`, p),
@@ -1387,6 +1420,9 @@ export const api = {
   fetchModels: (baseUrl: string, authToken: string) =>
     req<{ models: string[] }>("POST", "/api/providers/models", { baseUrl, authToken }),
   providerModels: (id: string) => get<{ models: string[] }>(`/api/providers/${id}/models`),
+
+  voiceSettings: () => get<VoiceSettingsView>("/api/voice"),
+  updateVoiceSettings: (patch: VoiceSettingsPatch) => req<VoiceSettingsView>("PUT", "/api/voice", patch),
 
   terminalStatus: () =>
     get<{ available: boolean; reason: "disabled" | "unsupported" | null; shell: string }>(

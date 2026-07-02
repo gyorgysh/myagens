@@ -7,14 +7,21 @@ import { log } from "../logger.js";
 const FILE = "providers.json";
 
 /** A model endpoint preset. Anthropic-compatible base URL + auth token, used to
- *  point a worker at a local model server (LM Studio, Ollama, …) or a proxy. */
+ *  point a worker at a local model server (LM Studio, Ollama, …) or a proxy —
+ *  or, when `purpose` is "voice", an OpenAI/xAI-compatible key used by the
+ *  voice transcription/TTS backends (see core/voiceSettings.ts). */
 export interface Provider {
   id: string;
   name: string;
-  /** ANTHROPIC_BASE_URL, e.g. http://localhost:1234 */
+  /** ANTHROPIC_BASE_URL, e.g. http://localhost:1234 (or an OpenAI/xAI-compatible
+   *  base URL when purpose is "voice"). */
   baseUrl: string;
-  /** ANTHROPIC_AUTH_TOKEN (often a placeholder like "lmstudio" locally). */
+  /** ANTHROPIC_AUTH_TOKEN (often a placeholder like "lmstudio" locally), or the
+   *  voice provider's API key when purpose is "voice". */
   authToken: string;
+  /** "chat" (default, omitted for existing rows) or "voice". Chat pickers and
+   *  voice pickers each only see their own purpose so the lists never mix. */
+  purpose?: "chat" | "voice";
   createdAt: number;
   updatedAt: number;
 }
@@ -31,6 +38,7 @@ export interface ProviderView {
   baseUrl: string;
   hasToken: boolean;
   tokenHint: string;
+  purpose: "chat" | "voice";
   createdAt: number;
   updatedAt: number;
 }
@@ -61,6 +69,7 @@ export function toProviderView(p: Provider): ProviderView {
     baseUrl: p.baseUrl,
     hasToken: Boolean(p.authToken),
     tokenHint: tokenHint(p.authToken),
+    purpose: p.purpose ?? "chat",
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };
@@ -74,13 +83,15 @@ function persist(providers: Provider[]): void {
   saveJson<ProviderFile>(FILE, { version: 1, providers });
 }
 
-export function listProviders(): Provider[] {
-  return load().sort((a, b) => a.name.localeCompare(b.name));
+export function listProviders(opts?: { purpose?: "chat" | "voice" }): Provider[] {
+  const all = load().sort((a, b) => a.name.localeCompare(b.name));
+  if (!opts?.purpose) return all;
+  return all.filter((p) => (p.purpose ?? "chat") === opts.purpose);
 }
 
 /** Masked provider list for the panel (no plaintext tokens). */
-export function listProviderViews(): ProviderView[] {
-  return listProviders().map(toProviderView);
+export function listProviderViews(opts?: { purpose?: "chat" | "voice" }): ProviderView[] {
+  return listProviders(opts).map(toProviderView);
 }
 
 export function getProvider(id: string): Provider | undefined {
@@ -91,6 +102,7 @@ export interface ProviderInput {
   name: string;
   baseUrl: string;
   authToken?: string;
+  purpose?: "chat" | "voice";
 }
 
 export function createProvider(input: ProviderInput): Provider {
@@ -100,6 +112,7 @@ export function createProvider(input: ProviderInput): Provider {
     name: input.name.trim() || "Untitled",
     baseUrl: input.baseUrl.trim(),
     authToken: input.authToken?.trim() ?? "",
+    purpose: input.purpose === "voice" ? "voice" : undefined,
     createdAt: now,
     updatedAt: now,
   };

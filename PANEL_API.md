@@ -405,19 +405,52 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/backup/imp
 # Returns { filesRestored, vaultRestored, names, exportedAt }
 ```
 
-### Providers (local/proxy model endpoints)
+### Providers (local/proxy model endpoints, and voice API keys)
+
+Each provider has a `purpose`: `"chat"` (default — Anthropic-compatible chat/embedding
+endpoints, e.g. LM Studio/Ollama/a proxy) or `"voice"` (an xAI or OpenAI-compatible key
+consumed by Settings → Voice, see below). `GET /api/providers` defaults to `purpose=chat`
+so existing chat/worker pickers never see voice entries mixed in.
 
 ```bash
-# List saved providers
+# List saved chat providers (default)
 curl -H "$AUTH" $BASE/api/providers
+
+# List saved voice providers
+curl -H "$AUTH" "$BASE/api/providers?purpose=voice"
 
 # Create a provider
 curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/providers \
   -d '{ "name": "LM Studio", "baseUrl": "http://localhost:1234/v1", "authToken": "lm-studio" }'
 
+# Create a voice provider (xAI)
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/providers \
+  -d '{ "name": "xAI Voice", "baseUrl": "https://api.x.ai/v1", "authToken": "xai-…", "purpose": "voice" }'
+
 # List available models for a saved provider
 curl -H "$AUTH" $BASE/api/providers/<id>/models
 ```
+
+### Voice (transcription + spoken replies)
+
+Panel overrides for STT/TTS engine, model, and provider selection. Every field falls
+back to the matching `.env` var (`TRANSCRIBE_PROVIDER`, `TTS_PROVIDER`, `OPENAI_API_KEY`,
+`XAI_API_KEY`, `VOSK_MODEL_PATH`, `PIPER_PATH`/`PIPER_MODEL`, …) when unset, so an
+unconfigured panel keeps working exactly as before.
+
+```bash
+# View effective + raw voice settings, plus the list of purpose="voice" providers
+curl -H "$AUTH" $BASE/api/voice
+
+# Point transcription at a linked provider, and enable voice-note replies
+curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/voice \
+  -d '{ "sttEngine": "xai", "sttProviderId": "<voice-provider-id>", "sendVoiceNotes": true }'
+```
+
+`sendVoiceNotes` (default `true`) transcodes xAI/Piper's WAV output to Opus/OGG via
+ffmpeg before sending, so replies arrive as a real Telegram voice note (`sendVoice`)
+instead of a file attachment (`sendAudio`); it silently falls back to the file
+attachment if ffmpeg is unavailable.
 
 ### Heartbeat (proactive monitoring)
 

@@ -97,6 +97,7 @@ import {
 } from "../core/providers.js";
 import { fetchProviderModels } from "../core/providerModels.js";
 import { BlockedUrlError } from "../core/safeUrl.js";
+import { voiceSettingsView, setVoiceSettings } from "../core/voiceSettings.js";
 import { mainSettingsView, setMainSettings, resolveMainRun } from "../core/mainSettings.js";
 import { embeddingConfig, setEmbeddingsEnabled, preferredBackend, setPreferredBackend, activeBackend, envEmbeddingMode, embeddingsAuto, enterAutoMode, type PreferredBackend } from "../core/embeddings.js";
 import { ollamaStatus, connectOllama } from "../core/ollama.js";
@@ -2056,8 +2057,11 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     }
   });
 
-  // --- model providers (local LM Studio/Ollama, proxies) ---
-  app.get("/api/providers", async () => ({ providers: listProviderViews() }));
+  // --- model providers (local LM Studio/Ollama, proxies; also voice STT/TTS keys) ---
+  app.get("/api/providers", async (req) => {
+    const { purpose } = (req.query ?? {}) as { purpose?: string };
+    return { providers: listProviderViews({ purpose: purpose === "voice" ? "voice" : "chat" }) };
+  });
   // Fetch the model list for an unsaved endpoint (provider form).
   app.post("/api/providers/models", async (req, reply) => {
     const { baseUrl, authToken } = (req.body ?? {}) as { baseUrl?: string; authToken?: string };
@@ -2091,6 +2095,13 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     if (!deleteProvider((req.params as { id: string }).id))
       return reply.code(404).send({ error: "not found" });
     return { ok: true };
+  });
+
+  // --- voice settings (STT/TTS engine + provider selection) ---
+  app.get("/api/voice", async () => voiceSettingsView());
+  app.put("/api/voice", async (req) => {
+    setVoiceSettings(req.body as never);
+    return voiceSettingsView();
   });
 
   // --- Integrations (local Ollama / LM Studio) ---

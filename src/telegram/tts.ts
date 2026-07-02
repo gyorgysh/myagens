@@ -1,30 +1,33 @@
 import { spawn } from "node:child_process";
 import type { Telegram } from "telegraf";
-import { config } from "../config.js";
+import { resolveVoiceSettings } from "../core/voiceSettings.js";
+import { safeFetch } from "../core/safeUrl.js";
 import { log } from "../logger.js";
 
 /** True if text-to-speech is configured for the selected provider. */
 export function ttsEnabled(): boolean {
-  if (config.TTS_PROVIDER === "piper") return Boolean(config.PIPER_MODEL);
-  if (config.TTS_PROVIDER === "xai") return Boolean(config.XAI_API_KEY);
-  return Boolean(config.OPENAI_API_KEY);
+  const { tts } = resolveVoiceSettings();
+  if (tts.engine === "piper") return Boolean(tts.piperModel);
+  return Boolean(tts.apiKey);
 }
 
 /** A short hint telling the operator how to enable spoken replies. */
 export function ttsSetupHint(): string {
-  if (config.TTS_PROVIDER === "piper")
-    return "Set PIPER_PATH + PIPER_MODEL (a local .onnx voice) to enable spoken replies.";
-  if (config.TTS_PROVIDER === "xai")
-    return "Set XAI_API_KEY (and optionally TTS_VOICE) to enable spoken replies.";
-  return "Set OPENAI_API_KEY (and TTS_VOICE/TTS_MODEL) to enable spoken replies.";
+  const { tts } = resolveVoiceSettings();
+  if (tts.engine === "piper")
+    return "Set PIPER_PATH + PIPER_MODEL (a local .onnx voice), or configure Voice settings in the panel, to enable spoken replies.";
+  if (tts.engine === "xai")
+    return "Add an xAI voice provider in Settings → Voice (or set XAI_API_KEY) to enable spoken replies.";
+  return "Add an OpenAI-compatible voice provider in Settings → Voice (or set OPENAI_API_KEY) to enable spoken replies.";
 }
 
 /**
  * Telegram voice messages must be OGG/Opus. OpenAI's /audio/speech can return
- * Opus directly; Piper emits WAV, which we leave as-is (Telegram accepts it as
- * an audio document, but a voice note needs Opus — so Piper output is sent via
- * sendAudio, while OpenAI output is sent as a true voice note). The caller picks
- * the send method from `format`.
+ * Opus directly. xAI and Piper only emit WAV, which we transcode to Opus/OGG
+ * via ffmpeg (same runtime dependency already used to decode incoming voice
+ * notes for Vosk) so replies still arrive as a real voice note; if ffmpeg is
+ * unavailable or `sendVoiceNotes` is off, the WAV is sent as a plain audio file
+ * instead. The caller picks the send method from `format`.
  */
 export interface SpeechResult {
   audio: Buffer;
@@ -36,9 +39,20 @@ export interface SpeechResult {
 export async function synthesizeSpeech(text: string): Promise<SpeechResult> {
   const clipped = text.slice(0, TTS_MAX_CHARS).trim();
   if (!clipped) throw new Error("Nothing to speak.");
-  if (config.TTS_PROVIDER === "piper") return { audio: await synthesizePiper(clipped), format: "wav" };
-  if (config.TTS_PROVIDER === "xai") return { audio: await synthesizeXai(clipped), format: "wav" };
-  return { audio: await synthesizeOpenAI(clipped), format: "ogg" };
+  const resolved = resolveVoiceSettings();
+  if (resolved.tts.engine === "openai") return { audio: await synthesizeOpenAI(clipped), format: "ogg" };
+
+  const wav = resolved.tts.engine === "piper" ? await synthesizePiper(clipped) : await synthesizeXai(clipped);
+  if (!resolved.sendVoiceNotes) return { audio: wav, format: "wav" };
+  try {
+    const opus = await transcodeToOgg(wav);
+    return { audio: opus, format: "ogg" };
+  } catch (err) {
+    log.warn("WAV→Opus transcode failed, sending as audio file instead", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { audio: wav, format: "wav" };
+  }
 }
 
 /** Cap how much text we send to TTS so a long reply doesn't run for minutes. */
@@ -46,18 +60,19 @@ const TTS_MAX_CHARS = 2000;
 
 /** Synthesize via an OpenAI-compatible /audio/speech endpoint, returning Opus. */
 async function synthesizeOpenAI(text: string): Promise<Buffer> {
-  if (!config.OPENAI_API_KEY) {
-    throw new Error("Text-to-speech is not configured (set OPENAI_API_KEY).");
+  const { tts } = resolveVoiceSettings();
+  if (!tts.apiKey) {
+    throw new Error("Text-to-speech is not configured (set an OpenAI-compatible provider or OPENAI_API_KEY).");
   }
-  const res = await fetch(`${config.TTS_BASE_URL}/audio/speech`, {
+  const res = await safeFetch(`${tts.baseUrl}/audio/speech`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${config.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${tts.apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: config.TTS_MODEL,
-      voice: config.TTS_VOICE,
+      model: tts.model,
+      voice: tts.voice,
       input: text,
       response_format: "opus",
     }),
@@ -71,21 +86,22 @@ async function synthesizeOpenAI(text: string): Promise<Buffer> {
 
 /**
  * Synthesize via xAI's /v1/tts endpoint, requesting WAV output — xAI's TTS
- * doesn't offer an Opus/OGG codec (mp3/wav/pcm/mulaw/alaw only), so this goes
- * through the same sendAudio path as Piper rather than a true Telegram voice
- * note. `language` is required by the API; "auto" lets it detect from `text`.
- * TTS_VOICE's schema default ("alloy") is an OpenAI voice name, not a real xAI
- * one, so an unset TTS_VOICE substitutes xAI's own default ("eve") instead.
+ * doesn't offer an Opus/OGG codec (mp3/wav/pcm/mulaw/alaw only), so the result
+ * goes through the ffmpeg transcode step above. `language` is required by the
+ * API; "auto" lets it detect from `text`. The voice setting's schema default
+ * ("alloy") is an OpenAI voice name, not a real xAI one, so an unset/default
+ * voice substitutes xAI's own default ("eve") instead.
  */
 async function synthesizeXai(text: string): Promise<Buffer> {
-  if (!config.XAI_API_KEY) {
-    throw new Error("Text-to-speech is not configured (set XAI_API_KEY).");
+  const { tts } = resolveVoiceSettings();
+  if (!tts.apiKey) {
+    throw new Error("Text-to-speech is not configured (set an xAI voice provider or XAI_API_KEY).");
   }
-  const voiceId = config.TTS_VOICE === "alloy" ? "eve" : config.TTS_VOICE;
-  const res = await fetch("https://api.x.ai/v1/tts", {
+  const voiceId = tts.voice === "alloy" ? "eve" : tts.voice;
+  const res = await safeFetch(`${tts.baseUrl}/tts`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${config.XAI_API_KEY}`,
+      Authorization: `Bearer ${tts.apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -104,13 +120,14 @@ async function synthesizeXai(text: string): Promise<Buffer> {
 
 /** Synthesize via a local Piper binary, returning WAV bytes on stdout. */
 function synthesizePiper(text: string): Promise<Buffer> {
-  if (!config.PIPER_MODEL) {
-    throw new Error("Local TTS is not configured (set PIPER_MODEL).");
+  const { tts } = resolveVoiceSettings();
+  if (!tts.piperModel) {
+    throw new Error("Local TTS is not configured (set PIPER_MODEL, or configure Voice settings in the panel).");
   }
   return new Promise<Buffer>((resolve, reject) => {
     const child = spawn(
-      config.PIPER_PATH,
-      ["--model", config.PIPER_MODEL!, "--output_file", "-"],
+      tts.piperPath,
+      ["--model", tts.piperModel, "--output_file", "-"],
       { stdio: ["pipe", "pipe", "pipe"] },
     );
     const chunks: Buffer[] = [];
@@ -128,6 +145,32 @@ function synthesizePiper(text: string): Promise<Buffer> {
     });
     child.stdin.write(text);
     child.stdin.end();
+  });
+}
+
+/** Transcode WAV bytes to Opus-in-OGG via ffmpeg, for a true Telegram voice note. */
+function transcodeToOgg(wav: Buffer): Promise<Buffer> {
+  const { ffmpegPath } = resolveVoiceSettings();
+  return new Promise<Buffer>((resolve, reject) => {
+    const args = ["-i", "pipe:0", "-c:a", "libopus", "-f", "ogg", "-loglevel", "error", "pipe:1"];
+    const ff = spawn(ffmpegPath, args);
+    const out: Buffer[] = [];
+    const errOut: string[] = [];
+    ff.stdout.on("data", (d: Buffer) => out.push(d));
+    ff.stderr.on("data", (d: Buffer) => errOut.push(d.toString()));
+    ff.on("error", (err) => {
+      reject(
+        (err as NodeJS.ErrnoException).code === "ENOENT"
+          ? new Error("ffmpeg not found (set FFMPEG_PATH) — required to send voice replies as voice notes.")
+          : err,
+      );
+    });
+    ff.on("close", (code) => {
+      if (code === 0) resolve(Buffer.concat(out));
+      else reject(new Error(`ffmpeg exited ${code}: ${errOut.join("").slice(0, 300)}`));
+    });
+    ff.stdin.write(wav);
+    ff.stdin.end();
   });
 }
 
@@ -149,10 +192,10 @@ export function speechText(markdown: string): string {
 }
 
 /**
- * Synthesize `markdown` and deliver it to `chatId` as a spoken message. OpenAI
- * Opus output is sent as a true Telegram voice note; Piper WAV goes as an audio
- * file. Best-effort: logs and swallows any failure so a TTS hiccup never breaks
- * the (already-sent) text reply.
+ * Synthesize `markdown` and deliver it to `chatId` as a spoken message. Opus
+ * output is sent as a true Telegram voice note; WAV (when transcoding wasn't
+ * possible) goes as an audio file. Best-effort: logs and swallows any failure
+ * so a TTS hiccup never breaks the (already-sent) text reply.
  */
 export async function sendVoiceReply(tg: Telegram, chatId: number, markdown: string): Promise<void> {
   const spoken = speechText(markdown);

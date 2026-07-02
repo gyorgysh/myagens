@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { config } from "../config.js";
+import { resolveVoiceSettings } from "../core/voiceSettings.js";
 import { log } from "../logger.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -11,7 +11,7 @@ const SAMPLE_RATE = 16000;
 
 /** True if the local Vosk backend is configured (model path present). */
 export function voskConfigured(): boolean {
-  return Boolean(config.VOSK_MODEL_PATH);
+  return Boolean(resolveVoiceSettings().stt.voskModelPath);
 }
 
 // Loading the acoustic model is expensive (hundreds of MB) — do it once. We
@@ -23,11 +23,12 @@ let modelPromise: Promise<any> | undefined;
 const VOSK_MODULE = "vosk";
 
 async function getModel(): Promise<any> {
-  if (!config.VOSK_MODEL_PATH) {
-    throw new Error("VOSK_MODEL_PATH is not set.");
+  const modelPath = resolveVoiceSettings().stt.voskModelPath;
+  if (!modelPath) {
+    throw new Error("Vosk model path is not set (configure Voice settings in the panel, or set VOSK_MODEL_PATH).");
   }
-  if (!existsSync(config.VOSK_MODEL_PATH)) {
-    throw new Error(`Vosk model not found at ${config.VOSK_MODEL_PATH}.`);
+  if (!existsSync(modelPath)) {
+    throw new Error(`Vosk model not found at ${modelPath}.`);
   }
   if (!modelPromise) {
     modelPromise = (async () => {
@@ -42,8 +43,8 @@ async function getModel(): Promise<any> {
       }
       vosk = mod.default ?? mod;
       vosk.setLogLevel(-1);
-      log.info("Loading Vosk model", { path: config.VOSK_MODEL_PATH });
-      return new vosk.Model(config.VOSK_MODEL_PATH);
+      log.info("Loading Vosk model", { path: modelPath });
+      return new vosk.Model(modelPath);
     })().catch((err) => {
       modelPromise = undefined; // allow a later retry after fixing the setup
       throw err;
@@ -75,7 +76,7 @@ export async function transcribeVosk(filePath: string): Promise<string> {
 function decodeToPcm(filePath: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const args = ["-i", filePath, "-ar", String(SAMPLE_RATE), "-ac", "1", "-f", "s16le", "-loglevel", "error", "pipe:1"];
-    const ff = spawn(config.FFMPEG_PATH, args);
+    const ff = spawn(resolveVoiceSettings().ffmpegPath, args);
     const out: Buffer[] = [];
     const errOut: string[] = [];
     ff.stdout.on("data", (d: Buffer) => out.push(d));

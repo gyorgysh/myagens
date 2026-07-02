@@ -13,6 +13,7 @@ import { VaultView } from "./Vault.tsx";
 import { ConnectorsView } from "./Connectors.tsx";
 import { PromptView_ } from "./Prompt.tsx";
 import { SkillsView } from "./Skills.tsx";
+import { VoiceView } from "./Voice.tsx";
 
 const PERSONA_PRESETS: Array<{ labelKey: TranslationKey; value: string }> = [
   { labelKey: "settings_persona_concise", value: "Concise and direct. Lead with the result, skip preamble, use short sentences." },
@@ -57,6 +58,9 @@ export function SettingsView({ onAuthError }: { onAuthError: () => void }) {
         </Accordion>
         <Accordion id="settings-connectors" title={t("settings_section_connectors")}>
           <ConnectorsView onAuthError={onAuthError} />
+        </Accordion>
+        <Accordion id="settings-voice" title={t("settings_section_voice")}>
+          <VoiceView onAuthError={onAuthError} />
         </Accordion>
         <Accordion id="settings-prompt" title={t("settings_section_prompt")}>
           <PromptView_ onAuthError={onAuthError} />

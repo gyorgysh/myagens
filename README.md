@@ -2,7 +2,7 @@
 
 **Your personal AI that actually lives on your machine.** Talk to it over Telegram from anywhere. It can read your files, run your code, check your services, and report back, with your approval before anything risky. Atlas is your central coordinator: he runs day-to-day operations, remembers everything, learns your workflows, and commands a team of specialized Leads. Each Lead owns a domain and can have its own Telegram bot.
 
-![MyAgens Panel dashboard: live system health, Claude usage, per-core load, and filesystems](images/sys.webp)
+![MyAgens Panel dashboard: live system health, Claude usage, per-core load, and filesystems](images/dashboard.webp)
 
 Open source. Built on real **Claude Code** agents running on your machine, so every agent can read files, run commands, edit code, check services, and ship things. Replies stream back live and risky actions are gated behind your approval.
 
@@ -85,6 +85,8 @@ You will need a [bot token](#setup-manual) and your numeric Telegram user id. Th
 | **Inbox**: suggestions your agents file for review. Park one as a backlog task, delegate it to a best-fit Lead to get it done now, or dismiss it. | **Logs**: a live, human-readable feed of what each agent is doing — edits with diffs, commands, plan updates — plus raw searchable history and usage analytics. |
 | ![Vault panel: AES-256-GCM encrypted secrets and key management](images/vault.webp) | ![Backup panel: passphrase-protected full fleet-state archive](images/backup.webp) |
 | **Vault**: AES-256-GCM encrypted secrets referenced anywhere as `vault:<id>`. Reveal, rotate the master key, scan & import plaintext provider tokens, and take a passphrase-encrypted backup. | **Backup**: export the entire fleet state (sessions, memory, tasks, schedules, workers, providers, connectors, vault secrets) into one passphrase-protected archive for disaster recovery or moving machines. |
+| ![Usage panel: Claude limits, activity history, and per-agent token charts](images/usage.webp) | ![Updates panel: current version, changelog, and one-click apply](images/updates.webp) |
+| **Usage**: Claude usage limits, message/session activity history, and token charts broken down per day and per agent. | **Updates**: check for, apply, and roll back new releases in place, with a changelog of what landed. |
 
 ![Status panel: Claude service status plus reachability for every provider and local model backend](images/status.webp)
 

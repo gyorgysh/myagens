@@ -76,7 +76,7 @@ function ConnectorInfoModal({
           <button
             onClick={onClose}
             aria-label={t("close")}
-            className="shrink-0 rounded p-1 text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg-muted"
+            className="-m-1 shrink-0 rounded p-2 text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg-muted"
           >
             <X className="h-4 w-4" strokeWidth={2} />
           </button>
@@ -349,7 +349,7 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
                       type="button"
                       onClick={() => setInfoConnector(c)}
                       aria-label={t("connectors_info_open")}
-                      className="rounded p-0.5 text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg-muted"
+                      className="-m-1.5 rounded p-2 text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg-muted"
                     >
                       <HelpCircle className="h-4 w-4" strokeWidth={1.75} />
                     </button>

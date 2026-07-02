@@ -563,7 +563,7 @@ function RunAgentModal({
   const role = roleLabel(worker, t);
 
   return (
-    <Modal onClose={onCancel} labelledBy="run-agent-title" className="overflow-hidden">
+    <Modal onClose={onCancel} labelledBy="run-agent-title">
       <div>
         <div className="border-b border-line px-4 py-3">
           <h3 id="run-agent-title" className="flex flex-wrap items-center gap-2 text-sm font-semibold text-fg">

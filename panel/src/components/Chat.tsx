@@ -1085,7 +1085,7 @@ function ModePill({
           {t("chat_mode_planning")}
         </button>
       </div>
-      <span className="text-xs text-fg-faint">
+      <span className="hidden text-xs text-fg-faint sm:inline">
         {planning ? t("chat_mode_planning_hint") : t("chat_mode_execution_hint")}
       </span>
     </div>

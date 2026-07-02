@@ -628,7 +628,7 @@ export function MemoryView({ onAuthError }: { onAuthError: () => void }) {
                 />
               )}
               <div className="min-w-0 flex-1">
-                <p className="text-sm text-fg">{m.text}</p>
+                <p className="break-words text-sm text-fg">{m.text}</p>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-fg-faint">
                   <TierBadge tier={m.tier} label={t(TIER_KEY[m.tier])} />
                   {m.tags.map((tag) => (

@@ -456,9 +456,11 @@ function AgentBreakdownCard({
   })).filter((g) => g.agents.length > 0);
 
   // Drop the cost column entirely on subscription plans (no marginal API cost).
+  // Narrower fixed columns below sm so the 1fr name column stays readable on
+  // a 390px phone (the values are short mono numbers; they fit the tight tier).
   const COL = hideCost
-    ? "grid grid-cols-[1fr_80px_80px_52px] gap-2 px-1"
-    : "grid grid-cols-[1fr_80px_80px_72px_52px] gap-2 px-1";
+    ? "grid grid-cols-[1fr_60px_60px_44px] gap-2 px-1 sm:grid-cols-[1fr_80px_80px_52px]"
+    : "grid grid-cols-[1fr_56px_56px_48px_40px] gap-1.5 px-1 sm:grid-cols-[1fr_80px_80px_72px_52px] sm:gap-2";
 
   return (
     <Card title={t("usage_agents_title")}>

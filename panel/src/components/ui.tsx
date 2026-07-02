@@ -24,7 +24,7 @@ export function Card({
       className={`rounded-xl border border-line bg-surface ${compact ? "p-3" : "p-4"} ${className}`}
     >
       {(title || right) && (
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <h3 className="text-xs font-medium uppercase tracking-wider text-fg-dim">
             {title}
           </h3>
@@ -734,13 +734,13 @@ export function Modal({
       <div
         ref={ref}
         tabIndex={-1}
-        className={`relative z-10 w-full ${maxW} rounded-2xl border border-line bg-surface shadow-xl outline-none ${className}`}
+        className={`relative z-10 max-h-[85dvh] w-full ${maxW} overflow-y-auto rounded-2xl border border-line bg-surface shadow-xl outline-none ${className}`}
       >
         {closeButton && (
           <button
             onClick={onClose}
             aria-label={t("close")}
-            className="absolute right-3 top-3 z-10 text-fg-faint transition-colors hover:text-fg-muted"
+            className="absolute right-3 top-3 z-10 -m-2 rounded p-2 text-fg-faint transition-colors hover:text-fg-muted"
           >
             <X className="h-4 w-4" strokeWidth={2} />
           </button>

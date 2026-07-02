@@ -639,6 +639,10 @@ export const en = {
   login_invalid: "Invalid token.",
   login_unreachable: "Could not reach the panel.",
   login_unlock: "Unlock",
+  login_kicker: "Personal AI headquarters",
+  login_tagline: "one message in — the whole fleet moves",
+  login_hint: "Find it in the DM from your bot, or as PANEL_TOKEN in your .env.",
+  login_footer: "Self-hosted · runs on your machine",
 
   // Chat
   chat_title: "Chat",

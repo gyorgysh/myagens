@@ -640,6 +640,10 @@ export const hu: Translations = {
   login_invalid: "Érvénytelen token.",
   login_unreachable: "A panel nem érhető el.",
   login_unlock: "Feloldás",
+  login_kicker: "Személyes MI-főhadiszállás",
+  login_tagline: "egy üzenet — és az egész flotta mozdul",
+  login_hint: "Megtalálod a botod DM-jében, vagy a .env PANEL_TOKEN értékeként.",
+  login_footer: "Self-hosted · a saját gépeden fut",
 
   // Csevegés
   chat_title: "Csevegés",

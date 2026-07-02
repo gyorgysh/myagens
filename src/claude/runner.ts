@@ -73,7 +73,7 @@ export interface RunOptions {
   env?: Record<string, string | undefined>;
   /** Extra worker/persona instructions appended to the system prompt. */
   systemPromptAppend?: string;
-  /** Roster of MyHQ Leads, folded into the system prompt for coordination. */
+  /** Roster of MyAgens Leads, folded into the system prompt for coordination. */
   crew?: string;
   /** Pending suggestion-inbox digest (main agent only) for Atlas to triage. */
   pendingSuggestions?: string;

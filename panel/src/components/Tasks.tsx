@@ -64,7 +64,7 @@ function formatElapsed(ms: number): string {
 }
 
 /** Persisted preference: show newest-added cards at the top of each column. */
-const NEWEST_FIRST_KEY = "myhq.tasks.newestFirst";
+const NEWEST_FIRST_KEY = "myagens.tasks.newestFirst";
 
 /**
  * Live elapsed label that re-renders once a second while `running` is true.

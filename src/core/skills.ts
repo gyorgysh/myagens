@@ -109,8 +109,11 @@ export function deleteSkill(id: string): boolean {
   return true;
 }
 
-/** Marker identifying a file as a MyHQ skill bundle. */
-const BUNDLE_KIND = "myhq.skill";
+/** Marker identifying a file as a MyAgens skill bundle. */
+const BUNDLE_KIND = "myagens.skill";
+// Pre-rename marker, still accepted so a bundle exported before the
+// myhq->MyAgens rename can still be imported.
+const LEGACY_BUNDLE_KINDS = ["myhq.skill"];
 
 /** A portable, shareable skill package. Carries only the authoring fields
  *  (name/description/prompt/cwd); runtime bookkeeping (id, counts, timestamps)
@@ -146,7 +149,8 @@ export function exportSkill(id: string): SkillBundle | undefined {
 export function importSkill(bundle: unknown): { skill: Skill } | { error: string } {
   if (!bundle || typeof bundle !== "object") return { error: "Not a valid skill bundle." };
   const b = bundle as Partial<SkillBundle>;
-  if (b.kind !== BUNDLE_KIND) return { error: "File is not a MyHQ skill bundle." };
+  if (b.kind !== BUNDLE_KIND && !(typeof b.kind === "string" && LEGACY_BUNDLE_KINDS.includes(b.kind)))
+    return { error: "File is not a MyAgens skill bundle." };
   const src = b.skill;
   if (!src || typeof src !== "object") return { error: "Bundle has no skill payload." };
   const name = typeof src.name === "string" ? src.name.trim() : "";

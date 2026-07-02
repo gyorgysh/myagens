@@ -7,7 +7,7 @@ import type { Tab } from "./Sidebar.tsx";
 type Me = Awaited<ReturnType<typeof api.me>>;
 
 /** Upstream repo, matching the footer link in App.tsx — used for the changelog. */
-const REPO_URL = "https://github.com/gyorgysh/myhq";
+const REPO_URL = "https://github.com/gyorgysh/myagens";
 
 /**
  * A single top-level "Setup" view that walks a new operator through initial
@@ -51,7 +51,7 @@ export function SetupView({
       {/* 1. Bot identity */}
       <SetupStep n={1} title={t("setup_identity")} desc={t("setup_identity_desc")}>
         <Fact label={t("setup_agent_name")} value={me?.atlasName || "Atlas"} />
-        <Fact label={t("setup_brand_name")} value={me?.brandName || "MyHQ"} />
+        <Fact label={t("setup_brand_name")} value={me?.brandName || "MyAgens"} />
         <Fact
           label={t("setup_bot_username")}
           value={

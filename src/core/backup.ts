@@ -21,7 +21,10 @@ import { log } from "../logger.js";
  * rather than its raw host-key ciphertext, so secrets survive the migration.
  */
 
-const MAGIC = "MYHQBAK1"; // 8 bytes
+const MAGIC = "MYAGNBK1"; // 8 bytes
+// Pre-rename magic, still accepted so an archive made before the myhq->MyAgens
+// rename can still be restored.
+const LEGACY_MAGICS = ["MYHQBAK1"];
 const VAULT_INCLUDE_NAME = "__vault_backup__"; // sentinel key in the envelope
 
 /**
@@ -150,7 +153,7 @@ export function exportBackup(passphrase: string): Buffer {
   const envelope: Envelope = {
     version: 1,
     exportedAt: Date.now(),
-    brand: config.BRAND_NAME ?? "MyHQ",
+    brand: config.BRAND_NAME ?? "MyAgens",
     platform: process.platform,
     files,
   };
@@ -230,7 +233,8 @@ export function importBackup(
 function decodeArchive(archive: Buffer, passphrase: string): Envelope {
   if (!passphrase) throw new Error("passphrase required");
   if (archive.length < 8 + 16 + 12 + 16) throw new Error("not a valid backup archive");
-  if (archive.subarray(0, 8).toString("ascii") !== MAGIC) throw new Error("not a valid backup archive");
+  const magic = archive.subarray(0, 8).toString("ascii");
+  if (magic !== MAGIC && !LEGACY_MAGICS.includes(magic)) throw new Error("not a valid backup archive");
 
   let off = 8;
   const salt = archive.subarray(off, (off += 16));

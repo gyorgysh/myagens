@@ -5,13 +5,17 @@
 
 .DESCRIPTION
     Sync to the latest code, reinstall deps, rebuild (panel UI + bot), and
-    restart the service if one is installed (NSSM 'myhq' or the 'MyHQ Bot'
+    restart the service if one is installed (NSSM 'myagens' or the 'MyAgens Bot'
     scheduled task). Hard-resets the checkout to the remote ref: local edits to
     *tracked* files are discarded; untracked files (data/, .env, vault) are left
     alone. work.md (the operator playbook) is preserved across the reset.
 
     Used by the in-panel updater on Windows, and runnable by hand:
       powershell -ExecutionPolicy Bypass -File scripts\windows\update.ps1 [git-ref]
+
+    Also fixes up the git remote if it's still the pre-rename canonical URL,
+    and prints a migration hint if the pre-rename 'myhq' service/task name is
+    still what's actually installed.
 #>
 
 # Let npm/git PowerShell shims run for this process (Windows blocks .ps1 by
@@ -57,6 +61,18 @@ function Step {
 
 $ref = if ($args.Count -ge 1 -and $args[0]) { $args[0] } else { (git rev-parse --abbrev-ref HEAD).Trim() }
 
+# Repo was renamed gyorgysh/myhq -> gyorgysh/myagens. GitHub redirects the old
+# URL, so this isn't strictly required, but fix it up if origin is still the
+# exact canonical old URL (never touch a fork under a different owner).
+$currentRemote = (git remote get-url origin 2>$null)
+if ($currentRemote -eq "https://github.com/gyorgysh/myhq.git") {
+    Say "Updating git remote (repo renamed): $currentRemote -> https://github.com/gyorgysh/myagens.git"
+    git remote set-url origin "https://github.com/gyorgysh/myagens.git"
+} elseif ($currentRemote -eq "git@github.com:gyorgysh/myhq.git") {
+    Say "Updating git remote (repo renamed): $currentRemote -> git@github.com:gyorgysh/myagens.git"
+    git remote set-url origin "git@github.com:gyorgysh/myagens.git"
+}
+
 # Preserve work.md across the hard reset (it's a per-box playbook the panel edits).
 $workBackup = $null
 if (Test-Path "work.md") {
@@ -101,7 +117,7 @@ Step "npm run build" { npm.cmd run build }
 
 # Restart the service if one is installed.
 #
-# IMPORTANT: when launched by the in-panel updater (MYHQ_INPANEL=1) this script
+# IMPORTANT: when launched by the in-panel updater (MYAGENS_INPANEL=1) this script
 # runs AS the service account (.\admin), which does NOT hold service-control
 # rights on its own service object — so Restart-Service / sc.exe are denied
 # ("The system cannot find the file specified." / access denied). In that case
@@ -109,9 +125,9 @@ Step "npm run build" { npm.cmd run build }
 # service manager (NSSM AppExit Default Restart, or the task's RestartCount)
 # relaunches it with the new code. This is the privilege-free path.
 #
-# When run by hand from an elevated terminal (MYHQ_INPANEL unset) Restart-Service
+# When run by hand from an elevated terminal (MYAGENS_INPANEL unset) Restart-Service
 # works, so we do it here for convenience.
-$inPanel = $env:MYHQ_INPANEL -eq "1"
+$inPanel = $env:MYAGENS_INPANEL -eq "1"
 
 if ($inPanel) {
     Ok "Build complete. The bot will exit so the service manager relaunches it."
@@ -119,20 +135,36 @@ if ($inPanel) {
 }
 
 $restarted = $false
-if (Get-Service -Name "myhq" -ErrorAction SilentlyContinue) {
-    Say "Restarting the 'myhq' service ..."
-    Restart-Service -Name "myhq" -Force -ErrorAction SilentlyContinue
-    Ok "Service restarted."
-    $restarted = $true
+# Try the current service/task name, then the pre-rename one (not yet migrated).
+foreach ($svcName in @("myagens", "myhq")) {
+    if ($restarted) { break }
+    if (Get-Service -Name $svcName -ErrorAction SilentlyContinue) {
+        Say "Restarting the '$svcName' service ..."
+        Restart-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+        Ok "Service restarted."
+        $restarted = $true
+        # NSSM/task renaming needs admin + reconfiguring AppEnvironmentExtra etc,
+        # which this script doesn't do — point at the full installer instead of
+        # trying (and likely failing) to migrate it here.
+        if ($svcName -eq "myhq") {
+            Say "Still running under the pre-rename 'myhq' service name. To migrate: re-run .\scripts\windows\myagens-install.ps1 from an elevated PowerShell."
+        }
+    }
 }
 if (-not $restarted) {
-    $task = Get-ScheduledTask -TaskName "MyHQ Bot" -ErrorAction SilentlyContinue
-    if ($task) {
-        Say "Restarting the scheduled task ..."
-        Stop-ScheduledTask  -TaskName "MyHQ Bot" -ErrorAction SilentlyContinue
-        Start-ScheduledTask -TaskName "MyHQ Bot"
-        Ok "Scheduled task restarted."
-        $restarted = $true
+    foreach ($taskName in @("MyAgens Bot", "MyHQ Bot")) {
+        if ($restarted) { break }
+        $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        if ($task) {
+            Say "Restarting the scheduled task ..."
+            Stop-ScheduledTask  -TaskName $taskName -ErrorAction SilentlyContinue
+            Start-ScheduledTask -TaskName $taskName
+            Ok "Scheduled task restarted."
+            $restarted = $true
+            if ($taskName -eq "MyHQ Bot") {
+                Say "Still running under the pre-rename 'MyHQ Bot' task name. To migrate: re-run .\scripts\windows\myagens-install.ps1 from an elevated PowerShell."
+            }
+        }
     }
 }
 if (-not $restarted) {

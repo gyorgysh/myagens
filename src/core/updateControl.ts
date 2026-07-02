@@ -143,14 +143,14 @@ async function runScript(
     // On Windows: omit detached — Node.js 24 on Windows silently breaks the
     // stdout pipe when detached:true is set, causing zero data events and
     // making the panel show no output. It's fine without it: the script does
-    // NOT restart the service when MYHQ_INPANEL=1 (it can't — the service
+    // NOT restart the service when MYAGENS_INPANEL=1 (it can't — the service
     // account .\admin lacks service-control rights). Instead, on a successful
     // update we self-exit below, and NSSM (AppExit Default: Restart) relaunches
     // us with the new code, so the script doesn't need to outlive the parent.
     const child = isWin
       ? spawn(psExe, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", UPDATE_PS1], {
           cwd: repoRoot,
-          env: { ...process.env, MYHQ_INPANEL: "1" },
+          env: { ...process.env, MYAGENS_INPANEL: "1" },
         })
       : spawn("bash", [UPDATE_SH], { cwd: repoRoot, detached: true });
     if (!isWin) child.unref();

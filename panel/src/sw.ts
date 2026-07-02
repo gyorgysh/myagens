@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-// Custom service worker for the MyHQ panel PWA.
+// Custom service worker for the MyAgens panel PWA.
 //
 // vite-plugin-pwa runs in `injectManifest` mode against this file: it injects
 // the precache manifest at `self.__WB_MANIFEST` and bundles it to the final
@@ -86,7 +86,7 @@ self.addEventListener("push", (event: PushEvent) => {
     // Some push services send no/invalid JSON; fall back to plain text.
     data = { body: event.data?.text() };
   }
-  const title = data.title || "MyHQ";
+  const title = data.title || "MyAgens";
   // `renotify` is a real Notification option (re-alert on a same-tag notification)
   // but is missing from the DOM lib types in use, so widen the type locally.
   const options: NotificationOptions & { renotify?: boolean } = {

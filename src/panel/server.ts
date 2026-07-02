@@ -261,7 +261,7 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
 
   // Remote-access gate: when a request arrives through the public tunnel (ngrok /
   // cloudflared proxy to loopback and set x-forwarded-* headers), it must clear an
-  // HTTP Basic Auth challenge (user `myhq` + the generated password) BEFORE anything
+  // HTTP Basic Auth challenge (user `myagens` + the generated password) BEFORE anything
   // — including the SPA shell and the login page — is served. Local/LAN access to
   // the panel is unaffected (no forwarding header → gate skipped). This is a second
   // factor in front of the existing panel token, not a replacement.
@@ -285,7 +285,7 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
     if (tunnelManager.verifyBasic(req.headers.authorization)) return;
     await reply
       .code(401)
-      .header("WWW-Authenticate", 'Basic realm="MyHQ Remote Access", charset="UTF-8"')
+      .header("WWW-Authenticate", 'Basic realm="MyAgens Remote Access", charset="UTF-8"')
       .header("cache-control", "no-store")
       .send("Authentication required");
   });
@@ -1003,10 +1003,10 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   });
   app.post("/api/push/test", async () => {
     await push.notify({
-      title: "MyHQ",
+      title: "MyAgens",
       body: "Test notification — push is working.",
       kind: "test",
-      tag: "myhq-test",
+      tag: "myagens-test",
     });
     return { ok: true, subscribers: push.subscriberCount() };
   });
@@ -1496,7 +1496,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
       reply
         .header("content-type", "application/octet-stream")
-        .header("content-disposition", `attachment; filename="myhq-backup-${stamp}.mhq"`);
+        .header("content-disposition", `attachment; filename="myagens-backup-${stamp}.mag"`);
       return reply.send(buf);
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : "export failed" });
@@ -2159,7 +2159,7 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     if (basicAuth === true) tunnelManager.ensurePassword();
     return tunnelManager.view();
   });
-  // Reveal / rotate / set the Basic Auth password. Username is fixed to `myhq`.
+  // Reveal / rotate / set the Basic Auth password. Username is fixed to `myagens`.
   app.get("/api/tunnel/password", async (_req, reply) => {
     if (!tunnelManager.enabled) return reply.code(403).send({ error: "remote access disabled" });
     const password = tunnelManager.revealPassword();

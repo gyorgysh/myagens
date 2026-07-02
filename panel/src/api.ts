@@ -1,10 +1,20 @@
 // Thin client over the panel's /api + /ws. The token lives in localStorage and
 // is sent as a Bearer header (REST) or ?token= query (WebSocket).
 
-const TOKEN_KEY = "myhq.panel.token";
+const TOKEN_KEY = "myagens.panel.token";
+// Pre-rename key, so a browser that already logged in before the myhq->MyAgens
+// rename doesn't get silently signed out.
+const LEGACY_TOKEN_KEY = "myhq.panel.token";
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) return token;
+  const legacy = localStorage.getItem(LEGACY_TOKEN_KEY);
+  if (legacy) {
+    localStorage.setItem(TOKEN_KEY, legacy);
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
+  }
+  return legacy;
 }
 
 export function setToken(token: string): void {
@@ -369,7 +379,7 @@ export interface Skill {
 
 /** A portable skill package produced by the export endpoint. */
 export interface SkillBundle {
-  kind: "myhq.skill";
+  kind: "myagens.skill";
   version: 1;
   exportedAt: number;
   skill: { name: string; description?: string; prompt: string; cwd?: string };

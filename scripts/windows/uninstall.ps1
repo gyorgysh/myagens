@@ -1,10 +1,10 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    uninstall.ps1 - remove the MyHQ Windows service (and optionally the files).
+    uninstall.ps1 - remove the MyAgens Windows service (and optionally the files).
 
 .DESCRIPTION
-    Stops and removes the NSSM service ('myhq') and/or the 'MyHQ Bot' scheduled
+    Stops and removes the NSSM service ('myagens') and/or the 'MyAgens Bot' scheduled
     task, whichever the installer created. Optionally deletes the install
     directory so you can start over cleanly.
 
@@ -12,8 +12,8 @@
       powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
 
     Non-interactive overrides:
-      MYHQ_DIR   Install directory (default: $HOME\myhq)
-      MYHQ_YES   1 = accept all defaults (also deletes the install dir)
+      MYAGENS_DIR   Install directory (default: $HOME\myagens)
+      MYAGENS_YES   1 = accept all defaults (also deletes the install dir)
 .NOTES
     Your Claude login (in %USERPROFILE%\.claude) is NOT touched.
 #>
@@ -21,10 +21,17 @@
 try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch {}
 $ErrorActionPreference = "Continue"
 
-$InstallDir = if ($env:MYHQ_DIR) { $env:MYHQ_DIR } else { Join-Path $HOME "myhq" }
-$AutoYes    = $env:MYHQ_YES -eq "1"
-$SvcName    = "myhq"
-$TaskName   = "MyHQ Bot"
+$DefaultDir = Join-Path $HOME "myagens"
+$LegacyDir  = Join-Path $HOME "myhq"
+# Fall back to the pre-rename install dir if that's what's actually there and
+# no override was given, so this uninstaller still finds a not-yet-migrated box.
+if (-not $env:MYAGENS_DIR -and -not (Test-Path $DefaultDir) -and (Test-Path $LegacyDir)) {
+    $DefaultDir = $LegacyDir
+}
+$InstallDir  = if ($env:MYAGENS_DIR) { $env:MYAGENS_DIR } else { $DefaultDir }
+$AutoYes     = $env:MYAGENS_YES -eq "1"
+$SvcNames    = @("myagens", "myhq")
+$TaskNames   = @("MyAgens Bot", "MyHQ Bot")
 
 function Say  { param([string]$m) Write-Host "* $m" -ForegroundColor Cyan }
 function Ok   { param([string]$m) Write-Host "+ $m" -ForegroundColor Green }
@@ -46,34 +53,38 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     exit 1
 }
 
-Write-Host "`n  MyHQ Uninstaller" -ForegroundColor Magenta
+Write-Host "`n  MyAgens Uninstaller" -ForegroundColor Magenta
 Write-Host "  Install dir: $InstallDir`n"
 
-# --- NSSM service -----------------------------------------------------------
+# --- NSSM service (current name + pre-rename 'myhq') ------------------------
 $nssm = Get-Command nssm -ErrorAction SilentlyContinue
 if ($nssm) {
-    $status = "$(& nssm status $SvcName 2>$null)"
-    if ($LASTEXITCODE -eq 0 -and $status) {
-        Say "Stopping and removing NSSM service '$SvcName' ..."
-        & nssm stop $SvcName 2>$null | Out-Null
-        & nssm remove $SvcName confirm 2>$null | Out-Null
-        Ok "NSSM service removed."
-    } else {
-        Say "No NSSM service '$SvcName' found."
+    foreach ($SvcName in $SvcNames) {
+        $status = "$(& nssm status $SvcName 2>$null)"
+        if ($LASTEXITCODE -eq 0 -and $status) {
+            Say "Stopping and removing NSSM service '$SvcName' ..."
+            & nssm stop $SvcName 2>$null | Out-Null
+            & nssm remove $SvcName confirm 2>$null | Out-Null
+            Ok "NSSM service removed."
+        } else {
+            Say "No NSSM service '$SvcName' found."
+        }
     }
 } else {
     Say "nssm not on PATH - skipping NSSM service check."
 }
 
-# --- Scheduled task ---------------------------------------------------------
-$task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-if ($task) {
-    Say "Removing scheduled task '$TaskName' ..."
-    Stop-ScheduledTask       -TaskName $TaskName -ErrorAction SilentlyContinue
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-    Ok "Scheduled task removed."
-} else {
-    Say "No scheduled task '$TaskName' found."
+# --- Scheduled task (current name + pre-rename 'MyHQ Bot') -------------------
+foreach ($TaskName in $TaskNames) {
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($task) {
+        Say "Removing scheduled task '$TaskName' ..."
+        Stop-ScheduledTask       -TaskName $TaskName -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+        Ok "Scheduled task removed."
+    } else {
+        Say "No scheduled task '$TaskName' found."
+    }
 }
 
 # --- Files ------------------------------------------------------------------

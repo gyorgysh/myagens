@@ -63,7 +63,7 @@ export interface Worker {
   /** Avatar slug (e.g. "panda") from the curated set in panel/public/avatars.
    *  When unset, the panel derives a deterministic default from the worker id. */
   avatar?: string;
-  // MyHQ hierarchy fields
+  // MyAgens hierarchy fields
   role?: "lead" | "assistant";
   portfolio?: string; // e.g. "Finance", "DevOps", "Research"
   parentId?: string; // assistant → id of its Lead

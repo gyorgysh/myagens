@@ -30,7 +30,7 @@ function limitLabel(label: string, t: (k: TranslationKey) => string): string {
 
 export function UsageView({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
-  const { data: myhq, error } = usePoll(api.usage, 15000, onAuthError);
+  const { data: myagens, error } = usePoll(api.usage, 15000, onAuthError);
   const configSubscription = useSubscription();
   const [plan, setPlan] = useState<PlanView | null>(null);
   const [probe, setProbe] = useState<ProbeResult | null>(null);
@@ -99,28 +99,28 @@ export function UsageView({ onAuthError }: { onAuthError: () => void }) {
 
       {/* Token usage — real input/output tokens per turn, summed. Meaningful on
           every plan (subscription or API), so always shown when we have data. */}
-      {myhq && <TokenUsageCard myhq={myhq} />}
+      {myagens && <TokenUsageCard myagens={myagens} />}
 
       {/* Per-agent breakdown — always rendered so empty state is visible. */}
       <AgentBreakdownCard agents={agentEntries ?? []} dailyByRole={agentDaily} hideCost={isSubscription} />
 
-      {/* MyHQ session metrics — cost is meaningless on a subscription plan, so omit it */}
-      {myhq && (
+      {/* MyAgens session metrics — cost is meaningless on a subscription plan, so omit it */}
+      {myagens && (
         <>
           {isSubscription ? (
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               <Card>
                 <Metric
                   label={t("usage_turns_today")}
-                  value={myhq.today.turns.toLocaleString()}
-                  sub={`${myhq.total.turns.toLocaleString()} ${t("usage_turns_total")}`}
+                  value={myagens.today.turns.toLocaleString()}
+                  sub={`${myagens.total.turns.toLocaleString()} ${t("usage_turns_total")}`}
                 />
               </Card>
               <Card>
-                <Metric label={t("usage_time_today")} value={ms(myhq.today.durationMs)} />
+                <Metric label={t("usage_time_today")} value={ms(myagens.today.durationMs)} />
               </Card>
               <Card>
-                <Metric label={t("usage_time_lifetime")} value={ms(myhq.total.durationMs)} />
+                <Metric label={t("usage_time_lifetime")} value={ms(myagens.total.durationMs)} />
               </Card>
             </div>
           ) : (
@@ -129,27 +129,27 @@ export function UsageView({ onAuthError }: { onAuthError: () => void }) {
                 <Card>
                   <Metric
                     label={t("usage_cost_today")}
-                    value={usd(myhq.today.costUsd)}
-                    sub={`${myhq.today.turns} ${myhq.today.turns === 1 ? t("usage_turn") : t("usage_turns")}`}
+                    value={usd(myagens.today.costUsd)}
+                    sub={`${myagens.today.turns} ${myagens.today.turns === 1 ? t("usage_turn") : t("usage_turns")}`}
                   />
                 </Card>
                 <Card>
                   <Metric
                     label={t("usage_cost_lifetime")}
-                    value={usd(myhq.total.costUsd)}
-                    sub={`${myhq.total.turns} ${t("usage_turns_total")}`}
+                    value={usd(myagens.total.costUsd)}
+                    sub={`${myagens.total.turns} ${t("usage_turns_total")}`}
                   />
                 </Card>
                 <Card>
-                  <Metric label={t("usage_time_today")} value={ms(myhq.today.durationMs)} />
+                  <Metric label={t("usage_time_today")} value={ms(myagens.today.durationMs)} />
                 </Card>
                 <Card>
-                  <Metric label={t("usage_time_lifetime")} value={ms(myhq.total.durationMs)} />
+                  <Metric label={t("usage_time_lifetime")} value={ms(myagens.total.durationMs)} />
                 </Card>
               </div>
 
               <Card title={t("usage_daily_cost")}>
-                <CostChart myhq={myhq} plan={plan} isSubscription={isSubscription} />
+                <CostChart myagens={myagens} plan={plan} isSubscription={isSubscription} />
               </Card>
             </>
           )}
@@ -356,16 +356,16 @@ function BudgetBar({ plan }: { plan: PlanView }) {
 // ---------------------------------------------------------------------------
 
 function CostChart({
-  myhq,
+  myagens,
   plan,
   isSubscription,
 }: {
-  myhq: { daily: Array<{ day: string; costUsd: number; turns: number }> };
+  myagens: { daily: Array<{ day: string; costUsd: number; turns: number }> };
   plan: PlanView | null;
   isSubscription: boolean;
 }) {
   const { t } = useI18n();
-  const recent = myhq.daily.slice(-30);
+  const recent = myagens.daily.slice(-30);
   const maxCost = Math.max(0.0001, ...recent.map((d) => d.costUsd));
   const periodStart = plan?.periodStart;
 
@@ -644,13 +644,13 @@ function AgentTokenChart({ dailyByRole }: { dailyByRole: AgentDailyByRole }) {
 // Token usage (real input/output tokens per turn, summed)
 // ---------------------------------------------------------------------------
 
-function TokenUsageCard({ myhq }: { myhq: UsageSummary }) {
+function TokenUsageCard({ myagens }: { myagens: UsageSummary }) {
   const { t } = useI18n();
   const hasTokens =
-    myhq.total.inputTokens > 0 ||
-    myhq.total.outputTokens > 0 ||
-    myhq.total.cacheReadTokens > 0 ||
-    myhq.total.cacheWriteTokens > 0;
+    myagens.total.inputTokens > 0 ||
+    myagens.total.outputTokens > 0 ||
+    myagens.total.cacheReadTokens > 0 ||
+    myagens.total.cacheWriteTokens > 0;
 
   return (
     <Card title={t("usage_tokens_title")}>
@@ -662,30 +662,30 @@ function TokenUsageCard({ myhq }: { myhq: UsageSummary }) {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Tile
               label={`${t("usage_tokens_input")} · ${t("usage_tokens_today")}`}
-              value={tokens(myhq.today.inputTokens)}
+              value={tokens(myagens.today.inputTokens)}
             />
             <Tile
               label={`${t("usage_tokens_output")} · ${t("usage_tokens_today")}`}
-              value={tokens(myhq.today.outputTokens)}
+              value={tokens(myagens.today.outputTokens)}
             />
             <Tile
               label={`${t("usage_tokens_input")} · ${t("usage_tokens_lifetime")}`}
-              value={tokens(myhq.total.inputTokens)}
+              value={tokens(myagens.total.inputTokens)}
             />
             <Tile
               label={`${t("usage_tokens_output")} · ${t("usage_tokens_lifetime")}`}
-              value={tokens(myhq.total.outputTokens)}
+              value={tokens(myagens.total.outputTokens)}
             />
           </div>
 
           {/* Cache footer — useful to see how much is served from cache */}
           <div className="flex flex-wrap gap-x-5 gap-y-0.5 text-xs text-fg-faint">
             <span>
-              <span className="font-medium text-fg-dim">{tokens(myhq.total.cacheReadTokens)}</span>{" "}
+              <span className="font-medium text-fg-dim">{tokens(myagens.total.cacheReadTokens)}</span>{" "}
               {t("usage_tokens_cache_read")}
             </span>
             <span>
-              <span className="font-medium text-fg-dim">{tokens(myhq.total.cacheWriteTokens)}</span>{" "}
+              <span className="font-medium text-fg-dim">{tokens(myagens.total.cacheWriteTokens)}</span>{" "}
               {t("usage_tokens_cache_write")}
             </span>
           </div>
@@ -707,7 +707,7 @@ function TokenUsageCard({ myhq }: { myhq: UsageSummary }) {
                 </span>
               </div>
             </div>
-            <TokenChart myhq={myhq} />
+            <TokenChart myagens={myagens} />
             <p className="text-xs text-fg-faint">{t("usage_tokens_in_out")}</p>
           </div>
         </div>
@@ -717,13 +717,13 @@ function TokenUsageCard({ myhq }: { myhq: UsageSummary }) {
 }
 
 /** Stacked daily bar chart of input (bottom) + output (top) tokens per day. */
-function TokenChart({ myhq }: { myhq: UsageSummary }) {
+function TokenChart({ myagens }: { myagens: UsageSummary }) {
   const { t } = useI18n();
-  const recent = myhq.daily.slice(-30);
+  const recent = myagens.daily.slice(-30);
   const max = Math.max(1, ...recent.map((d) => d.inputTokens + d.outputTokens));
 
-  const todayIn = myhq.today.inputTokens;
-  const todayOut = myhq.today.outputTokens;
+  const todayIn = myagens.today.inputTokens;
+  const todayOut = myagens.today.outputTokens;
   const todayTotal = todayIn + todayOut;
 
   // No finalized days at all — clean empty state.

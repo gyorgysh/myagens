@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 #
-# Linux/systemd installer. Creates /etc/systemd/system/myhq.service,
+# Linux/systemd installer. Creates /etc/systemd/system/myagens.service,
 # builds the project, enables + starts it, and drops a scoped passwordless
 # sudoers rule so the service user (and thus the agent) can restart THIS service.
+#
+# Migrates a pre-rename 'myhq' unit (from before the myhq->MyAgens rename) by
+# stopping and removing it before installing the new one, so a re-run of this
+# installer on an existing box doesn't end up with two competing instances of
+# the bot polling Telegram at once.
 
 set -euo pipefail
 
-SERVICE=myhq
+SERVICE=myagens
+LEGACY_SERVICE=myhq
 APP_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 if ! command -v systemctl >/dev/null 2>&1; then
@@ -63,6 +69,13 @@ $RUN_USER ALL=(root) NOPASSWD: $SYSTEMCTL start $SERVICE, $SYSTEMCTL stop $SERVI
 EOF
 sudo chmod 0440 "$SUDOERS"
 sudo visudo -cf "$SUDOERS" >/dev/null
+
+if systemctl list-unit-files 2>/dev/null | grep -q "^${LEGACY_SERVICE}\.service"; then
+  echo "• Migrating from the old '${LEGACY_SERVICE}' service…"
+  sudo systemctl disable --now "$LEGACY_SERVICE" 2>/dev/null || true
+  sudo rm -f "/etc/systemd/system/${LEGACY_SERVICE}.service" "/etc/sudoers.d/${LEGACY_SERVICE}"
+  sudo systemctl reset-failed "$LEGACY_SERVICE" 2>/dev/null || true
+fi
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now "$SERVICE"

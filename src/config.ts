@@ -9,14 +9,14 @@ import { isValidLanguage } from "./core/languages.js";
 
 loadEnv();
 
-// Default working directory: ~/MyHQ-Workspace, a cross-platform projects folder
+// Default working directory: ~/MyAgens-Workspace, a cross-platform projects folder
 // that exists on Linux, macOS, and Windows. The name is intentionally distinct
-// from ~/myhq (the service install dir) so they never collide, even on
+// from ~/myagens (the service install dir) so they never collide, even on
 // case-insensitive macOS. Created on first use if absent. Override with WORKDIR.
 // Resolves to <repo>/data from both src/config.ts and dist/config.js.
 // dirname twice: src/config.ts or dist/config.js -> repo root in both layouts.
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const defaultWorkdir = join(homedir(), "MyHQ-Workspace");
+const defaultWorkdir = join(homedir(), "MyAgens-Workspace");
 // Session/usage state lives in the gitignored data/ folder so it
 // survives restarts without leaking into any agent working directory.
 const defaultStateFile = join(repoRoot, "data", "state.json");
@@ -77,7 +77,7 @@ const schema = z.object({
   WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
   // Branding overrides (allows white-labelling / self-hosting with a different name).
   ATLAS_NAME: z.string().min(1).default("Atlas"),
-  BRAND_NAME: z.string().min(1).default("MyHQ"),
+  BRAND_NAME: z.string().min(1).default("MyAgens"),
   // White-label (full panel branding: title, logo, favicon, colours, email
   // footer) is a licensed feature. The configuration UI always exists, but the
   // overrides are only *applied* when this is true. Free for personal use:
@@ -88,7 +88,7 @@ const schema = z.object({
     .transform((v) => v === "true"),
   // Where the panel "Send feedback" form relays bug reports / suggestions. The
   // project collector handles them server-side; override to point at your own.
-  FEEDBACK_URL: z.string().url().default("https://gyorgy.sh/myhq_feedback"),
+  FEEDBACK_URL: z.string().url().default("https://gyorgy.sh/myagens_feedback"),
   // Default language for agent responses (BCP 47 tag, e.g. "en", "hu", "fr").
   // Fall back to English on an unsupported code rather than propagating an
   // invalid value into the "Respond in <lang>" prompt block or /lang display.

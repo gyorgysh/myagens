@@ -70,7 +70,7 @@ function loadEnv() {
 }
 loadEnv();
 
-console.log(`\n${C.y}MyHQ doctor${C.z} — checking the Claude Code connection\n`);
+console.log(`\n${C.y}MyAgens doctor${C.z} — checking the Claude Code connection\n`);
 info(`platform: ${platform()}   node: ${process.version}`);
 if (process.env.ANTHROPIC_API_KEY) info("ANTHROPIC_API_KEY is set in the environment (overrides the CLI login).");
 if (process.env.ANTHROPIC_BASE_URL) info(`ANTHROPIC_BASE_URL=${process.env.ANTHROPIC_BASE_URL} (a provider/proxy, not Anthropic).`);

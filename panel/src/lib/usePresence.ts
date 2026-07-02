@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { openHealthSocket, type PresenceClient } from "../api.ts";
 
-const ID_KEY = "myhq.clientId";
+const ID_KEY = "myagens.clientId";
 
 /** Stable per-device id, persisted in localStorage (shared across this device's
  *  tabs). Falls back to an ephemeral id if storage is unavailable. */

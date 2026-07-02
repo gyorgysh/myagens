@@ -1,6 +1,6 @@
 # Panel REST API
 
-Complete reference (with copy-paste `curl` examples) for the MyHQ Panel REST API.
+Complete reference (with copy-paste `curl` examples) for the MyAgens Panel REST API.
 The agent does not need this for normal operation — it manages the fleet through its
 MCP tools — so it lives here rather than in `work.md` (which loads every turn). Read
 this file when you need to script the panel or call an endpoint directly.
@@ -306,7 +306,7 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/skills/<id>
 # Delete
 curl -X DELETE -H "$AUTH" $BASE/api/skills/<id>
 
-# Export a skill as a shareable JSON bundle (kind: "myhq.skill")
+# Export a skill as a shareable JSON bundle (kind: "myagens.skill")
 curl -H "$AUTH" $BASE/api/skills/<id>/export > skill-deploy-site.json
 
 # Import a bundle (installs a new skill; name collisions get an " (imported)" suffix)
@@ -395,13 +395,13 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/vault/impo
 # Preview what a backup would contain (curated state files + vault secret count)
 curl -H "$AUTH" $BASE/api/backup
 
-# Download an encrypted archive of all durable state (binary .mhq)
+# Download an encrypted archive of all durable state (binary .mag)
 curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/backup/export \
-  -d '{ "passphrase": "at-least-8-chars" }' -o myhq-backup.mhq
+  -d '{ "passphrase": "at-least-8-chars" }' -o myagens-backup.mag
 
 # Restore an archive (base64-encoded body). Overwrites state files; restart after.
 curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/backup/import \
-  -d "{ \"archive\": \"$(base64 < myhq-backup.mhq)\", \"passphrase\": \"…\", \"includeVault\": true }"
+  -d "{ \"archive\": \"$(base64 < myagens-backup.mag)\", \"passphrase\": \"…\", \"includeVault\": true }"
 # Returns { filesRestored, vaultRestored, names, exportedAt }
 ```
 
@@ -501,7 +501,7 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/tunnel \
   -d '{ "provider": "ngrok", "authToken": "vault:<id>", "domain": "", "autoStart": true, "basicAuth": true }'
 # provider: "ngrok" (needs a token) | "cloudflare" (free quick tunnel, no token)
 # autoStart: relaunch the relay after a reboot/update (default true)
-# basicAuth: HTTP login (user "myhq" + auto-generated password) in front of the
+# basicAuth: HTTP login (user "myagens" + auto-generated password) in front of the
 #   public URL (default true); a password is generated + vaulted on first enable.
 
 # Reveal the current Basic Auth login (user + plaintext password)

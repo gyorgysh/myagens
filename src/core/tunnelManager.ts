@@ -24,7 +24,7 @@ import { resolveSecret, vault } from "./vault.js";
 const STORE = "tunnel.json";
 
 /** The HTTP Basic Auth username is fixed; only the password is user-rotatable. */
-export const BASIC_AUTH_USER = "myhq";
+export const BASIC_AUTH_USER = "myagens";
 
 export type TunnelProviderId = "ngrok" | "cloudflare";
 export type TunnelState = "stopped" | "starting" | "running" | "error";
@@ -38,7 +38,7 @@ interface TunnelConfig {
   domain?: string;
   /** Auto-launch the relay at panel startup (so it survives reboots/updates). Default on. */
   autoStart?: boolean;
-  /** HTTP Basic Auth gate in front of the tunnel (default on). Username is fixed to `myhq`. */
+  /** HTTP Basic Auth gate in front of the tunnel (default on). Username is fixed to `myagens`. */
   basicAuth?: boolean;
   /** Vault reference (`vault:<id>`) to the Basic Auth password. Generated on first enable. */
   passwordRef?: string;

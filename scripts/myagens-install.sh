@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# myhq-install.sh — one-shot installer/wizard for MyHQ.
+# myagens-install.sh — one-shot installer/wizard for MyAgens.
 #
-#   curl -fsSL https://gyorgy.sh/myhq-install.sh | bash
+#   curl -fsSL https://gyorgy.sh/myagens-install.sh | bash
 #
 # Self-contained: it does NOT assume the repo is checked out. It installs the
 # prerequisites (Homebrew on macOS; Node 20+, git, and the Claude Code CLI on
@@ -10,18 +10,18 @@
 # the repo, builds it, walks you through .env, and finally asks whether to run
 # as a background service or by hand.
 #
-# Non-interactive overrides (env vars): MYHQ_REPO, MYHQ_DIR, MYHQ_BRANCH,
-# MYHQ_TOKEN, MYHQ_USER_IDS, MYHQ_API_KEY, MYHQ_MODEL, MYHQ_MODE=service|manual,
-# MYHQ_VOICE=none|api|vosk, MYHQ_OPENAI_KEY,
-# MYHQ_PANEL=y|n, MYHQ_PANEL_PORT, MYHQ_PANEL_TOKEN,
-# MYHQ_REMOTE=none|ngrok|cloudflare|both, MYHQ_YES=1.
+# Non-interactive overrides (env vars): MYAGENS_REPO, MYAGENS_DIR, MYAGENS_BRANCH,
+# MYAGENS_TOKEN, MYAGENS_USER_IDS, MYAGENS_API_KEY, MYAGENS_MODEL, MYAGENS_MODE=service|manual,
+# MYAGENS_VOICE=none|api|vosk, MYAGENS_OPENAI_KEY,
+# MYAGENS_PANEL=y|n, MYAGENS_PANEL_PORT, MYAGENS_PANEL_TOKEN,
+# MYAGENS_REMOTE=none|ngrok|cloudflare|both, MYAGENS_YES=1.
 
 set -euo pipefail
 
-REPO_URL="${MYHQ_REPO:-https://github.com/gyorgysh/myhq.git}"
-BRANCH="${MYHQ_BRANCH:-main}"
-DEFAULT_DIR="${MYHQ_DIR:-$HOME/myhq}"
-TUTORIAL="https://gyorgy.sh/blog/myhq"
+REPO_URL="${MYAGENS_REPO:-https://github.com/gyorgysh/myagens.git}"
+BRANCH="${MYAGENS_BRANCH:-main}"
+DEFAULT_DIR="${MYAGENS_DIR:-$HOME/myagens}"
+TUTORIAL="https://gyorgy.sh/blog/myagens"
 MIN_NODE=20
 
 PANEL_PORT_CHOSEN=""
@@ -78,15 +78,15 @@ ask() {
   printf '%s' "${ans:-$def}"
 }
 
-# confirm "Question" "Y|N" -> returns 0 for yes. MYHQ_YES=1 auto-accepts; with no
+# confirm "Question" "Y|N" -> returns 0 for yes. MYAGENS_YES=1 auto-accepts; with no
 # terminal we decline (so an unattended pipe never does anything destructive).
 confirm() {
   local prompt="$1" def="${2:-Y}" ans=""
-  # MYHQ_YES auto-accepts DEFAULT-yes prompts only. A default-No confirm guards a
+  # MYAGENS_YES auto-accepts DEFAULT-yes prompts only. A default-No confirm guards a
   # destructive/overwrite action (e.g. "reconfigure the existing .env?") — auto-
   # accepting it would let an unattended re-run clobber saved credentials, so it
-  # is still declined under MYHQ_YES.
-  if [ "${MYHQ_YES:-0}" = "1" ]; then
+  # is still declined under MYAGENS_YES.
+  if [ "${MYAGENS_YES:-0}" = "1" ]; then
     [ "$def" = "N" ] && return 1
     return 0
   fi
@@ -163,7 +163,7 @@ ensure_xcode_license() {
   fi
 
   warn "Xcode is installed but its licence hasn't been accepted — native builds (Homebrew, node-pty) would fail mid-install."
-  if [ -z "$TTY" ] && [ "${MYHQ_YES:-0}" != "1" ]; then
+  if [ -z "$TTY" ] && [ "${MYAGENS_YES:-0}" != "1" ]; then
     warn "No terminal to accept it. Run ${B}sudo xcodebuild -license accept${R} once, then re-run this installer."
     return 0
   fi
@@ -409,9 +409,9 @@ configure_env() {
   cp "$APP_DIR/.env.example" "$env"
 
   local token ids key
-  token="${MYHQ_TOKEN:-$(ask "Telegram bot token (from @BotFather)" "")}"
-  ids="${MYHQ_USER_IDS:-$(ask "Allowed Telegram user id(s), comma-separated (from @userinfobot)" "")}"
-  key="${MYHQ_API_KEY:-}"
+  token="${MYAGENS_TOKEN:-$(ask "Telegram bot token (from @BotFather)" "")}"
+  ids="${MYAGENS_USER_IDS:-$(ask "Allowed Telegram user id(s), comma-separated (from @userinfobot)" "")}"
+  key="${MYAGENS_API_KEY:-}"
   if [ -z "$key" ] && ! command -v claude >/dev/null 2>&1; then
     key="$(ask "Anthropic API key (blank = log in with a Pro/Max plan instead)" "")"
   fi
@@ -421,7 +421,7 @@ configure_env() {
 
   # Default model — offer a short pick list rather than free-text so nobody has
   # to remember an exact id, and make clear it's not a permanent choice.
-  local model="${MYHQ_MODEL:-}"
+  local model="${MYAGENS_MODEL:-}"
   if [ -z "$model" ]; then
     printf '\n%s\n' "${B}Which Claude model should the bot use by default?${R}" >"${TTY:-/dev/stdout}"
     printf '%s\n' "${DIM}Don't overthink it — you can change this anytime later in the panel or with /model in Telegram.${R}" >"${TTY:-/dev/stdout}"
@@ -451,7 +451,7 @@ configure_env() {
 # only works inside the interactive TUI. setup-token requires a Claude
 # subscription (Pro or Max), so we say so up front.
 claude_login() {
-  [ -n "${MYHQ_API_KEY:-}" ] && return 0
+  [ -n "${MYAGENS_API_KEY:-}" ] && return 0
   local env="$APP_DIR/.env"
   if [ -f "$env" ] && grep -Eq '^[[:space:]]*ANTHROPIC_API_KEY=.+' "$env"; then
     return 0
@@ -513,11 +513,11 @@ gen_token() {
 
 configure_panel() {
   local env="$APP_DIR/.env"
-  local choice="${MYHQ_PANEL:-}"
+  local choice="${MYAGENS_PANEL:-}"
 
   printf '\n' >"${TTY:-/dev/stdout}"
   if [ -z "$choice" ]; then
-    printf '%s\n' "${B}MyHQ Panel${R} ${DIM}(embedded web dashboard — health, sessions, tasks, memory, vault, and more)${R}" >"${TTY:-/dev/stdout}"
+    printf '%s\n' "${B}MyAgens Panel${R} ${DIM}(embedded web dashboard — health, sessions, tasks, memory, vault, and more)${R}" >"${TTY:-/dev/stdout}"
     if confirm "Enable the panel? (recommended)" "Y"; then choice=y; else choice=n; fi
   fi
 
@@ -527,8 +527,8 @@ configure_panel() {
   fi
 
   # Port — default 8787, check if taken, fall through to manual entry.
-  local port="${MYHQ_PANEL_PORT:-8787}"
-  if [ -z "${MYHQ_PANEL_PORT:-}" ]; then
+  local port="${MYAGENS_PANEL_PORT:-8787}"
+  if [ -z "${MYAGENS_PANEL_PORT:-}" ]; then
     if ! port_free "$port"; then
       warn "Port $port is already in use by another service."
       port="$(ask "Enter an alternative port" "8788")"
@@ -541,11 +541,11 @@ configure_panel() {
   fi
 
   # Token — auto-generate (recommended) or enter manually.
-  local token="${MYHQ_PANEL_TOKEN:-}"
+  local token="${MYAGENS_PANEL_TOKEN:-}"
   # The panel rejects tokens shorter than 16 chars (SEC-3); if one was passed
   # in via the env override, replace it with a strong generated one.
   if [ -n "$token" ] && [ "${#token}" -lt 16 ]; then
-    warn "MYHQ_PANEL_TOKEN is shorter than 16 chars — using an auto-generated token instead."
+    warn "MYAGENS_PANEL_TOKEN is shorter than 16 chars — using an auto-generated token instead."
     token=""
   fi
   if [ -z "$token" ]; then
@@ -625,7 +625,7 @@ configure_remote_access() {
   # No point exposing a panel that isn't enabled.
   [ -n "$PANEL_PORT_CHOSEN" ] || return 0
 
-  local choice="${MYHQ_REMOTE:-}"
+  local choice="${MYAGENS_REMOTE:-}"
   if [ -z "$choice" ]; then
     printf '\n%s\n' "${B}Reach the panel from your phone?${R} ${DIM}(secure public tunnel to this panel, still behind your login)${R}" >"${TTY:-/dev/stdout}"
     printf '%s\n' "  ${B}1)${R} No, local only ${DIM}(default, most secure)${R}" >"${TTY:-/dev/stdout}"
@@ -656,7 +656,7 @@ configure_remote_access() {
 # --- voice (optional) -------------------------------------------------------
 configure_voice() {
   local env="$APP_DIR/.env"
-  local choice="${MYHQ_VOICE:-}"
+  local choice="${MYAGENS_VOICE:-}"
   if [ -z "$choice" ]; then
     printf '\n%s\n' "${B}Voice notes?${R} ${DIM}(transcribe Telegram voice messages into prompts)${R}" >"${TTY:-/dev/stdout}"
     printf '%s\n' "  ${B}1)${R} Skip" >"${TTY:-/dev/stdout}"
@@ -669,7 +669,7 @@ configure_voice() {
 
   case "$choice" in
     api)
-      local key; key="${MYHQ_OPENAI_KEY:-$(ask "Transcription API key (OpenAI or Groq)" "")}"
+      local key; key="${MYAGENS_OPENAI_KEY:-$(ask "Transcription API key (OpenAI or Groq)" "")}"
       set_env "$env" TRANSCRIBE_PROVIDER openai
       [ -n "$key" ] && set_env "$env" OPENAI_API_KEY "$key"
       say "For Groq's free tier, set TRANSCRIBE_BASE_URL + TRANSCRIBE_MODEL in .env (see its comments)."
@@ -712,7 +712,7 @@ install_vosk_model() {
 
 # --- run mode ---------------------------------------------------------------
 choose_run_mode() {
-  local mode="${MYHQ_MODE:-}"
+  local mode="${MYAGENS_MODE:-}"
   if [ -z "$mode" ]; then
     printf '\n%s\n' "${B}How should the bot run?${R}" >"${TTY:-/dev/stdout}"
     printf '%s\n' "  ${B}1)${R} Install as a background service ${DIM}(recommended — always on, restarts on crash/boot)${R}" >"${TTY:-/dev/stdout}"
@@ -785,7 +785,7 @@ ${B}Panel login${R}
 
   cat <<EOF
 
-${GR}${B}Done.${R} MyHQ is installed at ${B}${APP_DIR}${R}.
+${GR}${B}Done.${R} MyAgens is installed at ${B}${APP_DIR}${R}.
 ${panel_block}
 ${B}Next steps${R}
   • If you didn't log in or set an API key: ${B}claude setup-token${R}  (needs a Pro/Max plan)
@@ -795,7 +795,7 @@ ${B}Next steps${R}
   • Uninstall service:   ${B}${APP_DIR}/scripts/uninstall-service.sh${R}
 
 ${B}Learn more${R}
-  • Repo:     https://github.com/gyorgysh/myhq
+  • Repo:     https://github.com/gyorgysh/myagens
   • Tutorial: ${TUTORIAL}
 
 ${YE}Reminder:${R} this bot can read, write, and run anything on this machine.
@@ -805,7 +805,7 @@ EOF
 
 main() {
   printf '\n%s\n%s\n\n' \
-    "${B}MyHQ installer${R}" \
+    "${B}MyAgens installer${R}" \
     "${DIM}Claude Code, driven from Telegram.${R}"
   detect_os
   check_ram_swap

@@ -8,8 +8,9 @@ import { audit } from "./audit.js";
 
 const AGENTCTL = join(repoRoot, "scripts", "agentctl.sh");
 
-/** Which Windows service manager hosts the bot, if any: the NSSM service 'myhq'
- *  or the 'MyHQ Bot' scheduled task (both installed by myhq-install.ps1). */
+/** Which Windows service manager hosts the bot, if any: the NSSM service
+ *  'myagens' (or the pre-rename 'myhq') or the 'MyAgens Bot' scheduled task
+ *  (or the pre-rename 'MyHQ Bot'), both installed by myagens-install.ps1. */
 // Full paths to system32 executables so they resolve even when the NSSM
 // service has a restricted PATH that omits C:\Windows\System32.
 const sys32 = join(process.env.SystemRoot ?? "C:\\Windows", "System32");
@@ -17,20 +18,24 @@ const SC_EXE       = join(sys32, "sc.exe");
 const SCHTASKS_EXE = join(sys32, "schtasks.exe");
 
 function windowsServiceKind(): "nssm" | "task" | null {
-  try {
-    const out = execFileSync(SC_EXE, ["query", "myhq"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    if (/myhq/i.test(out)) return "nssm";
-  } catch {
-    /* not registered as a service */
+  for (const name of ["myagens", "myhq"]) {
+    try {
+      const out = execFileSync(SC_EXE, ["query", name], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      if (new RegExp(name, "i").test(out)) return "nssm";
+    } catch {
+      /* not registered as a service */
+    }
   }
-  try {
-    execFileSync(SCHTASKS_EXE, ["/query", "/tn", "MyHQ Bot"], { stdio: "ignore" });
-    return "task";
-  } catch {
-    /* no scheduled task */
+  for (const name of ["MyAgens Bot", "MyHQ Bot"]) {
+    try {
+      execFileSync(SCHTASKS_EXE, ["/query", "/tn", name], { stdio: "ignore" });
+      return "task";
+    } catch {
+      /* no scheduled task */
+    }
   }
   return null;
 }
@@ -40,16 +45,21 @@ function windowsServiceKind(): "nssm" | "task" | null {
 export function serviceInstalled(): boolean {
   try {
     if (process.platform === "darwin") {
-      // Matches the launchd label installed by scripts/macos/install-service.sh.
-      return existsSync(join(homedir(), "Library", "LaunchAgents", "sh.gyorgy.myhq.plist"));
+      // Matches the launchd label installed by scripts/macos/install-service.sh
+      // (or the pre-rename label, for a checkout not yet migrated).
+      return (
+        existsSync(join(homedir(), "Library", "LaunchAgents", "sh.gyorgy.myagens.plist")) ||
+        existsSync(join(homedir(), "Library", "LaunchAgents", "sh.gyorgy.myhq.plist"))
+      );
     }
     if (process.platform === "linux") {
-      // Matches the systemd unit installed by scripts/linux/install-service.sh.
-      const out = execFileSync("systemctl", ["list-unit-files", "myhq.service"], {
+      // Matches the systemd unit installed by scripts/linux/install-service.sh
+      // (or the pre-rename unit, for a checkout not yet migrated).
+      const out = execFileSync("systemctl", ["list-unit-files", "myagens.service", "myhq.service"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       });
-      return /myhq\.service/.test(out);
+      return /myagens\.service|myhq\.service/.test(out);
     }
     if (process.platform === "win32") {
       return windowsServiceKind() !== null;

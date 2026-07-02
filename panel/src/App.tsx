@@ -81,7 +81,7 @@ export function App() {
   const [shortcuts, setShortcuts] = useState(false);
   const [chatEnabled, setChatEnabled] = useState(true);
   const [terminalEnabled, setTerminalEnabled] = useState(false);
-  const [brandName, setBrandName] = useState("MyHQ");
+  const [brandName, setBrandName] = useState("MyAgens");
   const [logoUrl, setLogoUrl] = useState<string | undefined>(undefined);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateCount, setUpdateCount] = useState(0);
@@ -424,7 +424,7 @@ export function App() {
                 ◈
               </span>
               <a
-                href="https://github.com/gyorgysh/myhq"
+                href="https://github.com/gyorgysh/myagens"
                 target="_blank"
                 rel="noreferrer"
                 className="text-fg-dim hover:text-fg-muted"

@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    MyHQ Windows installer — sets up Claude Code Telegram bot on Windows.
+    MyAgens Windows installer — sets up Claude Code Telegram bot on Windows.
 
 .DESCRIPTION
     One-shot wizard for Windows 10/11 (PowerShell 5.1+).
@@ -13,28 +13,28 @@
 
 .EXAMPLE
     # Download and run directly:
-    irm https://gyorgy.sh/myhq-install.ps1 | iex
+    irm https://gyorgy.sh/myagens-install.ps1 | iex
 
     # Or with overrides:
-    $env:MYHQ_REPO="https://github.com/yourfork/myhq.git"; iwr ... | iex
+    $env:MYAGENS_REPO="https://github.com/yourfork/myagens.git"; iwr ... | iex
 
 .NOTES
     Non-interactive overrides (set before running):
-      MYHQ_REPO         Git repository URL
-      MYHQ_DIR          Install directory (default: $HOME\myhq)
-      MYHQ_BRANCH       Branch to clone (default: main)
-      MYHQ_TOKEN        Telegram bot token
-      MYHQ_USER_IDS     Comma-separated allowed Telegram user IDs
-      MYHQ_API_KEY      Anthropic API key
-      MYHQ_MODEL        Default Claude model id (skips the model menu)
-      MYHQ_MODE         service | manual (default: prompt)
-      MYHQ_SVC_PASSWORD Windows password to run the service as the current user
+      MYAGENS_REPO         Git repository URL
+      MYAGENS_DIR          Install directory (default: $HOME\myagens)
+      MYAGENS_BRANCH       Branch to clone (default: main)
+      MYAGENS_TOKEN        Telegram bot token
+      MYAGENS_USER_IDS     Comma-separated allowed Telegram user IDs
+      MYAGENS_API_KEY      Anthropic API key
+      MYAGENS_MODEL        Default Claude model id (skips the model menu)
+      MYAGENS_MODE         service | manual (default: prompt)
+      MYAGENS_SVC_PASSWORD Windows password to run the service as the current user
                         (blank/unset = run as LocalSystem)
-      MYHQ_PANEL        y | n  (enable the web dashboard)
-      MYHQ_PANEL_PORT   Panel port number (default: 8787)
-      MYHQ_PANEL_TOKEN  Panel access token (auto-generated if empty)
-      MYHQ_REMOTE       none | ngrok | cloudflare | both (phone access tunnel)
-      MYHQ_YES          Set to 1 to accept all defaults without prompting
+      MYAGENS_PANEL        y | n  (enable the web dashboard)
+      MYAGENS_PANEL_PORT   Panel port number (default: 8787)
+      MYAGENS_PANEL_TOKEN  Panel access token (auto-generated if empty)
+      MYAGENS_REMOTE       none | ngrok | cloudflare | both (phone access tunnel)
+      MYAGENS_YES          Set to 1 to accept all defaults without prompting
 #>
 
 Set-StrictMode -Version Latest
@@ -50,12 +50,12 @@ try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch 
 # ---------------------------------------------------------------------------
 # Config / defaults
 # ---------------------------------------------------------------------------
-$RepoUrl    = if ($env:MYHQ_REPO)   { $env:MYHQ_REPO }   else { "https://github.com/gyorgysh/myhq.git" }
-$Branch     = if ($env:MYHQ_BRANCH) { $env:MYHQ_BRANCH } else { "main" }
-$InstallDir = if ($env:MYHQ_DIR)    { $env:MYHQ_DIR }    else { Join-Path $HOME "myhq" }
+$RepoUrl    = if ($env:MYAGENS_REPO)   { $env:MYAGENS_REPO }   else { "https://github.com/gyorgysh/myagens.git" }
+$Branch     = if ($env:MYAGENS_BRANCH) { $env:MYAGENS_BRANCH } else { "main" }
+$InstallDir = if ($env:MYAGENS_DIR)    { $env:MYAGENS_DIR }    else { Join-Path $HOME "myagens" }
 $MinNode    = 20
-$AutoYes    = $env:MYHQ_YES -eq "1"
-$Tutorial   = "https://gyorgy.sh/blog/myhq"
+$AutoYes    = $env:MYAGENS_YES -eq "1"
+$Tutorial   = "https://gyorgy.sh/blog/myagens"
 
 $Script:PanelPortChosen  = ""
 $Script:PanelTokenChosen = ""
@@ -106,7 +106,7 @@ function Ensure-Admin {
     # `irm … | iex` (there is no file to relaunch), so instead give clear, plain
     # instructions and stop. Installing the service needs admin rights.
     Write-Host ""
-    Err "MyHQ must be installed from an Administrator PowerShell."
+    Err "MyAgens must be installed from an Administrator PowerShell."
     Write-Host ""
     Write-Host "  How to open one:" -ForegroundColor Cyan
     Write-Host "    1. Press the Windows key"
@@ -115,7 +115,7 @@ function Ensure-Admin {
     Write-Host ""
     Write-Host "  Then run these two lines:" -ForegroundColor Cyan
     Write-Host "    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force"
-    Write-Host "    irm https://gyorgy.sh/myhq-install.ps1 | iex"
+    Write-Host "    irm https://gyorgy.sh/myagens-install.ps1 | iex"
     Write-Host ""
     # Pause so the window doesn't vanish before this can be read (a freshly
     # launched window closes the moment the script exits). Skipped in automation.
@@ -159,19 +159,19 @@ function Test-WindowsPassword {
 }
 
 # Obtain a *validated* Windows password for the service account. Non-interactive:
-# reads MYHQ_SVC_PASSWORD. Interactive: prompts up to 3 times, re-asking on a wrong
+# reads MYAGENS_SVC_PASSWORD. Interactive: prompts up to 3 times, re-asking on a wrong
 # password. Returns the plaintext password, or $null if none could be obtained
 # (the caller then aborts — we never silently run the service as the wrong identity).
 function Get-ServicePassword {
     param([string]$User)
     $name = ($User -split "\\")[-1]   # SAM account name (strip DOMAIN\)
 
-    if ($env:MYHQ_SVC_PASSWORD) {
-        if ((Test-WindowsPassword $name $env:MYHQ_SVC_PASSWORD) -eq $false) {
-            Err "MYHQ_SVC_PASSWORD is incorrect for $User."
+    if ($env:MYAGENS_SVC_PASSWORD) {
+        if ((Test-WindowsPassword $name $env:MYAGENS_SVC_PASSWORD) -eq $false) {
+            Err "MYAGENS_SVC_PASSWORD is incorrect for $User."
             return $null
         }
-        return $env:MYHQ_SVC_PASSWORD
+        return $env:MYAGENS_SVC_PASSWORD
     }
 
     if ($AutoYes) { return $null }   # unattended and no password supplied
@@ -367,12 +367,12 @@ function Configure-Env {
     Write-Host "  You will need a Telegram bot token and your Telegram user ID."
     Write-Host "  Tutorial: $Tutorial`n"
 
-    $token   = if ($env:MYHQ_TOKEN)    { $env:MYHQ_TOKEN }    else { Ask "Telegram bot token (from @BotFather)" }
-    $userIds = if ($env:MYHQ_USER_IDS) { $env:MYHQ_USER_IDS } else { Ask "Your Telegram user ID(s), comma-separated" }
-    $apiKey  = if ($env:MYHQ_API_KEY)  { $env:MYHQ_API_KEY }  else { Ask "Anthropic API key (blank = log in with a Pro/Max plan instead)" "" }
+    $token   = if ($env:MYAGENS_TOKEN)    { $env:MYAGENS_TOKEN }    else { Ask "Telegram bot token (from @BotFather)" }
+    $userIds = if ($env:MYAGENS_USER_IDS) { $env:MYAGENS_USER_IDS } else { Ask "Your Telegram user ID(s), comma-separated" }
+    $apiKey  = if ($env:MYAGENS_API_KEY)  { $env:MYAGENS_API_KEY }  else { Ask "Anthropic API key (blank = log in with a Pro/Max plan instead)" "" }
 
-    if ($env:MYHQ_MODEL) {
-        $model = $env:MYHQ_MODEL
+    if ($env:MYAGENS_MODEL) {
+        $model = $env:MYAGENS_MODEL
     } else {
         Write-Host ""
         Write-Host "  Which Claude model should the bot use by default?" -ForegroundColor Cyan
@@ -388,13 +388,13 @@ function Configure-Env {
             default { $model = "claude-opus-4-8" }
         }
     }
-    $workdir = Ask "Agent working directory (where files go)" (Join-Path $env:USERPROFILE "MyHQ-Workspace")
+    $workdir = Ask "Agent working directory (where files go)" (Join-Path $env:USERPROFILE "MyAgens-Workspace")
     $lang    = Ask "Default agent language (en, hu, fr, …)" "en"
 
     # Panel
-    Title "MyHQ Panel"
+    Title "MyAgens Panel"
     Write-Host "  Optional embedded web dashboard — health, sessions, tasks, memory, vault, and more."
-    $panelChoice = if ($env:MYHQ_PANEL) { $env:MYHQ_PANEL } else { "" }
+    $panelChoice = if ($env:MYAGENS_PANEL) { $env:MYAGENS_PANEL } else { "" }
     $panelEnabled = if ($panelChoice -eq "y") { $true } elseif ($panelChoice -eq "n") { $false } else {
         Confirm "Enable the panel? (recommended)" $true
     }
@@ -404,7 +404,7 @@ function Configure-Env {
 
     if ($panelEnabled) {
         # Port — check if taken, offer alternative.
-        $defaultPort = if ($env:MYHQ_PANEL_PORT) { $env:MYHQ_PANEL_PORT } else { "8787" }
+        $defaultPort = if ($env:MYAGENS_PANEL_PORT) { $env:MYAGENS_PANEL_PORT } else { "8787" }
         if (-not (Test-PortFree ([int]$defaultPort))) {
             Warn "Port $defaultPort is already in use by another service."
             $defaultPort = "8788"
@@ -416,11 +416,11 @@ function Configure-Env {
 
         # Token — auto-generate or manual. The panel rejects tokens shorter
         # than 16 chars (SEC-3); replace a too-short env override with a strong one.
-        if ($env:MYHQ_PANEL_TOKEN -and $env:MYHQ_PANEL_TOKEN.Length -lt 16) {
-            Warn "MYHQ_PANEL_TOKEN is shorter than 16 chars — using an auto-generated token instead."
+        if ($env:MYAGENS_PANEL_TOKEN -and $env:MYAGENS_PANEL_TOKEN.Length -lt 16) {
+            Warn "MYAGENS_PANEL_TOKEN is shorter than 16 chars — using an auto-generated token instead."
             $panelToken = New-RandomToken
-        } elseif ($env:MYHQ_PANEL_TOKEN) {
-            $panelToken = $env:MYHQ_PANEL_TOKEN
+        } elseif ($env:MYAGENS_PANEL_TOKEN) {
+            $panelToken = $env:MYAGENS_PANEL_TOKEN
         } else {
             Write-Host ""
             Write-Host "  Panel token — the password for all panel access." -ForegroundColor Cyan
@@ -490,7 +490,7 @@ function Configure-RemoteAccess {
 
     Title "Remote access"
     Write-Host "  Reach the panel from your phone over a secure public tunnel (still behind your login)."
-    $choice = if ($env:MYHQ_REMOTE) { $env:MYHQ_REMOTE } else { "" }
+    $choice = if ($env:MYAGENS_REMOTE) { $env:MYAGENS_REMOTE } else { "" }
     if (-not $choice) {
         Write-Host "  1) No, local only (default - most secure)"
         Write-Host "  2) Cloudflare (free quick tunnel, no account or token needed) [recommended]"
@@ -529,7 +529,7 @@ function Configure-RemoteAccess {
 # ---------------------------------------------------------------------------
 function Install-Service {
     Title "Service setup"
-    $mode = if ($env:MYHQ_MODE) { $env:MYHQ_MODE } else {
+    $mode = if ($env:MYAGENS_MODE) { $env:MYAGENS_MODE } else {
         if (Confirm "Run as a background Windows service (auto-restart on boot)?") { "service" } else { "manual" }
     }
 
@@ -554,8 +554,26 @@ function Install-Service {
     $nodeBin = (Get-Command node).Source
     $entryPoint = Join-Path $InstallDir "dist\index.js"
 
+    # Migrate a pre-rename install (re-running this installer against an
+    # existing $InstallDir): remove the old 'myhq' NSSM service / 'MyHQ Bot'
+    # task first so it doesn't keep running alongside the new one.
     if ($nssm) {
-        $svcName = "myhq"
+        $legacyStatus = "$(& nssm status myhq 2>$null)"
+        if ($LASTEXITCODE -eq 0 -and $legacyStatus) {
+            Say "Migrating from the old 'myhq' NSSM service…"
+            & nssm stop myhq 2>$null | Out-Null
+            & nssm remove myhq confirm 2>$null | Out-Null
+        }
+    }
+    $legacyTask = Get-ScheduledTask -TaskName "MyHQ Bot" -ErrorAction SilentlyContinue
+    if ($legacyTask) {
+        Say "Migrating from the old 'MyHQ Bot' scheduled task…"
+        Stop-ScheduledTask       -TaskName "MyHQ Bot" -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskName "MyHQ Bot" -Confirm:$false -ErrorAction SilentlyContinue
+    }
+
+    if ($nssm) {
+        $svcName = "myagens"
         Say "Installing NSSM service '$svcName'…"
         & nssm install $svcName $nodeBin $entryPoint
         & nssm set $svcName AppDirectory $InstallDir
@@ -577,7 +595,7 @@ function Install-Service {
         $svcUser = "$env:USERDOMAIN\$env:USERNAME"
         $plainPw = Get-ServicePassword $svcUser
         if (-not $plainPw) {
-            Die "A valid Windows password for $svcUser is required to run the service. Re-run and enter it (or set MYHQ_SVC_PASSWORD), or choose manual run mode."
+            Die "A valid Windows password for $svcUser is required to run the service. Re-run and enter it (or set MYAGENS_SVC_PASSWORD), or choose manual run mode."
         }
 
         & nssm set $svcName ObjectName $svcUser $plainPw
@@ -585,8 +603,8 @@ function Install-Service {
         $plainPw = $null
         Ok "Service will run as $svcUser."
 
-        & nssm set $svcName AppStdout (Join-Path $InstallDir "logs\myhq.log")
-        & nssm set $svcName AppStderr (Join-Path $InstallDir "logs\myhq-err.log")
+        & nssm set $svcName AppStdout (Join-Path $InstallDir "logs\myagens.log")
+        & nssm set $svcName AppStderr (Join-Path $InstallDir "logs\myagens-err.log")
         & nssm set $svcName AppRotateFiles 1
         & nssm set $svcName AppRotateOnline 1
         New-Item -ItemType Directory -Path (Join-Path $InstallDir "logs") -Force | Out-Null
@@ -624,7 +642,7 @@ function Install-Service {
         Start-Sleep -Seconds 2
         $status = "$(& nssm status $svcName 2>$null)"
         if ($status -notmatch "RUNNING") {
-            Die "Service '$svcName' failed to start ($status). Check the password and the account's 'Log on as a service' right, then re-run. Logs: $InstallDir\logs\myhq-err.log"
+            Die "Service '$svcName' failed to start ($status). Check the password and the account's 'Log on as a service' right, then re-run. Logs: $InstallDir\logs\myagens-err.log"
         }
 
         $Script:ServiceMode = "service"
@@ -633,7 +651,7 @@ function Install-Service {
     } else {
         # Fall back to Task Scheduler
         Say "NSSM not available. Setting up Task Scheduler entry…"
-        $taskName  = "MyHQ Bot"
+        $taskName  = "MyAgens Bot"
         $startCmd  = "node"
         $startArgs = "`"$entryPoint`""
         $action    = New-ScheduledTaskAction -Execute $startCmd -Argument $startArgs -WorkingDirectory $InstallDir
@@ -653,7 +671,7 @@ function Install-Service {
 # Claude CLI login
 # ---------------------------------------------------------------------------
 function Claude-Login {
-    if ($env:MYHQ_API_KEY) { return }  # API key takes precedence
+    if ($env:MYAGENS_API_KEY) { return }  # API key takes precedence
     $envPath = Join-Path $InstallDir ".env"
     $hasKey = Select-String -Path $envPath -Pattern "^ANTHROPIC_API_KEY=.+" -Quiet 2>$null
     if ($hasKey) { return }
@@ -716,7 +734,7 @@ function Open-Panel {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-Write-Host "`n  MyHQ Windows Installer" -ForegroundColor Magenta
+Write-Host "`n  MyAgens Windows Installer" -ForegroundColor Magenta
 Write-Host "  $Tutorial`n"
 
 Ensure-Admin
@@ -733,7 +751,7 @@ Install-Service
 Open-Panel
 
 Write-Host "`n"
-Ok "MyHQ installation complete!"
+Ok "MyAgens installation complete!"
 Write-Host "  Install dir : $InstallDir" -ForegroundColor Cyan
 if ($Script:PanelPortChosen) {
     Write-Host ""

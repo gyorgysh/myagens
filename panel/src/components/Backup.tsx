@@ -54,7 +54,7 @@ export function BackupView({ onAuthError }: { onAuthError: () => void }) {
       const a = document.createElement("a");
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
       a.href = url;
-      a.download = `myhq-backup-${stamp}.mhq`;
+      a.download = `myagens-backup-${stamp}.mag`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -156,7 +156,7 @@ export function BackupView({ onAuthError }: { onAuthError: () => void }) {
         <input
           ref={fileRef}
           type="file"
-          accept=".mhq,application/octet-stream"
+          accept=".mag,.mhq,application/octet-stream"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           className="mt-2 block w-full text-sm text-fg-dim file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:text-fg hover:file:bg-surface"
         />

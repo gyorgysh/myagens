@@ -342,7 +342,7 @@ export function buildBot(): Telegraf {
   heartbeat.start({
     notify: async (text) => {
       // Mirror the alert to any subscribed browsers as an OS-level push.
-      void push.notify({ title: "MyHQ heartbeat", body: text, kind: "heartbeat", tag: "heartbeat" });
+      void push.notify({ title: "MyAgens heartbeat", body: text, kind: "heartbeat", tag: "heartbeat" });
       for (const chatId of alertTargets) {
         await bot.telegram
           .sendMessage(chatId, `<i>${escapeHtml(text)}</i>`, { parse_mode: "HTML" })

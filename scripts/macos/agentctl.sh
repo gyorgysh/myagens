@@ -4,11 +4,20 @@
 # Usage: agentctl.sh {start|stop|restart|status|logs}
 
 set -euo pipefail
-LABEL=sh.gyorgy.myhq
-PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
-LOG="$HOME/Library/Logs/${LABEL}.log"
+LABEL=sh.gyorgy.myagens
+LEGACY_LABEL=sh.gyorgy.myhq
 
 [ "$(uname -s)" = "Darwin" ] || { echo "✖ This manager is for macOS." >&2; exit 1; }
+
+# Fall back to the pre-rename label if that's what's actually installed — lets
+# this checkout keep managing a not-yet-migrated LaunchAgent until the user
+# re-runs install-service.sh.
+if [ ! -f "$HOME/Library/LaunchAgents/${LABEL}.plist" ] \
+   && [ -f "$HOME/Library/LaunchAgents/${LEGACY_LABEL}.plist" ]; then
+  LABEL=$LEGACY_LABEL
+fi
+PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
+LOG="$HOME/Library/Logs/${LABEL}.log"
 
 cmd="${1:-status}"
 case "$cmd" in

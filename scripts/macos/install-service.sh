@@ -3,10 +3,16 @@
 # macOS/launchd installer. Installs a per-user LaunchAgent so the bot runs in
 # your login session (where the `claude` CLI login lives) and restarts on crash
 # and at login. No sudo needed — and so the agent can restart itself freely.
+#
+# Migrates a pre-rename 'sh.gyorgy.myhq' LaunchAgent (from before the
+# myhq->MyAgens rename) by unloading and removing it before loading the new
+# one, so a re-run of this installer on an existing box doesn't end up with
+# two competing instances of the bot polling Telegram at once.
 
 set -euo pipefail
 
-LABEL=sh.gyorgy.myhq
+LABEL=sh.gyorgy.myagens
+LEGACY_LABEL=sh.gyorgy.myhq
 APP_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 LOG_DIR="$HOME/Library/Logs"
@@ -66,6 +72,13 @@ cat > "$PLIST" <<EOF
 </dict>
 </plist>
 EOF
+
+LEGACY_PLIST="$HOME/Library/LaunchAgents/${LEGACY_LABEL}.plist"
+if [ -f "$LEGACY_PLIST" ]; then
+  echo "• Migrating from the old '${LEGACY_LABEL}' LaunchAgent…"
+  launchctl unload -w "$LEGACY_PLIST" 2>/dev/null || true
+  rm -f "$LEGACY_PLIST"
+fi
 
 echo "• Loading the LaunchAgent…"
 launchctl unload "$PLIST" 2>/dev/null || true

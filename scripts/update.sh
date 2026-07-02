@@ -3,6 +3,8 @@
 # update.sh — sync to the latest code, reinstall deps, rebuild (panel UI + bot),
 # and restart the service if one is installed. Safe to run whether you run as a
 # service or by hand (it only restarts when a service is actually present).
+# Also fixes up the git remote and migrates a pre-rename ('myhq') service to
+# the current name if one is found still running (see restart_if_service).
 #
 # It hard-resets the checkout to the remote ref: local edits to tracked files
 # are discarded, untracked extra files are left alone. This box mirrors the
@@ -19,6 +21,19 @@ ok()  { printf '✓ %s\n' "$*"; }
 err() { printf '✖ %s\n' "$*" >&2; }
 
 REF="${1:-$(git rev-parse --abbrev-ref HEAD)}"
+
+# Repo was renamed gyorgysh/myhq -> gyorgysh/myagens. GitHub redirects the old
+# URL, so this isn't strictly required, but fix it up if origin is still the
+# exact canonical old URL (never touch a fork under a different owner).
+CURRENT_REMOTE="$(git remote get-url origin 2>/dev/null || true)"
+case "$CURRENT_REMOTE" in
+  "git@github.com:gyorgysh/myhq.git")
+    say "Updating git remote (repo renamed): $CURRENT_REMOTE -> git@github.com:gyorgysh/myagens.git"
+    git remote set-url origin "git@github.com:gyorgysh/myagens.git" ;;
+  "https://github.com/gyorgysh/myhq.git")
+    say "Updating git remote (repo renamed): $CURRENT_REMOTE -> https://github.com/gyorgysh/myagens.git"
+    git remote set-url origin "https://github.com/gyorgysh/myagens.git" ;;
+esac
 
 # This box tracks the remote exactly. We hard-reset to the fetched ref instead
 # of `git pull`, which means:
@@ -94,15 +109,35 @@ probe_node_pty || true
 
 # Restart only if a service is installed for this machine.
 restart_if_service() {
+  local new_present=0 old_present=0
   case "$(uname -s)" in
     Darwin)
-      local plist="$HOME/Library/LaunchAgents/sh.gyorgy.myhq.plist"
-      [ -f "$plist" ] || return 1 ;;
+      [ -f "$HOME/Library/LaunchAgents/sh.gyorgy.myagens.plist" ] && new_present=1
+      [ -f "$HOME/Library/LaunchAgents/sh.gyorgy.myhq.plist" ] && old_present=1 ;;
     Linux)
       command -v systemctl >/dev/null 2>&1 || return 1
-      systemctl list-unit-files 2>/dev/null | grep -q '^myhq\.service' || return 1 ;;
+      local units; units="$(systemctl list-unit-files 2>/dev/null)"
+      echo "$units" | grep -q '^myagens\.service' && new_present=1
+      echo "$units" | grep -q '^myhq\.service' && old_present=1 ;;
     *) return 1 ;;
   esac
+  [ "$new_present" = "1" ] || [ "$old_present" = "1" ] || return 1
+
+  # Still on the pre-rename service and haven't migrated yet: run the installer,
+  # which builds, writes the new unit/LaunchAgent, starts it, and stops/removes
+  # the old one — a strict superset of a plain restart. On Linux this needs sudo
+  # to write the new unit file; with no TTY (e.g. triggered from the panel) sudo
+  # fails fast rather than hanging, so this falls through to a plain restart
+  # under whichever service name still works, keeping the bot up either way.
+  if [ "$old_present" = "1" ] && [ "$new_present" = "0" ]; then
+    say "Found the pre-rename service — migrating to 'myagens' (may prompt for sudo on Linux)…"
+    if "$APP_DIR/scripts/install-service.sh"; then
+      ok "Migrated and restarted as the 'myagens' service."
+      return 0
+    fi
+    err "Automatic migration didn't complete (likely needs an interactive sudo prompt) — falling back to a plain restart under the old service name. Run ./scripts/install-service.sh by hand to finish migrating."
+  fi
+
   say "Restarting the service…"
   # Check the restart explicitly. Because this runs as an `if` condition, `set -e`
   # is disabled inside it, so a failed `agentctl restart` (e.g. launchctl kickstart

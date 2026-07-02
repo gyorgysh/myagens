@@ -81,7 +81,7 @@ async function fileToStagedImage(file: File): Promise<StagedImage | null> {
  * panel (theme, newest-first, collapsibles).
  */
 function usePlanningMode(agentId: string): [boolean, (v: boolean) => void] {
-  const key = `myhq.panel.planning.${agentId}`;
+  const key = `myagens.panel.planning.${agentId}`;
   const [planning, setPlanning] = useState(() => localStorage.getItem(key) === "1");
   // Re-read when switching between agents (the same component instance is reused
   // for different agentIds via the switcher rail).

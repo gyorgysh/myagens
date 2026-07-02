@@ -1,6 +1,6 @@
 #Requires -Version 5.1
-# Run MyHQ bot from the install directory.
-# Usage: .\scripts\windows\myhq-run.ps1
+# Run MyAgens bot from the install directory.
+# Usage: .\scripts\windows\myagens-run.ps1
 
 $AppDir = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Set-Location $AppDir

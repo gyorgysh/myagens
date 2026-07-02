@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { en, type TranslationKey } from "../i18n/en.ts";
 import { hu } from "../i18n/hu.ts";
 
-const STORAGE_KEY = "myhq.panel.lang";
+const STORAGE_KEY = "myagens.panel.lang";
+// Pre-rename key, so a browser's saved language preference survives the
+// myhq->MyAgens rename.
+const LEGACY_STORAGE_KEY = "myhq.panel.lang";
 
 /** Available panel interface languages. */
 export const INTERFACE_LANGUAGES: Record<string, string> = {
@@ -13,7 +16,15 @@ export const INTERFACE_LANGUAGES: Record<string, string> = {
 const TRANSLATIONS: Record<string, typeof en> = { en, hu };
 
 function getStored(): string {
-  return localStorage.getItem(STORAGE_KEY) ?? "en";
+  const lang = localStorage.getItem(STORAGE_KEY);
+  if (lang) return lang;
+  const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (legacy) {
+    localStorage.setItem(STORAGE_KEY, legacy);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return legacy;
+  }
+  return "en";
 }
 
 function load(code: string): typeof en {

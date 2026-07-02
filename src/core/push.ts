@@ -187,7 +187,7 @@ class PushClient {
       url: options.url ?? "/",
     });
     const vapid = {
-      subject: "mailto:push@myhq.local",
+      subject: "mailto:push@myagens.local",
       publicKey: this.file.vapidPublicKey!,
       privateKey: priv,
     };

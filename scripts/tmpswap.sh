@@ -7,7 +7,7 @@
 #   ./scripts/tmpswap.sh off [PATH]               disable and delete swap
 #
 # SIZE_GB  defaults to 4. Must not exceed 80% of free disk space.
-# PATH     defaults to /var/tmp/myhq-swap (survives /tmp tmpfs mounts).
+# PATH     defaults to /var/tmp/myagens-swap (survives /tmp tmpfs mounts).
 #
 # The file is NOT added to /etc/fstab and will not survive a reboot.
 # Run "off" when the heavy task is done to reclaim disk space.
@@ -26,7 +26,7 @@ fi
 
 ACTION="${1:-on}"
 SIZE_GB="${2:-4}"
-SWAP_PATH="${3:-/var/tmp/myhq-swap}"
+SWAP_PATH="${3:-/var/tmp/myagens-swap}"
 
 # When called as "off", the second argument is the path, not a size.
 if [ "$ACTION" = "off" ] && [ $# -ge 2 ]; then

@@ -34,7 +34,7 @@ async function main(): Promise<void> {
     log.error("Uncaught exception (kept alive)", { error: errText(err) });
   });
 
-  // Ensure the working directory exists. ~/MyHQ-Workspace is the unified
+  // Ensure the working directory exists. ~/MyAgens-Workspace is the unified
   // default across Windows, macOS, and Linux — always created on boot so
   // agents always have a valid cwd. If WORKDIR is overridden in .env the
   // user's chosen path is created instead. mkdirSync with recursive:true is

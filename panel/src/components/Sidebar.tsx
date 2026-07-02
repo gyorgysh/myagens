@@ -455,7 +455,7 @@ export function Sidebar({
   updateCount = 0,
   inboxPending = 0,
   expanded = false,
-  brandName = "MyHQ",
+  brandName = "MyAgens",
   logoUrl,
 }: {
   tab: Tab | "settings";

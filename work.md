@@ -42,7 +42,7 @@ and confirm the title + column in your reply.
 Service wrapper (run from project dir):
 - `./scripts/agentctl.sh restart|stop|start|status|logs`
 
-Native: `sudo systemctl restart myhq` (Linux) or `launchctl kickstart -k gui/$(id -u)/sh.gyorgy.myhq` (macOS).
+Native: `sudo systemctl restart myagens` (Linux) or `launchctl kickstart -k gui/$(id -u)/sh.gyorgy.myagens` (macOS).
 
 Restarting kills the current process; run it last and do not report back in the same turn.
 

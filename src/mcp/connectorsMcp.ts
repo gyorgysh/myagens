@@ -779,7 +779,7 @@ function gdriveMcp(token: string, scope: ConnectorScope) {
             // Multipart upload. Use a random boundary so file content that happens
             // to contain the delimiter string can't corrupt the body or smuggle an
             // extra part that overrides the JSON metadata.
-            const boundary = `myhq_gdrive_${randomBytes(16).toString("hex")}`;
+            const boundary = `myagens_gdrive_${randomBytes(16).toString("hex")}`;
             const body = [
               `--${boundary}`,
               "Content-Type: application/json; charset=UTF-8",
@@ -936,7 +936,7 @@ function buildVEvent(uid: string, summary: string, dtstart: string, dtend: strin
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//MyHQ//CalDAV//EN",
+    "PRODID:-//MyAgens//CalDAV//EN",
     "BEGIN:VEVENT",
     `UID:${uid}`,
     `DTSTAMP:${fmtDt(new Date().toISOString())}`,
@@ -1097,7 +1097,7 @@ function appleCalendarMcp(credential: string, scope: ConnectorScope) {
           location: z.string().optional(),
         },
         async (a) => {
-          const uid = `myhq-${Date.now()}-${Math.random().toString(36).slice(2)}@myhq`;
+          const uid = `myagens-${Date.now()}-${Math.random().toString(36).slice(2)}@myagens`;
           const ical = buildVEvent(uid, a.summary, a.dtstart, a.dtend, a.description, a.location);
           const base = a.calendarHref.startsWith("http") ? a.calendarHref : `${ICLOUD_CALDAV_BASE}${a.calendarHref}`;
           const url = `${base.replace(/\/$/, "")}/${uid}.ics`;
@@ -1618,7 +1618,7 @@ function githubMcp(token: string, scope: ConnectorScope) {
     Authorization: `Bearer ${token}`,
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "MyHQ-connector",
+    "User-Agent": "MyAgens-connector",
   };
 
   return createSdkMcpServer({

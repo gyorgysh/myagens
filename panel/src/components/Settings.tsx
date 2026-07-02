@@ -262,13 +262,13 @@ function NotificationsSettings({ onAuthError }: { onAuthError: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// Control — service-level actions (restart the whole MyHQ process)
+// Control — service-level actions (restart the whole MyAgens process)
 // ---------------------------------------------------------------------------
 
 function ServiceControl({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
   const [serviceInstalled, setServiceInstalled] = useState(false);
-  const [brand, setBrand] = useState("MyHQ");
+  const [brand, setBrand] = useState("MyAgens");
   const [busy, setBusy] = useState(false);
   const [processUptimeSec, setProcessUptimeSec] = useState<number | null>(null);
 
@@ -391,7 +391,7 @@ function WhitelabelSettings({ onAuthError }: { onAuthError: () => void }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label>{t("settings_whitelabel_brand")}</Label>
-            <Input placeholder="MyHQ" value={b.brandName ?? ""} onChange={(e) => set({ brandName: e.target.value })} />
+            <Input placeholder="MyAgens" value={b.brandName ?? ""} onChange={(e) => set({ brandName: e.target.value })} />
           </div>
           <div>
             <Label>{t("settings_whitelabel_agent_name")}</Label>

@@ -8,7 +8,7 @@ import { Markdown } from "../lib/markdown.tsx";
 import { CheckCircle2 } from "lucide-react";
 
 const CHANGELOG_URL =
-  "https://raw.githubusercontent.com/gyorgysh/myhq/refs/heads/main/CHANGELOG.md";
+  "https://raw.githubusercontent.com/gyorgysh/myagens/refs/heads/main/CHANGELOG.md";
 
 interface ChangelogEntry {
   version: string;

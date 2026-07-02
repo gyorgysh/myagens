@@ -33,7 +33,7 @@ export function HealthView({ onGoto }: { onGoto?: (t: Tab) => void }) {
   const { t } = useI18n();
   const [health, setHealth] = useState<Health | null>(null);
   const [status, setStatus] = useState<ConnStatus>("connecting");
-  const [brand, setBrand] = useState("MyHQ");
+  const [brand, setBrand] = useState("MyAgens");
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {

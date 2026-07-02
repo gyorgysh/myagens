@@ -1,8 +1,8 @@
-# MyHQ: Your Personal AI Headquarters
+# MyAgens: Your Personal AI Headquarters
 
 **Your personal AI that actually lives on your machine.** Talk to it over Telegram from anywhere. It can read your files, run your code, check your services, and report back, with your approval before anything risky. Atlas is your central coordinator: he runs day-to-day operations, remembers everything, learns your workflows, and commands a team of specialized Leads. Each Lead owns a domain and can have its own Telegram bot.
 
-![MyHQ Panel dashboard: live system health, Claude usage, per-core load, and filesystems](images/sys.webp)
+![MyAgens Panel dashboard: live system health, Claude usage, per-core load, and filesystems](images/sys.webp)
 
 Open source. Built on real **Claude Code** agents running on your machine, so every agent can read files, run commands, edit code, check services, and ship things. Replies stream back live and risky actions are gated behind your approval.
 
@@ -10,7 +10,7 @@ Open source. Built on real **Claude Code** agents running on your machine, so ev
 
 ## The Command Structure
 
-MyHQ runs like a small ops team. Every agent knows their role and who they report to.
+MyAgens runs like a small ops team. Every agent knows their role and who they report to.
 
 ```
 You (President)
@@ -31,7 +31,7 @@ The same agents, two front doors:
 
 **Telegram**: message Atlas from your phone. The old loop for touching a server (open a terminal, SSH in, run something, close it) becomes a chat with something already living on the server that knows your system. When a service falls over at 2 am you get a ping and fix it from the couch, no SSH client required. Your Leads have their own bots, so you can message your DevOps Lead directly without going through Atlas.
 
-**MyHQ Panel**: an optional web dashboard served in the same process. Chat with Atlas in the browser, see your full crew hierarchy, watch live system health, run and schedule agents, delegate task-board cards to autonomous runs, browse memory and skills, manage secrets, and tune proactive monitoring.
+**MyAgens Panel**: an optional web dashboard served in the same process. Chat with Atlas in the browser, see your full crew hierarchy, watch live system health, run and schedule agents, delegate task-board cards to autonomous runs, browse memory and skills, manage secrets, and tune proactive monitoring.
 
 ## Quick Install
 
@@ -40,7 +40,7 @@ The same agents, two front doors:
 On a fresh machine, the wizard installs everything (Node 20+, git, the Claude CLI), clones the repo, builds it, walks you through `.env`, and optionally sets up a background service:
 
 ```bash
-curl -fsSL https://gyorgy.sh/myhq-install.sh | bash
+curl -fsSL https://gyorgy.sh/myagens-install.sh | bash
 ```
 
 ### Windows
@@ -58,16 +58,16 @@ The title bar should read **Administrator: Windows PowerShell**.
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-irm https://gyorgy.sh/myhq-install.ps1 | iex
+irm https://gyorgy.sh/myagens-install.ps1 | iex
 ```
 
 The first line lets PowerShell run the `npm`/`claude` script shims for this session only (Windows blocks them by default); it isn't persisted and needs no admin. The Windows installer uses `winget` for Node.js and Git, and creates a NSSM service (with Task Scheduler as a fallback). To update later, run `.\scripts\windows\update.ps1` or use the panel's Updates view.
 
 If you run it **without** administrator rights, the installer prints these same steps and waits for a keypress before closing, so the window won't vanish on you.
 
-You will need a [bot token](#setup-manual) and your numeric Telegram user id. The wizard prompts for both. Prefer to read before you run? The scripts are [`scripts/myhq-install.sh`](scripts/myhq-install.sh) and [`scripts/windows/myhq-install.ps1`](scripts/windows/myhq-install.ps1).
+You will need a [bot token](#setup-manual) and your numeric Telegram user id. The wizard prompts for both. Prefer to read before you run? The scripts are [`scripts/myagens-install.sh`](scripts/myagens-install.sh) and [`scripts/windows/myagens-install.ps1`](scripts/windows/myagens-install.ps1).
 
-> For an unattended run, set `MYHQ_TOKEN`, `MYHQ_USER_IDS`, and `MYHQ_MODE=service|manual` (and `MYHQ_YES=1`) in the environment before running.
+> For an unattended run, set `MYAGENS_TOKEN`, `MYAGENS_USER_IDS`, and `MYAGENS_MODE=service|manual` (and `MYAGENS_YES=1`) in the environment before running.
 
 ## The Panel
 
@@ -137,7 +137,7 @@ Type `@yourbotname query` in any chat to search your own tasks, skills, and memo
 
 ## Bring Your Own Model
 
-MyHQ isn't locked to Anthropic. Point any agent at any model: a hosted Claude tier, a local model served by **LM Studio** or **Ollama**, or any OpenAI-compatible proxy. Pick the model per role:
+MyAgens isn't locked to Anthropic. Point any agent at any model: a hosted Claude tier, a local model served by **LM Studio** or **Ollama**, or any OpenAI-compatible proxy. Pick the model per role:
 
 - **Per-Lead model routing.** Every Lead, Assistant, and worker runs on its own model and provider. Route routine background work to a cheap local model and reserve a frontier model only for the agents that need it — each agent in the fleet can be on a different backend at once.
 - **Different AI agent entirely, per role.** Beyond swapping models within Claude, an individual Lead/worker (or Atlas himself) can run on **xAI's Grok CLI** or **OpenAI's Codex CLI** instead — each wraps that provider's own agentic CLI (tool belt, sandboxing, and permission handling included), so it's a genuine second agent, not just a different model string. This is an advanced, low-key option: switch a chat with `/model grok-cli` or `/model codex-cli`, or pick it from the small "AI backend" selector next to Provider/Model in Settings/Workers. Claude stays the default everywhere unless you opt in.
@@ -145,7 +145,7 @@ MyHQ isn't locked to Anthropic. Point any agent at any model: a hosted Claude ti
 - **Offline voice.** Voice-message transcription runs fully offline with **Vosk**, or against any OpenAI-compatible endpoint (OpenAI, Groq's free tier) if you prefer.
 - **Main agent.** Set the model and provider that drives Atlas from Settings (or with `/model` in chat). Switch between Opus, Sonnet, Haiku, or a local model live; the change takes effect on the next message.
 
-Add a provider once (base URL + token, with LM Studio / Ollama prefill presets), and MyHQ lists its available models server-side so you can pick by name. Provider tokens are stored in the encrypted vault.
+Add a provider once (base URL + token, with LM Studio / Ollama prefill presets), and MyAgens lists its available models server-side so you can pick by name. Provider tokens are stored in the encrypted vault.
 
 ## Setup (manual)
 
@@ -175,11 +175,11 @@ Add a provider once (base URL + token, with LM Studio / Ollama prefill presets),
 ./scripts/agentctl.sh logs          # follow logs
 ```
 
-**Linux**: systemd unit (`myhq`). The installer adds a scoped, passwordless sudoers rule.
+**Linux**: systemd unit (`myagens`). The installer adds a scoped, passwordless sudoers rule.
 
-**macOS**: per-user LaunchAgent (`sh.gyorgy.myhq`) that runs in your login session; no sudo needed.
+**macOS**: per-user LaunchAgent (`sh.gyorgy.myagens`) that runs in your login session; no sudo needed.
 
-**Windows**: NSSM service (`myhq`) or Task Scheduler entry. Managed via `nssm start|stop|restart myhq` or the Task Scheduler GUI.
+**Windows**: NSSM service (`myagens`) or Task Scheduler entry. Managed via `nssm start|stop|restart myagens` or the Task Scheduler GUI.
 
 You can also ask Atlas to restart himself: "restart yourself" triggers `./scripts/agentctl.sh restart`.
 
@@ -203,7 +203,7 @@ On Windows (elevated PowerShell):
 | --- | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | yes | Token from @BotFather (Atlas's bot) |
 | `ALLOWED_USER_IDS` | yes | Comma-separated numeric Telegram user ids |
-| `WORKDIR` | no | Directory Atlas starts in (default: `~/MyHQ-Workspace`, auto-created on first run) |
+| `WORKDIR` | no | Directory Atlas starts in (default: `~/MyAgens-Workspace`, auto-created on first run) |
 | `STATE_FILE` | no | Session + usage persistence path (default `data/state.json`) |
 | `CLAUDE_MODEL` | no | Default model id (default `claude-opus-4-8`). Retired ids (`claude-sonnet-4-5`, `claude-sonnet-4-6`) are silently upgraded to `claude-sonnet-5` |
 | `ANTHROPIC_API_KEY` | no | API key; omit to use `claude` CLI login |
@@ -213,7 +213,7 @@ On Windows (elevated PowerShell):
 | `TURN_RATE_WINDOW_MS` | no | Rolling window for the per-chat turn rate limit in ms (default `60000`) |
 | `STREAM_MODE` | no | `rich` (default), `draft`, or `edit` |
 | `ATLAS_NAME` | no | Override the main agent's name (default `Atlas`) |
-| `BRAND_NAME` | no | Override the product name (default `MyHQ`) |
+| `BRAND_NAME` | no | Override the product name (default `MyAgens`) |
 | `DEFAULT_LANGUAGE` | no | BCP 47 language code for agent responses (default `en`) |
 | `AUTO_SKILL_GENERATION` | no | `true` to auto-extract skills from expensive turns (default `false`) |
 | `MAINTENANCE_CRON` | no | memory compaction + skill pruning. Unset (default) runs every 24h; `HH:MM` (server time) pins a daily run; `off` disables |
@@ -240,7 +240,7 @@ On Windows (elevated PowerShell):
 | `PIPER_PATH` | no | Path to the piper binary for local TTS (default `piper`) |
 | `PIPER_MODEL` | no | Path to a `.onnx` Piper voice model |
 | `WORK_FILE` | no | Path to Atlas's operator playbook (default `work.md`) |
-| `PANEL_ENABLED` | no | `true` to start the MyHQ Panel (default `false`) |
+| `PANEL_ENABLED` | no | `true` to start the MyAgens Panel (default `false`) |
 | `PANEL_TOKEN` | when panel on | Shared secret for all panel requests |
 | `PANEL_HOST` | no | Bind address (default `127.0.0.1`) |
 | `PANEL_PORT` | no | Port (default `8787`) |
@@ -248,7 +248,7 @@ On Windows (elevated PowerShell):
 | `PANEL_TERMINAL_ENABLED` | no | `true` to enable the in-browser shell (default `false`; a panel-token holder gets host execution) |
 | `PANEL_TERMINAL_INHERIT_ENV` | no | `true` to give the terminal the full process env instead of a sanitized allow-list (default `false`, risky) |
 | `PANEL_TUNNEL_ENABLED` | no | `true` to allow Remote Access (expose the panel over an ngrok/cloudflared tunnel; default `false`) |
-| `FEEDBACK_URL` | no | Where the panel Feedback form relays reports (default `https://gyorgy.sh/myhq_feedback`) |
+| `FEEDBACK_URL` | no | Where the panel Feedback form relays reports (default `https://gyorgy.sh/myagens_feedback`) |
 
 ### Streaming modes
 
@@ -393,7 +393,7 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Live model switching**: `/model` shows shortcut buttons for the main Claude tiers (Opus, Sonnet, Haiku) and lists any configured local or provider models as text. Switch with one tap or `/model <name>` directly. Takes effect on the next message.
 - **Session resume after restart**: the first Telegram message after a restart offers to resume the previous conversation or start fresh, so a deploy or reboot never silently drops your context. Auto-resumes after 10 seconds if you do not pick.
 - **Panel terminal**: a real shell session in the browser for quick checks without SSH, served over the same authenticated WebSocket as the rest of the panel. **Off by default** (`PANEL_TERMINAL_ENABLED`) since a panel-token holder would otherwise get arbitrary host execution; when on, the shell gets a sanitized env so it can't read the bot's secrets back out.
-- **Remote access (tunnel)**: expose the loopback panel to the internet so you can reach it from your phone, still behind the panel login. The Remote Access view spawns an **ngrok** or **cloudflared** relay pointed at the panel port and shows the public URL. **Off by default** (`PANEL_TUNNEL_ENABLED`); even when enabled the relay only runs on an explicit Start (or auto-start after a reboot), an HTTP Basic Auth gate (username `myhq`, auto-generated password) sits in front as a second factor, the public URL and login are DM'd to you and surfaced by `/status`, and the ngrok token is stored in the vault.
+- **Remote access (tunnel)**: expose the loopback panel to the internet so you can reach it from your phone, still behind the panel login. The Remote Access view spawns an **ngrok** or **cloudflared** relay pointed at the panel port and shows the public URL. **Off by default** (`PANEL_TUNNEL_ENABLED`); even when enabled the relay only runs on an explicit Start (or auto-start after a reboot), an HTTP Basic Auth gate (username `myagens`, auto-generated password) sits in front as a second factor, the public URL and login are DM'd to you and surfaced by `/status`, and the ngrok token is stored in the vault.
 - **AskUserQuestion inline buttons**: when an agent calls `AskUserQuestion`, the choices render as Telegram inline buttons instead of freeform text. Tapping a button resolves the question instantly; a free-text fallback is always available. Works in both the main Atlas bot and Lead bots, and the same questions render as interactive widgets in panel chat (`GET /api/asks`, `POST /api/asks/resolve`).
 - **Agent avatars**: pick an avatar from a curated set for any worker/Lead (`avatar` field on create/update). Avatars show on Crew and Workers cards and in chat bubbles, and each Lead bot's Telegram profile photo is set automatically on startup.
 - **Run Agent**: the worker cards' "Run Agent" button opens a confirmation modal showing the agent name, role, and working directory with an editable, one-shot prompt (prefilled from the saved prompt, never mutating it) before kicking off an ad-hoc run. The optional prompt rides on `POST /api/workers/:id/run`.
@@ -403,7 +403,7 @@ Lead bots default to standard mode with the same approve/deny prompts.
 - **Connectors**: external-service integrations, each with a vault-backed credential slot and a per-connector read / write scope. Fourteen are live with real MCP tool calls: **Notion** (search, read, create pages/databases), **Google Calendar** (list, create events), **Gmail** (list, read, send, draft, label, delete), **Google Drive** (list, read, create, update, move, share, delete), **Apple Calendar** (iCloud CalDAV: list, create, update, delete events), **Apple Mail** (iCloud IMAP/SMTP: list, read, search, send, delete), **Slack** (list channels, read history, post messages, reply in threads, search, upload files), **GitHub** (list repos and issues, read/write files, create issues and PRs, comment on issues), **Unreal Engine** (control a running UE 5.8+ editor via its built-in MCP plugin, no credential needed), **Unity** (control a running Unity Editor via the mcp-unity package), **PostgreSQL** (list tables, describe schemas, read-only queries, and write-scoped mutating statements), **SQLite** (same, against a local database file), **Jira Cloud** (list projects, JQL search, read issue, apply transitions, create, comment), and **Linear** (list teams/projects/states, search and read issues, create, move state, comment). Read scope exposes only the read tools; write tools appear when you flip a connector to write scope. Connectors can also track an optional credential expiry date, shown as an ok/expiring/expired badge in the panel. Connector tools run through the normal approval flow in interactive mode and freely in autonomous (`full`) mode.
 - **Image generation**: text-to-image via **Replicate**, **fal.ai**, or a local **Automatic1111** endpoint, exposed as an `imageGen` MCP tool the fleet (including delegated task runs and Lead bots) can call. Generated images collect in a persistent Gallery view in the panel.
 - **Audit log and anomaly detection**: an append-only action audit log, searchable in the panel Logs view under an Audit tab (filter by actor, resource, or action, with NDJSON export). A deterministic anomaly detector flags delete bursts, off-hours vault access, and new privileged grants, raising them through the heartbeat and Telegram alert path.
-- **Skill bundles**: export any skill as a portable `myhq.skill` JSON file and import bundles on another machine (validated, with name-collision de-duplication).
+- **Skill bundles**: export any skill as a portable `myagens.skill` JSON file and import bundles on another machine (validated, with name-collision de-duplication).
 - **Prompt templates**: save reusable prompts with `{{variable}}` placeholders. Pick one from a quick-pick in the panel chat composer, manage the library from its own panel view, or list them with `/templates` in Telegram.
 - **Memory export/import**: download the entire memory store (all tiers, embeddings stripped) as portable JSON, and merge a dump back in on another machine — entries are deduped by normalized text on import.
 - **Telegram inline search**: type `@yourbotname query` in any Telegram chat to search your own tasks, skills, and memories inline, ranked by the same hybrid search the panel uses, gated by the allow-list.
@@ -532,7 +532,7 @@ src/
     resumePrompt.ts    first-message-after-restart resume-or-fresh offer
     inlineSearch.ts    @bot inline_query search over tasks/skills/memories
 
-panel/                MyHQ Panel frontend (React + Vite + Tailwind v4)
+panel/                MyAgens Panel frontend (React + Vite + Tailwind v4)
                       built to panel/dist, served by src/panel/server.ts
   i18n/
     en.ts             English UI strings
@@ -579,6 +579,6 @@ Created by **Gyorgy**. [gyorgy.sh](https://gyorgy.sh) · [github.com/gyorgysh](h
 
 **AGPLv3 for personal and open-source use. Commercial License required for business use.**
 
-Free to use, modify, and contribute for personal projects, research, and open-source work under the [GNU AGPLv3](LICENSE). If you use MyHQ commercially (as part of a product, service, or for-profit organisation), a separate Commercial License is required.
+Free to use, modify, and contribute for personal projects, research, and open-source work under the [GNU AGPLv3](LICENSE). If you use MyAgens commercially (as part of a product, service, or for-profit organisation), a separate Commercial License is required.
 
 Contact [gyorgy@pueev.com](mailto:gyorgy@pueev.com) or [gyorgy.sh](https://gyorgy.sh) to discuss commercial licensing.

@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to MyHQ are documented here, grouped by release.
-Commit links point to `github.com/gyorgysh/myhq`.
+All notable changes to MyAgens are documented here, grouped by release.
+Commit links point to `github.com/gyorgysh/myagens`.
 
 ## [0.6.2] - 2026-07-02
 

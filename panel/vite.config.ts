@@ -25,7 +25,7 @@ export default defineConfig({
       devOptions: { enabled: false },
       includeAssets: ["favicon.svg", "apple-touch-icon.png", "fonts/*.woff2"],
       manifest: {
-        name: "MyHQ",
+        name: "MyAgens",
         short_name: "HQ",
         description: "Personal AI command center for managing your Atlas fleet.",
         start_url: "/",

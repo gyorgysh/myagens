@@ -10,7 +10,7 @@ import { useI18n } from "../lib/useI18n.ts";
 const WARN_BYTES = 6144; // mirrors PROMPT_FILE_SIZE_WARN_BYTES in playbook.ts
 // Dismissed state survives the current tab session but resets on next open,
 // so a persistent large file keeps nudging the user periodically.
-const SESSION_KEY = "myhq_prompt_size_dismissed";
+const SESSION_KEY = "myagens_prompt_size_dismissed";
 
 interface Props {
   onGotoPrompt: () => void;

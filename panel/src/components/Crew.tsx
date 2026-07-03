@@ -7,6 +7,7 @@ import { useI18n } from "../lib/useI18n.ts";
 import { errorMessage } from "../lib/errorMessage.ts";
 import type { TranslationKey } from "../i18n/en.ts";
 import { useSubscription } from "../lib/useSubscription.ts";
+import { roleLabel } from "../lib/agentRole.ts";
 
 interface CouncilVote {
   leadId: string;
@@ -188,23 +189,28 @@ export function CrewView({
         onWebChat={onChat ? () => onChat("atlas") : undefined}
       />
 
-      {/* A couple of Lead skeleton rows below the (dimmed) President + Atlas,
-          so the nested shape is previewed while the initial fetch is in flight. */}
-      {!loaded &&
-        Array.from({ length: 2 }).map((_, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-3 border-l-2 border-blue-400/40 pl-3"
-            style={{ marginLeft: "calc(2 * var(--crew-indent))" }}
-          >
-            <div className="h-px w-4 shrink-0 bg-line" />
-            <Skeleton className="h-4 w-4 shrink-0 rounded-full" />
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-3 w-48" />
+      {/* A couple of Lead skeleton cards below the (dimmed) President + Atlas,
+          so the grid shape is previewed while the initial fetch is in flight. */}
+      {!loaded && (
+        <div
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+          style={{ marginLeft: "calc(2 * var(--crew-indent))" }}
+        >
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-line bg-surface p-3.5">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-12 w-12 shrink-0 rounded-full" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              </div>
+              <Skeleton className="mt-3 h-3 w-full" />
+              <Skeleton className="mt-3 h-6 w-20" />
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+      )}
 
       {/* Leads and their Assistants */}
       {leads.length > 0 && (
@@ -217,45 +223,22 @@ export function CrewView({
             .replace("{active}", String(enabledLeads))}
         </div>
       )}
-      {leads.map((lead) => (
-        <div key={lead.id}>
-          <CrewNode
-            icon="◆"
-            avatarId={lead.id}
-            avatar={lead.avatar}
-            title={lead.name}
-            role={lead.portfolio ? `${lead.portfolio} ${t("crew_role_lead")}` : t("crew_role_lead")}
-            subtitle={lead.model || t("crew_default_model")}
-            tone="blue"
-            depth={2}
-            paused={!lead.enabled}
-            escalated={lead.escalated}
-            extra={lead.listening ? t("crew_listening") : undefined}
-            extraHref={
-              lead.listening && lead.botUsername ? `https://t.me/${lead.botUsername}` : undefined
-            }
-            warn={lead.enabled && !lead.telegramToken ? t("crew_no_token") : undefined}
-            onWebChat={onChat ? () => onChat(lead.id) : undefined}
-          />
-          {assistants
-            .filter((a) => a.parentId === lead.id)
-            .map((a) => (
-              <CrewNode
-                key={a.id}
-                icon="◇"
-                avatarId={a.id}
-                avatar={a.avatar}
-                title={a.name}
-                role={a.portfolio || t("crew_role_assistant")}
-                subtitle={a.model || t("crew_default_model")}
-                tone="zinc"
-                depth={3}
-                paused={!a.enabled}
-                escalated={a.escalated}
-              />
-            ))}
+      {leads.length > 0 && (
+        <div
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+          style={{ marginLeft: "calc(2 * var(--crew-indent))" }}
+        >
+          {leads.map((lead) => (
+            <LeadCard
+              key={lead.id}
+              lead={lead}
+              assistants={assistants.filter((a) => a.parentId === lead.id)}
+              activity={leadActivity(lead, delegations)}
+              onWebChat={onChat ? () => onChat(lead.id) : undefined}
+            />
+          ))}
         </div>
-      ))}
+      )}
 
       {/* Unparented assistants */}
       {assistants
@@ -636,6 +619,199 @@ function CouncilCard({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+const SPARK_DAYS = 7;
+const DAY_MS = 86_400_000;
+
+/** Bucket delegation-log activity touching this Lead into `SPARK_DAYS` daily
+ *  counts (oldest first), for the roster card's mini sparkline. */
+function leadActivity(lead: Worker, delegations: DelegationRecord[]): number[] {
+  const now = Date.now();
+  const buckets = new Array(SPARK_DAYS).fill(0) as number[];
+  const name = lead.name.toLowerCase();
+  for (const d of delegations) {
+    const involves =
+      d.fromAgentId === lead.id || d.toAgentId === lead.id || d.leadName?.toLowerCase() === name;
+    if (!involves) continue;
+    const age = now - d.ts;
+    if (age < 0 || age >= SPARK_DAYS * DAY_MS) continue;
+    const idx = SPARK_DAYS - 1 - Math.floor(age / DAY_MS);
+    if (idx >= 0 && idx < SPARK_DAYS) buckets[idx]++;
+  }
+  return buckets;
+}
+
+/** Tiny bar sparkline of recent daily task counts. Bars are a visual hint
+ *  only — callers pair this with a numeric total nearby, and it carries an
+ *  `aria-label` summary so the count isn't graphic-only. */
+function ActivitySparkline({ counts, label }: { counts: number[]; label: string }) {
+  const max = Math.max(1, ...counts);
+  return (
+    <div className="flex h-6 items-end gap-0.5" role="img" aria-label={label}>
+      {counts.map((c, i) => (
+        <div
+          key={i}
+          className={`w-1.5 rounded-sm ${c > 0 ? "bg-accent/60" : "bg-line"}`}
+          style={{ height: `${Math.round(Math.max(c / max, c > 0 ? 0.15 : 0.1) * 100)}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+type LeadStatus = "paused" | "error" | "working" | "idle";
+
+function leadStatus(lead: Worker): LeadStatus {
+  if (!lead.enabled) return "paused";
+  if (lead.escalated) return "error";
+  if (lead.running) return "working";
+  return "idle";
+}
+
+const STATUS_GLOW: Record<LeadStatus, string> = {
+  paused: "",
+  idle: "status-glow-idle",
+  working: "status-glow-working",
+  error: "status-glow-error",
+};
+
+const STATUS_DOT: Record<LeadStatus, string> = {
+  paused: "bg-fg-faint",
+  idle: "bg-fg-faint",
+  working: "bg-accent",
+  error: "bg-critical",
+};
+
+/**
+ * Scannable roster card for one Lead: avatar with a colored status-glow ring
+ * (idle/working/error/paused — always paired with a text label, never color
+ * alone), a one-line personality blurb from its persona, a mini 7-day
+ * activity sparkline built from the delegation log, and a compact stack of
+ * its Assistants' avatars. Replaces the old flat text row.
+ */
+function LeadCard({
+  lead,
+  assistants,
+  activity,
+  onWebChat,
+}: {
+  lead: Worker;
+  assistants: Worker[];
+  activity: number[];
+  onWebChat?: () => void;
+}) {
+  const { t } = useI18n();
+  const status = leadStatus(lead);
+  const persona = (lead.persona ?? "").trim();
+  const blurb = persona || t("crew_no_persona");
+  const total = activity.reduce((a, b) => a + b, 0);
+  const warn = lead.enabled && !lead.telegramToken;
+
+  return (
+    <div
+      className={`rounded-xl border border-line bg-surface p-3.5 transition-opacity ${
+        status === "paused" ? "opacity-60" : ""
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <span className={`shrink-0 rounded-full ${STATUS_GLOW[status]}`}>
+          <Avatar id={lead.id} avatar={lead.avatar} size={48} alt={lead.name} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium text-fg" title={lead.name}>
+            {lead.name}
+          </div>
+          <div className="truncate text-xs text-fg-dim" title={roleLabel(lead, t)}>
+            {roleLabel(lead, t)}
+          </div>
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[status]}`} aria-hidden />
+            <span className="text-xs font-medium text-fg-dim">
+              {t(`crew_status_${status}` as TranslationKey)}
+            </span>
+            {lead.escalated && (
+              <span title={t("crew_escalated_hint")}>
+                <Badge tone="amber">{t("crew_escalated")}</Badge>
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-2.5 line-clamp-2 text-xs italic text-fg-faint" title={persona || undefined}>
+        {blurb}
+      </p>
+
+      <div className="mt-2.5 flex items-end justify-between gap-2">
+        <ActivitySparkline
+          counts={activity}
+          label={t("crew_sparkline_label").replace("{n}", String(total))}
+        />
+        <span className="shrink-0 tabular text-xs text-fg-faint">
+          {total} · {t("crew_recent_tasks")}
+        </span>
+      </div>
+
+      {assistants.length > 0 && (
+        <div className="mt-2.5 flex items-center gap-1.5">
+          <div className="flex -space-x-2">
+            {assistants.slice(0, 4).map((a) => (
+              <Avatar
+                key={a.id}
+                id={a.id}
+                avatar={a.avatar}
+                size={20}
+                alt={a.name}
+                className="ring-2 ring-surface"
+              />
+            ))}
+          </div>
+          <span className="text-xs text-fg-faint">
+            {(assistants.length === 1 ? t("crew_assistant_count") : t("crew_assistants_count")).replace(
+              "{n}",
+              String(assistants.length),
+            )}
+          </span>
+        </div>
+      )}
+
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        {lead.listening &&
+          (lead.botUsername ? (
+            <a
+              href={`https://t.me/${lead.botUsername}`}
+              target="_blank"
+              rel="noreferrer"
+              title={t("crew_listening_hint")}
+              className="transition-opacity hover:opacity-80"
+            >
+              <Badge tone="green">{t("crew_listening")}</Badge>
+            </a>
+          ) : (
+            <span title={t("crew_listening_hint")}>
+              <Badge tone="green">{t("crew_listening")}</Badge>
+            </span>
+          ))}
+        {warn && (
+          <span title={t("crew_no_token_hint")} className="opacity-40">
+            <Badge tone="zinc">{t("crew_no_token")}</Badge>
+          </span>
+        )}
+        {status === "paused" && <Badge tone="zinc">{t("crew_paused")}</Badge>}
+        {onWebChat && (
+          <button
+            type="button"
+            onClick={onWebChat}
+            title={t("crew_web_chat_hint")}
+            className="ml-auto transition-opacity hover:opacity-80"
+          >
+            <Badge tone="cobalt">{t("crew_web_chat")}</Badge>
+          </button>
+        )}
+      </div>
     </div>
   );
 }

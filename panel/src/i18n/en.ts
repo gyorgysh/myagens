@@ -240,6 +240,15 @@ export const en = {
   crew_escalated: "escalated",
   crew_escalated_hint: "Hit a tool error in auto_until_error mode. Next run will use safe tools only.",
   crew_leads_count: "{total} Leads · {active} active",
+  crew_status_idle: "idle",
+  crew_status_working: "working",
+  crew_status_error: "error",
+  crew_status_paused: "paused",
+  crew_no_persona: "No personality blurb set yet.",
+  crew_assistants_count: "{n} assistants",
+  crew_assistant_count: "{n} assistant",
+  crew_sparkline_label: "{n} tasks in the last 7 days",
+  crew_recent_tasks: "7d",
   // Crew "how it works" info card
   crew_how_title: "How the crew works",
   crew_how_intro:

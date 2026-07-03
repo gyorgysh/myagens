@@ -271,3 +271,40 @@ body {
     visibility: hidden;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Crew roster — live status glow ring around a Lead's avatar. Same
+   color-mix recipe as the rest of the theme so it tracks light/dark/contrast.
+   Color is a hint only; callers must also render a text status label
+   (WCAG: never convey state by color alone). */
+.status-glow-idle {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fg-faint) 35%, transparent);
+}
+.status-glow-error {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--critical) 55%, transparent),
+    0 0 9px 2px color-mix(in srgb, var(--critical) 35%, transparent);
+}
+.status-glow-working {
+  animation: status-glow-pulse 1.8s ease-in-out infinite;
+}
+@keyframes status-glow-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent),
+      0 0 6px 1px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent),
+      0 0 15px 4px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-glow-working {
+    animation: none;
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent),
+      0 0 8px 2px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+}

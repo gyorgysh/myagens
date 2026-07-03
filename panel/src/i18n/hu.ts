@@ -240,6 +240,15 @@ export const hu: Translations = {
   crew_escalated: "eszkalált",
   crew_escalated_hint: "Eszközhibát ütött auto_until_error módban. A következő futás csak biztonságos eszközöket használhat.",
   crew_leads_count: "{total} Lead · {active} aktív",
+  crew_status_idle: "tétlen",
+  crew_status_working: "dolgozik",
+  crew_status_error: "hiba",
+  crew_status_paused: "szüneteltetve",
+  crew_no_persona: "Még nincs beállítva személyiség-leírás.",
+  crew_assistants_count: "{n} asszisztens",
+  crew_assistant_count: "{n} asszisztens",
+  crew_sparkline_label: "{n} feladat az elmúlt 7 napban",
+  crew_recent_tasks: "7 nap",
   // Crew "hogyan működik" infókártya
   crew_how_title: "Hogyan működik a csapat",
   crew_how_intro:

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Send, MessageCircle } from "lucide-react";
 import { api, AuthError, type Worker, type MainAgent, type DelegationRecord, type CouncilRule } from "../api.ts";
 import { Card, Empty, Badge, InfoCard, Skeleton, Avatar } from "./ui.tsx";
 import { CrewArt } from "./onboarding.tsx";
@@ -233,7 +234,6 @@ export function CrewView({
               key={lead.id}
               lead={lead}
               assistants={assistants.filter((a) => a.parentId === lead.id)}
-              activity={leadActivity(lead, delegations)}
               onWebChat={onChat ? () => onChat(lead.id) : undefined}
             />
           ))}
@@ -623,45 +623,6 @@ function CouncilCard({
   );
 }
 
-const SPARK_DAYS = 7;
-const DAY_MS = 86_400_000;
-
-/** Bucket delegation-log activity touching this Lead into `SPARK_DAYS` daily
- *  counts (oldest first), for the roster card's mini sparkline. */
-function leadActivity(lead: Worker, delegations: DelegationRecord[]): number[] {
-  const now = Date.now();
-  const buckets = new Array(SPARK_DAYS).fill(0) as number[];
-  const name = lead.name.toLowerCase();
-  for (const d of delegations) {
-    const involves =
-      d.fromAgentId === lead.id || d.toAgentId === lead.id || d.leadName?.toLowerCase() === name;
-    if (!involves) continue;
-    const age = now - d.ts;
-    if (age < 0 || age >= SPARK_DAYS * DAY_MS) continue;
-    const idx = SPARK_DAYS - 1 - Math.floor(age / DAY_MS);
-    if (idx >= 0 && idx < SPARK_DAYS) buckets[idx]++;
-  }
-  return buckets;
-}
-
-/** Tiny bar sparkline of recent daily task counts. Bars are a visual hint
- *  only — callers pair this with a numeric total nearby, and it carries an
- *  `aria-label` summary so the count isn't graphic-only. */
-function ActivitySparkline({ counts, label }: { counts: number[]; label: string }) {
-  const max = Math.max(1, ...counts);
-  return (
-    <div className="flex h-6 items-end gap-0.5" role="img" aria-label={label}>
-      {counts.map((c, i) => (
-        <div
-          key={i}
-          className={`w-1.5 rounded-sm ${c > 0 ? "bg-accent/60" : "bg-line"}`}
-          style={{ height: `${Math.round(Math.max(c / max, c > 0 ? 0.15 : 0.1) * 100)}%` }}
-        />
-      ))}
-    </div>
-  );
-}
-
 type LeadStatus = "paused" | "error" | "working" | "idle";
 
 function leadStatus(lead: Worker): LeadStatus {
@@ -685,29 +646,77 @@ const STATUS_DOT: Record<LeadStatus, string> = {
   error: "bg-critical",
 };
 
+/** Pill-shaped quick action for the Telegram / Web-chat controls on Crew
+ *  cards: a real border + solid hover background (not just an opacity fade)
+ *  so it reads as clickable rather than as a plain status badge. */
+function ActionChip({
+  href,
+  onClick,
+  title,
+  tone,
+  icon,
+  children,
+  className = "",
+}: {
+  href?: string;
+  onClick?: () => void;
+  title: string;
+  tone: "green" | "cobalt";
+  icon: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  const toneClass =
+    tone === "green"
+      ? "border-ok/40 bg-ok-subtle text-ok-fg"
+      : "border-blue-500/40 bg-blue-500/15 text-blue-600 dark:text-blue-400";
+  const interactive = href ?? onClick;
+  const base = `inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${toneClass} ${
+    interactive ? "transition-colors hover:brightness-95 dark:hover:brightness-125" : "opacity-70"
+  } ${className}`;
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" title={title} className={base}>
+        {icon}
+        {children}
+      </a>
+    );
+  }
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} title={title} className={base}>
+        {icon}
+        {children}
+      </button>
+    );
+  }
+  return (
+    <span title={title} className={base}>
+      {icon}
+      {children}
+    </span>
+  );
+}
+
 /**
  * Scannable roster card for one Lead: avatar with a colored status-glow ring
  * (idle/working/error/paused — always paired with a text label, never color
- * alone), a one-line personality blurb from its persona, a mini 7-day
- * activity sparkline built from the delegation log, and a compact stack of
- * its Assistants' avatars. Replaces the old flat text row.
+ * alone), a one-line personality blurb from its persona, and a compact stack
+ * of its Assistants' avatars. Replaces the old flat text row.
  */
 function LeadCard({
   lead,
   assistants,
-  activity,
   onWebChat,
 }: {
   lead: Worker;
   assistants: Worker[];
-  activity: number[];
   onWebChat?: () => void;
 }) {
   const { t } = useI18n();
   const status = leadStatus(lead);
   const persona = (lead.persona ?? "").trim();
   const blurb = persona || t("crew_no_persona");
-  const total = activity.reduce((a, b) => a + b, 0);
   const warn = lead.enabled && !lead.telegramToken;
 
   return (
@@ -745,16 +754,6 @@ function LeadCard({
         {blurb}
       </p>
 
-      <div className="mt-2.5 flex items-end justify-between gap-2">
-        <ActivitySparkline
-          counts={activity}
-          label={t("crew_sparkline_label").replace("{n}", String(total))}
-        />
-        <span className="shrink-0 tabular text-xs text-fg-faint">
-          {total} · {t("crew_recent_tasks")}
-        </span>
-      </div>
-
       {assistants.length > 0 && (
         <div className="mt-2.5 flex items-center gap-1.5">
           <div className="flex -space-x-2">
@@ -779,22 +778,16 @@ function LeadCard({
       )}
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        {lead.listening &&
-          (lead.botUsername ? (
-            <a
-              href={`https://t.me/${lead.botUsername}`}
-              target="_blank"
-              rel="noreferrer"
-              title={t("crew_listening_hint")}
-              className="transition-opacity hover:opacity-80"
-            >
-              <Badge tone="green">{t("crew_listening")}</Badge>
-            </a>
-          ) : (
-            <span title={t("crew_listening_hint")}>
-              <Badge tone="green">{t("crew_listening")}</Badge>
-            </span>
-          ))}
+        {lead.listening && (
+          <ActionChip
+            href={lead.botUsername ? `https://t.me/${lead.botUsername}` : undefined}
+            title={t("crew_listening_hint")}
+            tone="green"
+            icon={<Send size={11} />}
+          >
+            {t("crew_listening")}
+          </ActionChip>
+        )}
         {warn && (
           <span title={t("crew_no_token_hint")} className="opacity-40">
             <Badge tone="zinc">{t("crew_no_token")}</Badge>
@@ -802,14 +795,15 @@ function LeadCard({
         )}
         {status === "paused" && <Badge tone="zinc">{t("crew_paused")}</Badge>}
         {onWebChat && (
-          <button
-            type="button"
+          <ActionChip
             onClick={onWebChat}
             title={t("crew_web_chat_hint")}
-            className="ml-auto transition-opacity hover:opacity-80"
+            tone="cobalt"
+            icon={<MessageCircle size={11} />}
+            className="ml-auto"
           >
-            <Badge tone="cobalt">{t("crew_web_chat")}</Badge>
-          </button>
+            {t("crew_web_chat")}
+          </ActionChip>
         )}
       </div>
     </div>
@@ -911,38 +905,34 @@ function CrewNode({
               <Badge tone="amber">{t("crew_escalated")}</Badge>
             </span>
           )}
-          {/* Telegram + Chat: fixed-width slots so badges always align */}
+          {/* Telegram + Chat: fixed-width slots so the chips always align */}
           <span className="flex items-center gap-1.5">
-            {extra &&
-              (extraHref ? (
-                <a
-                  href={extraHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={t("crew_listening_hint")}
-                  className="transition-opacity hover:opacity-80"
-                >
-                  <Badge tone="green" className="min-w-[4.5rem] justify-center">{t("crew_listening")}</Badge>
-                </a>
-              ) : (
-                <span title={t("crew_listening_hint")}>
-                  <Badge tone="green" className="min-w-[4.5rem] justify-center">{t("crew_listening")}</Badge>
-                </span>
-              ))}
+            {extra && (
+              <ActionChip
+                href={extraHref}
+                title={t("crew_listening_hint")}
+                tone="green"
+                icon={<Send size={11} />}
+                className="min-w-[5.5rem] justify-center"
+              >
+                {t("crew_listening")}
+              </ActionChip>
+            )}
             {warn && (
               <span title={t("crew_no_token_hint")} className="opacity-40">
                 <Badge tone="zinc" className="min-w-[4.5rem] justify-center">{t("crew_no_token")}</Badge>
               </span>
             )}
             {onWebChat && (
-              <button
-                type="button"
+              <ActionChip
                 onClick={onWebChat}
                 title={t("crew_web_chat_hint")}
-                className="transition-opacity hover:opacity-80"
+                tone="cobalt"
+                icon={<MessageCircle size={11} />}
+                className="min-w-[5.5rem] justify-center"
               >
-                <Badge tone="cobalt" className="min-w-[4.5rem] justify-center">{t("crew_web_chat")}</Badge>
-              </button>
+                {t("crew_web_chat")}
+              </ActionChip>
             )}
           </span>
         </div>

@@ -967,7 +967,7 @@ function ChatPane({
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             {planning !== undefined && onPlanningChange && (
-              <ModePill planning={planning} onChange={onPlanningChange} />
+              <ModePill planning={planning} onChange={onPlanningChange} agentName={agentName} />
             )}
             <TemplatePicker onPick={(tpl) => setText((cur) => (cur.trim() ? `${cur}\n${tpl}` : tpl))} />
           </div>
@@ -1023,7 +1023,10 @@ function ChatPane({
             onKeyDown={onKey}
             onPaste={onPaste}
             rows={1}
-            placeholder={planning ? t("chat_placeholder_planning") : t("chat_placeholder")}
+            placeholder={(planning ? t("chat_placeholder_planning") : t("chat_placeholder")).replace(
+              "{name}",
+              agentName ?? "Atlas",
+            )}
             className={`max-h-40 min-h-[42px] flex-1 resize-none rounded-xl border bg-input px-3 py-2.5 text-sm text-fg outline-none focus:border-accent ${
               planning ? "border-accent/40" : "border-line"
             }`}
@@ -1056,9 +1059,11 @@ function ChatPane({
 function ModePill({
   planning,
   onChange,
+  agentName,
 }: {
   planning: boolean;
   onChange: (planning: boolean) => void;
+  agentName?: string;
 }) {
   const { t } = useI18n();
   return (
@@ -1086,7 +1091,10 @@ function ModePill({
         </button>
       </div>
       <span className="hidden text-xs text-fg-faint sm:inline">
-        {planning ? t("chat_mode_planning_hint") : t("chat_mode_execution_hint")}
+        {(planning ? t("chat_mode_planning_hint") : t("chat_mode_execution_hint")).replace(
+          "{name}",
+          agentName ?? "Atlas",
+        )}
       </span>
     </div>
   );

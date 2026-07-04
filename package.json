@@ -17,8 +17,7 @@
     "panel:dev": "cd panel && npm run dev",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "doctor": "node scripts/doctor.mjs",
-    "postinstall": "patch-package"
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
@@ -30,7 +29,7 @@
     "imapflow": "^1.4.3",
     "nodemailer": "^9.0.1",
     "systeminformation": "^5.23.5",
-    "telegraf": "^4.16.3",
+    "telegraf": "git+https://github.com/gyorgysh/telegraf-hardened.git#700b605c48a3b18bfc2a9323a9cf41a721c41e65",
     "web-push": "^3.6.7",
     "zod": "^3.23.8"
   },
@@ -42,7 +41,6 @@
     "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.1",
     "concurrently": "^10.0.3",
-    "patch-package": "^8.0.1",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   },

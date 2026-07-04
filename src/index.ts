@@ -313,12 +313,13 @@ async function main(): Promise<void> {
 
   // launch() resolves cleanly when polling is stopped intentionally (our own
   // bot.stop() in shutdown() aborts the in-flight getUpdates fetch, which the
-  // polling loop treats as a normal exit, not an error). It only *rejects* on
-  // an unrecoverable failure — a bad token (401) or a 409 Conflict from a
-  // second getUpdates poller on the same token (Telegraf already retries
-  // ordinary network blips internally, forever, so those never reach here).
-  // A 409 in particular is often self-resolving within seconds (the other
-  // poller releasing the token), so try a few in-place relaunches with
+  // polling loop treats as a normal exit, not an error). Telegraf-hardened
+  // retries ordinary network blips internally forever, and — with the
+  // retryOnConflict option we pass to launch() — now also absorbs 409 Conflicts
+  // (a second poller on the same token, usually our own predecessor draining
+  // after a restart) in-loop with exponential backoff, so neither reaches here.
+  // That leaves this .catch for the genuinely unrecoverable cases (a bad token
+  // → 401, or an unexpected polling teardown): retry a few times in place with
   // backoff before paying for a full process restart.
   const POLL_RETRY_MS = [2000, 5000, 10000, 20000, 30000];
   const POLL_HEALTHY_AFTER_MS = 30_000;
@@ -330,7 +331,16 @@ async function main(): Promise<void> {
     });
     const startedAt = Date.now();
     void bot
-      .launch(() => log.info("Bot is listening for updates"))
+      .launch(
+        // telegraf-hardened rides out a 409 Conflict (a second getUpdates poller
+        // on this token — almost always our own predecessor still draining after
+        // a restart) in-loop with exponential backoff instead of tearing the poll
+        // loop down. So a transient conflict no longer bubbles up here; only a
+        // genuinely unrecoverable failure (bad token) still reaches .catch and the
+        // startPolling escalation below.
+        { polling: { retryOnConflict: true, conflictRetryDelay: 1000, maxConflictRetryDelay: 15000 } },
+        () => log.info("Bot is listening for updates"),
+      )
       .catch((err) => {
         if (isTelegramAuthError(err)) {
           log.error("Polling stopped — bad token, restarting process", { error: errText(err) });

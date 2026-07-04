@@ -546,7 +546,10 @@ export class LeadBot {
 
     log.info("Lead bot starting", { name: lead.name, portfolio: lead.portfolio });
     void bot
-      .launch()
+      // Same 409-Conflict resilience as the main bot: ride out a second poller on
+      // this token (e.g. the watchdog reviving a Lead whose old poll is still
+      // draining) with in-loop backoff instead of dropping the connection.
+      .launch({ polling: { retryOnConflict: true, conflictRetryDelay: 1000, maxConflictRetryDelay: 15000 } })
       .catch((err) => {
         log.error("Lead bot polling stopped", { leadId: lead.id, error: String(err) });
       })

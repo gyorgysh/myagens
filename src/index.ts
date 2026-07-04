@@ -1,4 +1,6 @@
 import { mkdirSync } from "node:fs";
+import { format } from "node:util";
+import createDebug from "debug";
 import { config, allowedUserIds, regeneratedPanelToken } from "./config.js";
 import { buildBot } from "./bot.js";
 import { sessions } from "./session/manager.js";
@@ -33,6 +35,14 @@ async function main(): Promise<void> {
   process.on("uncaughtException", (err) => {
     log.error("Uncaught exception (kept alive)", { error: errText(err) });
   });
+
+  // Pipe Telegraf's internal debug logging (getUpdates retries, client
+  // errors, etc.) into our own logger. Normally invisible — the `debug`
+  // package only prints when DEBUG=... is set in the environment — so a real
+  // network outage looked like total silence in logs/*.log even though
+  // Telegraf was quietly retrying the whole time.
+  createDebug.enable("telegraf:*");
+  createDebug.log = (...args: unknown[]) => log.debug("telegraf", { msg: format(...args) });
 
   // Ensure the working directory exists. ~/MyAgens-Workspace is the unified
   // default across Windows, macOS, and Linux — always created on boot so
@@ -170,6 +180,7 @@ async function main(): Promise<void> {
   // Cleared by shutdown() so a pending polling-retry backoff can't fire
   // startPolling() again after we've already begun (or finished) exiting.
   let pollRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  let livenessTimer: ReturnType<typeof setInterval> | undefined;
   let shuttingDown = false;
 
   const shutdown = (signal: "SIGINT" | "SIGTERM", opts: { exitCode?: number } = {}) => {
@@ -179,6 +190,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     if (pollRetryTimer) clearTimeout(pollRetryTimer);
+    if (livenessTimer) clearInterval(livenessTimer);
     log.info(`${signal} — shutting down`);
 
     // Stop accepting new turns and new scheduled work.
@@ -343,6 +355,54 @@ async function main(): Promise<void> {
   };
 
   startPolling();
+
+  // Liveness heartbeat: Telegraf retries ordinary long-poll network errors
+  // forever, silently (only visible via the debug pipe above), so a real
+  // outage can look identical to normal idle chat from our own logs. Every
+  // few minutes, confirm the polling connection is actually alive; on
+  // sustained failure, DM the owner so it's not a silent 1.5h gap next time.
+  // Log + alert only — deliberately no forced restart, per plan.
+  const LIVENESS_INTERVAL_MS = 3 * 60_000;
+  const LIVENESS_TIMEOUT_MS = 10_000;
+  const LIVENESS_FAILURE_THRESHOLD = 2;
+  let livenessFailures = 0;
+  let livenessAlerted = false;
+
+  const checkLiveness = async () => {
+    try {
+      await Promise.race([
+        bot.telegram.getMe(),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("liveness check timed out")), LIVENESS_TIMEOUT_MS);
+        }),
+      ]);
+      livenessFailures = 0;
+      if (livenessAlerted) {
+        livenessAlerted = false;
+        log.info("Telegram connectivity recovered");
+        for (const id of allowedUserIds) {
+          void bot.telegram
+            .sendMessage(id, "✅ Telegram connectivity is back to normal.")
+            .catch(() => {});
+        }
+      }
+    } catch (err) {
+      livenessFailures++;
+      log.warn("Telegram liveness check failed", { failures: livenessFailures, error: errText(err) });
+      if (livenessFailures >= LIVENESS_FAILURE_THRESHOLD && !livenessAlerted) {
+        livenessAlerted = true;
+        log.warn("Telegram connectivity looks down — alerting allowed users");
+        for (const id of allowedUserIds) {
+          void bot.telegram
+            .sendMessage(id, "⚠️ Telegram connectivity looks down. Still retrying in the background — no action needed unless this persists.")
+            .catch(() => {});
+        }
+      }
+    }
+  };
+
+  livenessTimer = setInterval(() => void checkLiveness(), LIVENESS_INTERVAL_MS);
+  livenessTimer.unref();
 }
 
 function errText(err: unknown): string {

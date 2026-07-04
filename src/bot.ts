@@ -66,6 +66,7 @@ import { log, preview } from "./logger.js";
 import { agentUsage } from "./core/agentUsage.js";
 import { errText, friendlyError } from "./telegram/errors.js";
 import { sendBusyNotice, promptPreview } from "./telegram/busy.js";
+import { guardCwd, cwdFallbackNotice } from "./core/cwdGuard.js";
 
 export function buildBot(): Telegraf {
   const bot = new Telegraf(config.TELEGRAM_BOT_TOKEN);
@@ -487,7 +488,15 @@ async function handleUserPrompt(
       .catch(() => {});
     return;
   }
-  const cwd = opts.cwd ?? session.cwd;
+  const requestedCwd = opts.cwd ?? session.cwd;
+  const cwd = guardCwd(requestedCwd, { chatId });
+  if (cwd !== requestedCwd && !opts.cwd) {
+    // Only persist/notify when the session's own cwd was invalid (not a
+    // one-off override passed via opts.cwd, e.g. a delegated card run).
+    session.cwd = cwd;
+    sessions.save();
+    void tg.sendMessage(chatId, cwdFallbackNotice(requestedCwd)).catch(() => {});
+  }
 
   // Mirror this turn into the panel Chat view when it's the main chat, so the
   // conversation is visible (and drivable) from the web UI too.

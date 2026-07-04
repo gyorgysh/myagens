@@ -1,0 +1,18 @@
+diff --git a/node_modules/telegraf/lib/core/network/client.js b/node_modules/telegraf/lib/core/network/client.js
+index 25fbbbb..e2b99f2 100644
+--- a/node_modules/telegraf/lib/core/network/client.js
++++ b/node_modules/telegraf/lib/core/network/client.js
+@@ -300,7 +300,12 @@ class ApiClient {
+         config.agent = options.agent;
+         // @ts-expect-error AbortSignal shim is missing some props from Request.AbortSignal
+         config.signal = signal;
+-        config.timeout = 500000; // ms
++        // myagens patch: getUpdates gets a much shorter client-side timeout (60s
++        // instead of the stock 500s) so a stalled long-poll connection (e.g. a
++        // "half-dead" socket after sleep/wake or a NAT drop) is noticed and retried
++        // in under a minute instead of over 8 minutes; every other method (file
++        // uploads etc.) keeps the original generous 500s.
++        config.timeout = method === 'getUpdates' ? 60000 : 500000;
+         const res = await (0, node_fetch_1.default)(apiUrl, config).catch(redactToken);
+         if (res.status >= 500) {
+             const errorPayload = {

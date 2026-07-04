@@ -1,3 +1,5 @@
+import { existsSync, statSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import { Telegraf } from "telegraf";
 import type { Telegram } from "telegraf";
 import type { Worker } from "../core/workers.js";
@@ -30,6 +32,7 @@ import { t, langForChat } from "./i18n/index.js";
 import { friendlyError } from "./errors.js";
 import { sendBusyNotice, promptPreview } from "./busy.js";
 import { LoopDetector } from "../core/loopDetector.js";
+import { guardCwd, cwdFallbackNotice } from "../core/cwdGuard.js";
 import { log } from "../logger.js";
 import { config } from "../config.js";
 import { agentUsage } from "../core/agentUsage.js";
@@ -95,6 +98,14 @@ export class LeadBot {
     s.lastBusyNoticeAt = undefined;
     s.busyNoticeCount = undefined;
     s.abort = new AbortController();
+
+    const requestedCwd = s.cwd;
+    const guardedCwd = guardCwd(requestedCwd, { leadId: lead.id, chatId });
+    if (guardedCwd !== requestedCwd) {
+      s.cwd = guardedCwd;
+      sessions.save();
+      void tg.sendMessage(chatId, cwdFallbackNotice(requestedCwd)).catch(() => {});
+    }
 
     // Stream mode: per-lead override falls back to global STREAM_MODE config.
     const mode = lead.streamMode ?? config.STREAM_MODE;
@@ -382,12 +393,40 @@ export class LeadBot {
       }
     });
 
+    // /pwd
+    bot.command("pwd", async (ctx) => {
+      const s = sessions.get(ctx.chat.id);
+      await ctx.replyWithHTML(`📂 <code>${escapeHtml(s.cwd)}</code>`);
+    });
+
+    // /cd
+    bot.command("cd", async (ctx) => {
+      const lang = langForChat(ctx.chat.id);
+      const s = sessions.get(ctx.chat.id);
+      const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
+      if (!arg) {
+        await ctx.reply(t("cmd_cd_usage", lang));
+        return;
+      }
+      const target = isAbsolute(arg) ? arg : resolve(s.cwd, arg);
+      if (!existsSync(target) || !statSync(target).isDirectory()) {
+        await ctx.reply(t("cmd_cd_not_dir", lang, { path: target }));
+        return;
+      }
+      s.cwd = target;
+      sessions.save();
+      log.info("Command /cd (lead)", { leadId: lead.id, chatId: ctx.chat.id, cwd: target });
+      await ctx.replyWithHTML(t("cmd_cd_done", lang, { path: escapeHtml(target) }));
+    });
+
     // /help
     bot.command("help", async (ctx) => {
       await ctx.replyWithHTML(
         `🤖 <b>${lead.name}</b>${lead.portfolio ? `: ${lead.portfolio}` : ""}\n\n` +
           `/ping: check I'm online and whether I'm busy\n` +
           `/status: session info (cwd, model, autonomy)\n` +
+          `/cd [path]: change working directory\n` +
+          `/pwd: show current directory\n` +
           `/stop: abort the running request\n` +
           `/mode supervised|standard|full: approval level\n` +
           `/lang [code]: show or set response language\n` +
@@ -481,6 +520,8 @@ export class LeadBot {
     await bot.telegram.setMyCommands([
       { command: "ping", description: "Am I online? (and busy or idle)" },
       { command: "status", description: "Show session info" },
+      { command: "cd", description: "Change working directory" },
+      { command: "pwd", description: "Show current directory" },
       { command: "stop", description: "Abort running request" },
       { command: "mode", description: "safe or auto" },
       { command: "help", description: "Help" },

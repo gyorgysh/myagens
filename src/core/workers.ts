@@ -21,6 +21,7 @@ import { toolDiffMeta } from "../telegram/formatting.js";
 import type { Autonomy } from "../session/manager.js";
 import { getLeadProtocol } from "../prompt.js";
 import { agentUsage } from "./agentUsage.js";
+import { guardCwd, cwdFallbackNotice } from "./cwdGuard.js";
 
 const FILE = "workers.json";
 const RUNS_FILE = "workerRuns.json";
@@ -406,6 +407,21 @@ export class WorkerManager {
     // Full transcript writer (uncapped, NDJSON on disk) for the panel's
     // "View full log". The capped run.output stays the live/summary view.
     const transcript = new RunLogWriter(run.id, { kind: "worker", ownerId: w.id, ownerName: w.name });
+
+    // Unattended run: no human chat to /cd back to safety, so a deleted/
+    // obsolete cwd would otherwise fail every run forever with a low-level
+    // spawn ENOENT. Fall back to the default workdir and surface the notice
+    // in the run's own output/transcript instead of silently relocating.
+    const requestedCwd = w.cwd;
+    const guardedCwd = guardCwd(requestedCwd, { workerId: w.id });
+    if (guardedCwd !== requestedCwd) {
+      w.cwd = guardedCwd;
+      this.persist();
+      const notice = `${cwdFallbackNotice(requestedCwd)}\n\n`;
+      run.output = (run.output + notice).slice(-OUTPUT_CAP);
+      transcript.event({ ts: Date.now(), kind: "text", text: notice });
+      this.broadcast({ type: "worker", event: "delta", runId: run.id, workerId: w.id, delta: notice });
+    }
 
     try {
       const res = await getBackend(w.backendId).runTurn({

@@ -920,10 +920,13 @@ async function handleUserPrompt(
     } else if (stopped) {
       log.info("Turn stopped by user", { chatId, ms: Date.now() - startedAt });
       await tg.sendMessage(chatId, t("bot_stopped", langForChat(chatId))).catch(() => {});
-    } else if (!autonomous && isStaleSession(err) && session.sessionId) {
+    } else if (isStaleSession(err) && session.sessionId) {
       // The stored session ID is stale (CLI no longer has that conversation).
       // Clear it and re-run the same prompt as a fresh turn automatically.
-      log.warn("Main chat stale session — clearing and retrying fresh", { chatId });
+      // Applies to autonomous turns too (scheduled jobs, heartbeat) — those
+      // used to fall through to the generic error branch and report a hard
+      // failure ("No conversation found…") instead of silently recovering.
+      log.warn("Main chat stale session — clearing and retrying fresh", { chatId, autonomous });
       session.sessionId = undefined;
       sessions.save();
       retryStale = true;

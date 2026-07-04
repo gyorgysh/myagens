@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { config } from "../config.js";
-import type { RunResult } from "../claude/runner.js";
+import { isStaleSession, type RunResult } from "../claude/runner.js";
 import { getBackend } from "./backends.js";
 import { memoryMcp } from "../mcp/memory.js";
 import { createTasksMcp } from "../mcp/tasks.js";
@@ -392,6 +392,12 @@ export class TaskDelegator {
     // on the delegation so a future retry can resume the conversation. Seeded
     // with the resume token (a resumed run keeps the same session id).
     let sessionId = resume;
+    // Set in the catch block when the CLI rejects `resume` as stale ("No
+    // conversation found…"). Handled in `finally` (after this run's slot is
+    // freed) by immediately starting a fresh run with no resume token, so an
+    // unattended delegated card self-heals instead of landing on the board as
+    // a hard error.
+    let retryFresh = false;
     // Full uncapped transcript on disk for the panel's "View full log".
     const transcript = new RunLogWriter(runId, { kind: "task", ownerId: id, ownerName: title });
     // Compact label for the Logs activity feed: a delegated card's full title can
@@ -541,28 +547,41 @@ export class TaskDelegator {
     } catch (err) {
       // A timeout aborts the run too, but it's a failure (error), not a manual stop.
       const stopped = abort.signal.aborted && !timedOut;
-      const errMsg = timedOut ? "Timeout exceeded" : err instanceof Error ? err.message : String(err);
-      setDelegate(id, {
-        status: stopped ? "stopped" : "error",
-        runId,
-        startedAt,
-        endedAt: Date.now(),
-        output: capOutput(output),
-        error: stopped ? undefined : errMsg,
-        // Keep the session token on a failure/timeout/stop so a retry can resume
-        // the conversation from where it broke.
-        sessionId,
-      });
-      if (!stopped) log.error("Task delegation failed", { id, runId, timedOut });
-      await Promise.resolve(
-        this.notify({
-          taskId: id,
-          title,
+      if (isStaleSession(err) && resume) {
+        // The resume token this run was seeded with is no longer valid in the
+        // CLI. There's no human on this path to retry manually, so drop it and
+        // retry once as a fresh conversation — mirrors the same recovery for
+        // interactive turns in bot.ts/leadBot.ts. `resume` (the token this run
+        // started with) only being set on a genuine resume attempt keeps this
+        // to one retry: the follow-up run passes no resume token, so it can't
+        // hit this branch again.
+        log.warn("Task delegation stale session — clearing and retrying fresh", { id, runId });
+        audit("task.stale_retry", { id, runId });
+        retryFresh = true;
+      } else {
+        const errMsg = timedOut ? "Timeout exceeded" : err instanceof Error ? err.message : String(err);
+        setDelegate(id, {
           status: stopped ? "stopped" : "error",
+          runId,
+          startedAt,
+          endedAt: Date.now(),
+          output: capOutput(output),
           error: stopped ? undefined : errMsg,
-          leadName: lead?.name,
-        }),
-      ).catch(() => {});
+          // Keep the session token on a failure/timeout/stop so a retry can resume
+          // the conversation from where it broke.
+          sessionId,
+        });
+        if (!stopped) log.error("Task delegation failed", { id, runId, timedOut });
+        await Promise.resolve(
+          this.notify({
+            taskId: id,
+            title,
+            status: stopped ? "stopped" : "error",
+            error: stopped ? undefined : errMsg,
+            leadName: lead?.name,
+          }),
+        ).catch(() => {});
+      }
     } finally {
       if (timeoutTimer) clearTimeout(timeoutTimer);
       this.active.delete(id);
@@ -570,8 +589,15 @@ export class TaskDelegator {
       const st = endTask?.delegate?.status ?? "ok";
       transcript.close({ status: st, isError: st === "error", durationMs: Date.now() - startedAt });
       this.broadcast({ type: "task", event: "end", taskId: id, runId, delegate: endTask?.delegate, column: endTask?.column });
-      // A slot just freed up — start the next queued card.
-      this.pump();
+      if (retryFresh) {
+        // Slot is free again (active.delete above) and the stale token was
+        // never persisted, so startRun's own consumeResumeSession() picks up
+        // nothing and this begins a genuinely fresh conversation.
+        this.startRun(id, lead?.id);
+      } else {
+        // A slot just freed up — start the next queued card.
+        this.pump();
+      }
     }
   }
 }

@@ -39,7 +39,7 @@ const emptyForm = {
   parentId: "",
   telegramToken: "",
   persona: "",
-  autonomy: "full" as Autonomy,
+  autonomy: "standard" as Autonomy,
   language: "",
   streamMode: "" as "" | "rich" | "draft" | "edit",
   webhookUrl: "",

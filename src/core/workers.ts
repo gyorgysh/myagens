@@ -375,12 +375,14 @@ export class WorkerManager {
         }
       : undefined;
 
-    const autonomy = w.autonomy ?? "full";
+    const autonomy = w.autonomy ?? "standard";
     // For unattended workers there is no human to approve tool calls, so:
-    //   full             → bypassPermissions (default — current behaviour).
+    //   full             → bypassPermissions.
     //   auto_until_error → bypassPermissions when not escalated; "default" + deny
     //                      risky tools when escalated (persisted across restarts).
-    //   standard         → auto-allow safe tools, deny risky ones silently.
+    //   standard         → auto-allow safe tools, deny risky ones silently (the
+    //                      safe default — a worker must be explicitly set to full
+    //                      to run unattended Bash/Write/Edit).
     //   supervised       → deny everything that isn't in AUTO_ALLOWED_TOOLS.
     const permissionMode =
       autonomy === "full" || (autonomy === "auto_until_error" && !w.escalated)

@@ -616,7 +616,7 @@ function workerView(w: Worker) {
     telegramToken: w.telegramToken ?? "",
     botUsername: w.botUsername ?? "",
     persona: w.persona ?? "",
-    autonomy: w.autonomy ?? "full",
+    autonomy: w.autonomy ?? "standard",
     language: w.language ?? "",
     webhookUrl: w.webhookUrl ?? "",
     avatar: w.avatar ?? "",

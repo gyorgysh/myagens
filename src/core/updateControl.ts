@@ -188,10 +188,7 @@ async function runScript(
     if (!isWin) child.unref();
     const handle = (buf: Buffer) => {
       for (const line of buf.toString().split("\n")) {
-        if (line.length) {
-          onLine(line);
-          log.info(`[update] ${line}`);
-        }
+        if (line.length) onLine(line);
       }
     };
     child.stdout.on("data", handle);

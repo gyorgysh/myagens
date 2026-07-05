@@ -1209,14 +1209,20 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   app.post("/api/update/run", async () => {
     if (getUpdateStatus().updating) return { started: false };
     // Stream output to panel clients; don't await (the run may restart us).
-    void runUpdate((line) => hub.broadcast({ type: "update", line })).catch(() => {});
+    void runUpdate((line) => {
+      log.info(`[update] ${line}`);
+      hub.broadcast({ type: "update", line });
+    }).catch(() => {});
     return { started: true };
   });
   app.post("/api/update/restore", async () => {
     if (getUpdateStatus().updating) return { started: false };
     // Recovery: hard-reset code to the remote (keeps data/config), rebuild,
     // restart. Stream to panel clients; don't await (the run may restart us).
-    void runRestore((line) => hub.broadcast({ type: "update", line })).catch(() => {});
+    void runRestore((line) => {
+      log.info(`[restore] ${line}`);
+      hub.broadcast({ type: "update", line });
+    }).catch(() => {});
     return { started: true };
   });
   // Local CHANGELOG.md fallback for the Updates view: when the panel can't reach

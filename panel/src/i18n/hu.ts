@@ -557,6 +557,8 @@ export const hu: Translations = {
   settings_dryrun: "Próbafutás mód",
   settings_dryrun_desc: "A módosító eszközök (Bash, Write, Edit) csak visszajeleznek, de nem futnak le. Az ügynök elmondja, mit tenne, anélkül hogy hozzányúlna a géphez.",
   settings_dryrun_active: "A próbafutás BE van kapcsolva. Semmilyen fájl- vagy parancsmódosítás nem hajtódik végre, amíg ki nem kapcsolod.",
+  settings_update_notify: "Új verzió értesítés",
+  settings_update_notify_desc: "Ha új verzió jelenik meg a GitHubon, üzenek Telegramon egy Elfogad/Később választással. Az Elfogad ugyanazt a mentő útvonalat futtatja, mint a /reload.",
   settings_fallback: "Korlát-tartalék",
   settings_fallback_desc: "Amikor az Anthropic csomag eléri a korlátot, az autonóm futások (ütemezések, delegált feladatok, szívverés) erre a szolgáltatóra váltanak, amíg a használat a küszöb alá nem csökken. Az interaktív beszélgetéseket sosem érinti.",
   settings_fallback_provider: "Tartalék szolgáltató",

@@ -210,7 +210,7 @@ export const en = {
   cmd_start:
     "👋 <b>{greeting}! I'm {agent}, your {brand} coordinator.</b>\n\nI run as a real Claude Code agent on this machine. I can read files, write code, run commands, check services, and ship things. Replies stream live as I work. Anything that writes or executes pauses for your approval first.\n\n<b>Talk to me like a person:</b>\n<i>\"What's eating all the disk space?\"</i>\n<i>\"Deploy the site and let me know when it's done.\"</i>\n<i>\"Summarize any errors from the last hour of logs.\"</i>\n\nI coordinate a crew of specialist Leads (DevOps, Finance, Research, whatever you configure). Use /council to put a decision to a full team vote, or message a Lead directly if they have their own bot.\n\nYou can send me files and photos (I see images inline) and voice notes (transcribed and run as prompts).\n\n/help for the full command list.",
   cmd_help:
-    "🤖 <b>{agent}: Commands</b>\n\n<b>Conversation</b>\n/new: fresh context (clear session)\n/stop: abort the running request\n\n<b>Files &amp; Git</b>\n/cd &lt;path&gt;: change working directory\n/pwd: current directory\n/projects: switch between saved working dirs\n/diff: review the working-tree diff with Commit / Discard buttons\n/commit &lt;message&gt;: stage all changes and commit\n\n<b>Autonomy</b>\n/mode supervised|standard|full|auto_until_error: approval level for this chat\n/model: switch the AI model (Claude, local, providers)\n/allow &lt;Tool&gt; · /allowed · /disallow &lt;Tool|all&gt;: persistent tool allow-rules\n\n<b>Crew</b>\n/inbox: review suggestions agents filed for you (accept → a task, or dismiss)\n/council &lt;idea&gt;: put a proposal to a full Lead council vote\n\n<b>Scheduling</b>\n/schedule add &lt;when&gt; | &lt;prompt&gt;: timed autonomous run (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)\n/schedule list · /schedule rm &lt;id&gt;\n\n<b>Info</b>\n/status: session info (cwd, model, autonomy, session id)\n/usage: plan, subscription limits, and API spend\n/digest: morning briefing. Last 24h of tasks, memories, skills, cost &amp; alerts\n/update [now]: check for a new version, or apply it with <code>/update now</code>\n/restore [confirm]: reset code to the latest GitHub commit, keeping your data &amp; config\n/lang [code]: show or set response language (e.g. <code>/lang hu</code>)\n/voice [on|off]: toggle spoken voice replies (TTS)\n/help: this message\n\nSend files or photos (seen inline as vision input), or voice notes (transcribed and run as prompts).",
+    "🤖 <b>{agent}: Commands</b>\n\n<b>Conversation</b>\n/new: fresh context (clear session)\n/stop: abort the running request\n\n<b>Files &amp; Git</b>\n/cd &lt;path&gt;: change working directory\n/pwd: current directory\n/projects: switch between saved working dirs\n/diff: review the working-tree diff with Commit / Discard buttons\n/commit &lt;message&gt;: stage all changes and commit\n\n<b>Autonomy</b>\n/mode supervised|standard|full|auto_until_error: approval level for this chat\n/model: switch the AI model (Claude, local, providers)\n/allow &lt;Tool&gt; · /allowed · /disallow &lt;Tool|all&gt;: persistent tool allow-rules\n\n<b>Crew</b>\n/inbox: review suggestions agents filed for you (accept → a task, or dismiss)\n/council &lt;idea&gt;: put a proposal to a full Lead council vote\n\n<b>Scheduling</b>\n/schedule add &lt;when&gt; | &lt;prompt&gt;: timed autonomous run (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)\n/schedule list · /schedule rm &lt;id&gt;\n\n<b>Info</b>\n/status: session info (cwd, model, autonomy, session id)\n/usage: plan, subscription limits, and API spend\n/digest: morning briefing. Last 24h of tasks, memories, skills, cost &amp; alerts\n/update [now]: check for a new version, or apply it with <code>/update now</code>\n/restore [confirm]: reset code to the latest GitHub commit, keeping your data &amp; config\n/reload: rescue path — confirm to discard local changes, pull latest, rebuild, and restart\n/lang [code]: show or set response language (e.g. <code>/lang hu</code>)\n/voice [on|off]: toggle spoken voice replies (TTS)\n/help: this message\n\nSend files or photos (seen inline as vision input), or voice notes (transcribed and run as prompts).",
   cmd_new_done: "🆕 Started a fresh conversation.",
   cmd_cd_usage: "Usage: /cd <path>",
   cmd_cd_not_dir: "⚠️ Not a directory: {path}",
@@ -292,6 +292,23 @@ export const en = {
   cmd_restore_starting_manual: "Restart your manual run afterward to pick up the restored code.",
   cmd_restore_done: "✓ Restore complete. Restart to apply.",
   cmd_restore_failed: "⚠️ Restore failed. Check /logs.",
+  reload_explain:
+    "🆘 <b>/reload — rescue path</b>\nThis will:\n1. Discard any local, uncommitted changes to tracked source files (like <code>git reset --hard</code>)\n2. Keep <code>data/</code>, <code>.env</code>, <code>work.md</code>, and every other untracked/gitignored file untouched\n3. Pull the latest commit from GitHub\n4. Reinstall dependencies and rebuild\n5. Restart the panel + bot service\n\nWorks regardless of this chat's autonomy mode — it never runs through the model. Confirm to proceed.",
+  reload_confirm_btn: "✅ Yes, reload",
+  reload_cancel_btn: "✋ Cancel",
+  reload_cancelled: "Cancelled — nothing changed.",
+  reload_running: "⏳ An update/reload is already running.",
+  reload_starting: "🆘 <b>Reloading…</b>",
+  reload_starting_service: "The bot will restart when the build finishes.",
+  reload_starting_manual: "Restart your manual run afterward to pick up the new code.",
+  reload_started_toast: "Reload started…",
+  reload_done: "✓ Reload complete. Restart to apply.",
+  reload_failed: "⚠️ Reload failed. Check /logs.",
+  updatenotify_available:
+    "🆕 <b>New version detected: {from} → {to}</b>\n{list}\nRecommended to update. This runs the same rescue path as /reload (discards local changes, pulls latest, rebuilds, restarts) — your data, secrets, and work.md are kept.",
+  updatenotify_accept_btn: "✅ Update now",
+  updatenotify_reject_btn: "⏰ Later",
+  updatenotify_rejected: "Okay — I'll remind you again on the next new version.",
   cmd_status_running: "running…",
   cmd_status_idle: "idle",
   cmd_status_new_session: "(new)",

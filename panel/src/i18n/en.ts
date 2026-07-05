@@ -556,6 +556,8 @@ export const en = {
   settings_dryrun: "Dry-run mode",
   settings_dryrun_desc: "Mutating tools (Bash, Write, Edit) are echoed but not executed. The agent narrates what it would do without touching the host.",
   settings_dryrun_active: "Dry-run is ON. No file or command changes will actually run until you turn it off.",
+  settings_update_notify: "New-version notifications",
+  settings_update_notify_desc: "When a new version is detected on GitHub, message me on Telegram with an Accept/Later choice. Accept runs the same rescue path as /reload.",
   settings_fallback: "Rate-limit fallback",
   settings_fallback_desc: "When the Anthropic plan is rate-limited, autonomous turns (schedules, delegated tasks, heartbeat) switch to this provider until usage drops back under the threshold. Interactive chats are never affected.",
   settings_fallback_provider: "Fallback provider",

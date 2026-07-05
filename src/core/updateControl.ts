@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { repoRoot } from "../config.js";
 import { log } from "../logger.js";
 import { audit } from "./audit.js";
@@ -23,6 +24,10 @@ export interface UpdateStatus {
   behindBy: number;
   /** Convenience flag: behindBy > 0. */
   available: boolean;
+  /** package.json "version" of the current checkout. */
+  currentVersion?: string;
+  /** package.json "version" at FETCH_HEAD (the latest fetched remote commit). */
+  latestVersion?: string;
   /** Subjects of the commits we're behind, newest first (capped). */
   commits: string[];
   /** When the remote was last checked (epoch ms). */
@@ -41,6 +46,26 @@ let updating = false;
 
 function git(args: string[]): Promise<string> {
   return pexec("git", args, { cwd: repoRoot }).then((r) => r.stdout.trim());
+}
+
+/** Read the "version" field out of a package.json's raw text. Returns undefined if unparseable. */
+function packageVersion(raw: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const version = (parsed as { version?: unknown }).version;
+    return typeof version === "string" ? version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** package.json "version" of the current checkout, read straight off disk. */
+function currentPackageVersion(): string | undefined {
+  try {
+    return packageVersion(readFileSync(join(repoRoot, "package.json"), "utf8"));
+  } catch {
+    return undefined;
+  }
 }
 
 function load(): UpdateStatus {
@@ -65,12 +90,19 @@ export async function checkForUpdate(): Promise<UpdateView> {
     const behindBy = Number(await git(["rev-list", "--count", "HEAD..FETCH_HEAD"])) || 0;
     const logOut =
       behindBy > 0 ? await git(["log", "--oneline", "--no-decorate", "-n", "15", "HEAD..FETCH_HEAD"]) : "";
+    const currentVersion = currentPackageVersion();
+    const latestVersion =
+      behindBy > 0
+        ? packageVersion(await git(["show", "FETCH_HEAD:package.json"]).catch(() => "")) ?? currentVersion
+        : currentVersion;
     cached = {
       branch,
       current,
       latest,
       behindBy,
       available: behindBy > 0,
+      currentVersion,
+      latestVersion,
       commits: logOut ? logOut.split("\n").filter(Boolean) : [],
       checkedAt: Date.now(),
     };

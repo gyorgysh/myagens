@@ -72,6 +72,13 @@ interface MainSettings {
    * a { label, path } pair, e.g. { label: "Projects", path: "/Users/me/dev" }.
    */
   knownPaths?: Array<{ label: string; path: string }>;
+  /**
+   * Opt out of the proactive "new version detected" Telegram notification
+   * (src/core/updateNotify.ts). Off by default — the president is notified and
+   * can Accept (runs the same rescue path as /reload) or dismiss until the next
+   * version.
+   */
+  updateNotifyOptOut?: boolean;
 }
 
 /** Mutating tools intercepted by dry-run (echoed, not executed). */
@@ -132,6 +139,7 @@ export function mainSettingsView() {
     degraded: degradedState(),
     botUsername: botUsername ?? "",
     knownPaths: s.knownPaths ?? [],
+    updateNotifyOptOut: s.updateNotifyOptOut === true,
   };
 }
 
@@ -147,6 +155,7 @@ export function setMainSettings(patch: {
   fallbackModel?: string;
   fallbackThreshold?: number;
   knownPaths?: Array<{ label: string; path: string }>;
+  updateNotifyOptOut?: boolean;
 }): void {
   const s = load();
   const prevBackend = s.backendId;
@@ -171,6 +180,7 @@ export function setMainSettings(patch: {
       .filter((e) => e.label && e.path);
     s.knownPaths = clean.length ? clean : undefined;
   }
+  if (patch.updateNotifyOptOut !== undefined) s.updateNotifyOptOut = patch.updateNotifyOptOut || undefined;
   saveJson<MainFile>(FILE, { version: 1, settings: s });
   audit("mainAgent.update", {
     model: s.model,

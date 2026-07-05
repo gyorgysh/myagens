@@ -712,6 +712,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       fallbackModel,
       fallbackThreshold,
       knownPaths,
+      updateNotifyOptOut,
     } = (req.body ?? {}) as {
       model?: string;
       providerId?: string;
@@ -724,6 +725,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       fallbackModel?: string;
       fallbackThreshold?: number;
       knownPaths?: Array<{ label: string; path: string }>;
+      updateNotifyOptOut?: boolean;
     };
     setMainSettings({
       model,
@@ -737,6 +739,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       fallbackModel,
       fallbackThreshold,
       knownPaths,
+      updateNotifyOptOut,
     });
     return mainSettingsView();
   });

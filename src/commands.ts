@@ -19,6 +19,7 @@ import type { UsageStat } from "./session/store.js";
 import { loadProbeResult, runProbe } from "./core/usageProbe.js";
 import { getPlanSettings, billingPeriodStart, daysUntilReset } from "./core/planSettings.js";
 import { checkForUpdate, runUpdate, runRestore, isUpdating } from "./core/updateControl.js";
+import { sendReloadPrompt } from "./telegram/reloadFlow.js";
 import { isActive } from "./core/activity.js";
 import { serviceInstalled } from "./core/agentControl.js";
 import { listProviders } from "./core/providers.js";
@@ -619,6 +620,15 @@ export function registerCommands(bot: Telegraf): void {
         await ctx.reply(r.ok ? t("cmd_restore_done", lang) : t("cmd_restore_failed", lang)).catch(() => {});
       }
     }).catch(() => {});
+  });
+
+  // /reload — the rescue/self-heal path, identical on Atlas and every Lead bot
+  // (see src/telegram/leadBot.ts). A direct command handler, never routed
+  // through runUserPrompt/canUseTool, so it works regardless of this chat's
+  // autonomy mode — the same bypass /commit and /diff already use.
+  bot.command("reload", async (ctx) => {
+    log.info("Command /reload", { chatId: ctx.chat.id });
+    await sendReloadPrompt(ctx.telegram, ctx.chat.id);
   });
 
   bot.command("stop", async (ctx) => {

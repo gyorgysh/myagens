@@ -38,6 +38,7 @@ import { log } from "../logger.js";
 import { config } from "../config.js";
 import { agentUsage } from "../core/agentUsage.js";
 import { notifyAsAtlas } from "../core/atlasNotify.js";
+import { sendReloadPrompt, isReloadCallback, resolveReloadCallback } from "./reloadFlow.js";
 
 /**
  * A standalone Telegram bot for a single Lead worker. It reuses the same
@@ -373,6 +374,11 @@ export class LeadBot {
         log.debug("Approval button pressed (lead)", { leadId: lead.id, chatId: ctx.chat?.id, data });
         const toast = await permissions.resolve(data, ctx.chat?.id);
         await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
+      } else if (data && isReloadCallback(data) && ctx.chat) {
+        log.debug("Reload button pressed (lead)", { leadId: lead.id, chatId: ctx.chat.id, data });
+        const messageId = ctx.callbackQuery.message?.message_id;
+        const toast = await resolveReloadCallback(ctx.telegram, ctx.chat.id, data, messageId);
+        await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
       } else {
         await ctx.answerCbQuery().catch(() => {});
       }
@@ -457,6 +463,14 @@ export class LeadBot {
       await ctx.replyWithHTML(t("cmd_cd_done", lang, { path: escapeHtml(target) }));
     });
 
+    // /reload — the rescue/self-heal path, identical to Atlas's (src/commands.ts).
+    // A direct command handler, never routed through runTurn/canUseTool, so it
+    // works regardless of this Lead's autonomy mode.
+    bot.command("reload", async (ctx) => {
+      log.info("Command /reload (lead)", { leadId: lead.id, chatId: ctx.chat.id });
+      await sendReloadPrompt(ctx.telegram, ctx.chat.id);
+    });
+
     // /help
     bot.command("help", async (ctx) => {
       await ctx.replyWithHTML(
@@ -467,6 +481,7 @@ export class LeadBot {
           `/pwd: show current directory\n` +
           `/stop: abort the running request\n` +
           `/mode supervised|standard|full: approval level\n` +
+          `/reload: rescue path — confirm to discard local changes, pull latest, rebuild, and restart\n` +
           `/lang [code]: show or set response language\n` +
           `/help: this message`,
       );
@@ -562,6 +577,7 @@ export class LeadBot {
       { command: "pwd", description: "Show current directory" },
       { command: "stop", description: "Abort running request" },
       { command: "mode", description: "safe or auto" },
+      { command: "reload", description: "Rescue: discard local changes, pull, rebuild, restart" },
       { command: "help", description: "Help" },
     ]);
 

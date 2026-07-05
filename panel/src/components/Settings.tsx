@@ -456,6 +456,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const [persona, setPersona] = useState("");
   const [autonomy, setAutonomy] = useState<Autonomy>("standard");
   const [dryRun, setDryRun] = useState(false);
+  const [updateNotifyOptOut, setUpdateNotifyOptOut] = useState(false);
   const [fallbackProviderId, setFallbackProviderId] = useState("");
   const [fallbackModel, setFallbackModel] = useState("");
   const [fallbackThreshold, setFallbackThreshold] = useState(95);
@@ -472,6 +473,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         setPersona(a.persona ?? "");
         setAutonomy(a.autonomy ?? "standard");
         setDryRun(a.dryRun === true);
+        setUpdateNotifyOptOut(a.updateNotifyOptOut === true);
         setFallbackProviderId(a.fallbackProviderId ?? "");
         setFallbackModel(a.fallbackModel ?? "");
         setFallbackThreshold(a.fallbackThreshold ?? 95);
@@ -491,6 +493,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
       persona !== (agent.persona ?? "") ||
       autonomy !== (agent.autonomy ?? "standard") ||
       dryRun !== (agent.dryRun === true) ||
+      updateNotifyOptOut !== (agent.updateNotifyOptOut === true) ||
       fallbackProviderId !== (agent.fallbackProviderId ?? "") ||
       fallbackModel !== (agent.fallbackModel ?? "") ||
       fallbackThreshold !== (agent.fallbackThreshold ?? 95));
@@ -537,6 +540,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         persona,
         autonomy,
         dryRun,
+        updateNotifyOptOut,
         fallbackProviderId,
         fallbackModel,
         fallbackThreshold,
@@ -719,6 +723,21 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
                 {t("settings_dryrun_active")}
               </p>
             )}
+          </div>
+
+          <div className="mt-4 border-t border-line pt-4">
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={!updateNotifyOptOut}
+                onChange={(e) => setUpdateNotifyOptOut(!e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+              />
+              <span>
+                <span className="text-sm font-medium text-fg">{t("settings_update_notify")}</span>
+                <span className="block text-xs text-fg-dim">{t("settings_update_notify_desc")}</span>
+              </span>
+            </label>
           </div>
 
           <div className="mt-4 border-t border-line pt-4">

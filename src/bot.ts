@@ -26,6 +26,8 @@ import { AskQuestionManager } from "./telegram/askQuestion.js";
 import { LoopDetector } from "./core/loopDetector.js";
 import { downloadIncomingFile, isViewableImage, readImageInput } from "./telegram/files.js";
 import { isGitCallback, resolveGitCallback } from "./telegram/gitFlow.js";
+import { isReloadCallback, resolveReloadCallback } from "./telegram/reloadFlow.js";
+import { startUpdateNotify, isUpdateNotifyCallback, resolveUpdateNotifyCallback } from "./core/updateNotify.js";
 import { isTaskCallback, resolveTaskCallback, retryKeyboard } from "./telegram/taskFlow.js";
 import { isProjectCallback, resolveProjectCallback } from "./telegram/projects.js";
 import { isInboxCallback, resolveInboxCallback } from "./telegram/inboxFlow.js";
@@ -113,6 +115,21 @@ export function buildBot(): Telegraf {
       log.debug("Git button pressed", { chatId: ctx.chat.id, data });
       const messageId = ctx.callbackQuery.message?.message_id;
       const toast = await resolveGitCallback(ctx.telegram, ctx.chat.id, data, messageId);
+      await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
+    } else if (data && isReloadCallback(data) && ctx.chat) {
+      log.debug("Reload button pressed", { chatId: ctx.chat.id, data });
+      const messageId = ctx.callbackQuery.message?.message_id;
+      const toast = await resolveReloadCallback(ctx.telegram, ctx.chat.id, data, messageId);
+      await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
+    } else if (data && isUpdateNotifyCallback(data) && ctx.chat) {
+      log.debug("Update-notify Reject pressed", { chatId: ctx.chat.id, data });
+      const messageId = ctx.callbackQuery.message?.message_id;
+      if (messageId !== undefined) {
+        await ctx.telegram
+          .editMessageReplyMarkup(ctx.chat.id, messageId, undefined, { inline_keyboard: [] })
+          .catch(() => {});
+      }
+      const toast = await resolveUpdateNotifyCallback(ctx.chat.id);
       await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
     } else if (data && isTaskCallback(data) && ctx.chat) {
       log.debug("Task button pressed", { chatId: ctx.chat.id, data });
@@ -357,6 +374,11 @@ export function buildBot(): Telegraf {
       return true;
     },
   });
+
+  // Proactive "new version detected" notice: polls the update-status cache
+  // server.ts already keeps fresh (no extra git fetch traffic) and messages
+  // the president with Accept ( == /reload) / Reject buttons on a version bump.
+  startUpdateNotify(bot.telegram, alertTargets);
 
   // Delegated kanban cards run via runTurn (not handleUserPrompt), so they have
   // no Telegram path of their own — report their outcome to the president here.

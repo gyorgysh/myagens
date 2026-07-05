@@ -939,6 +939,8 @@ export interface MainAgent {
   embeddingAuto: boolean;
   /** Named directory shortcuts injected into the system prompt each turn. */
   knownPaths: Array<{ label: string; path: string }>;
+  /** Opt out of the proactive "new version detected" Telegram notification. */
+  updateNotifyOptOut: boolean;
 }
 
 export interface Provider {
@@ -1215,7 +1217,7 @@ export const api = {
   runProbe: () => req<{ ok: boolean; message: string }>("POST", "/api/usage-probe/run"),
 
   agent: () => get<MainAgent>("/api/agent"),
-  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; fallbackProviderId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }> }) =>
+  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; fallbackProviderId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean }) =>
     req<MainAgent>("PUT", "/api/agent", s),
   resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),

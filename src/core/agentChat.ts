@@ -39,6 +39,7 @@ import { audit } from "./audit.js";
 import { log, preview } from "../logger.js";
 import { toolDiffMeta } from "../telegram/formatting.js";
 import { agentAsks } from "./agentAskQuestion.js";
+import { askQueue } from "./askQueue.js";
 
 export interface AgentChatMessage {
   id: string;
@@ -129,6 +130,9 @@ export class AgentChatManager {
       messages: s.messages,
       busy: s.busy,
       hasContext: Boolean(s.resume),
+      // Any AskUserQuestion prompts already pending for this agent (e.g. asked
+      // just before the panel switched to this tab).
+      asks: askQueue.list().filter((a) => a.agentId === agentId),
     };
   }
 
@@ -244,7 +248,7 @@ export class AgentChatManager {
         },
         canUseTool: async (name, input) => {
           if (name === "AskUserQuestion") {
-            const answer = await agentAsks.ask(w.name, input);
+            const answer = await agentAsks.ask(w.id, input);
             return { behavior: "deny", message: answer };
           }
           return { behavior: "allow", updatedInput: input };

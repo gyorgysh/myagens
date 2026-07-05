@@ -811,10 +811,12 @@ export interface AskOptionView {
   description?: string;
 }
 
-/** A pending AskUserQuestion prompt, mirrored from the main Telegram chat. */
+/** A pending AskUserQuestion prompt, mirrored from Telegram or a panel chat. */
 export interface AskQuestionView {
   id: string;
   chatId: number;
+  /** Owning worker/Lead id; absent means Atlas's shared main chat. */
+  agentId?: string;
   header: string;
   question: string;
   multiSelect: boolean;
@@ -856,6 +858,8 @@ export interface AgentChatView {
   messages: ChatMessage[];
   busy: boolean;
   hasContext: boolean;
+  /** AskUserQuestion prompts currently awaiting an answer from this agent. */
+  asks: AskQuestionView[];
 }
 
 export type Autonomy = "supervised" | "standard" | "full" | "auto_until_error";

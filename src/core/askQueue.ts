@@ -7,8 +7,9 @@
  * serializable mirror so the President can answer from the browser too.
  *
  * Whichever surface answers first wins; the manager clears the question from
- * both. Only the main chat's questions are surfaced (the panel Chat mirrors the
- * main Telegram conversation), matched by `chatId`.
+ * both. Every question is tagged with `agentId` (undefined for Atlas's own
+ * shared chat, a worker/Lead id otherwise) so each chat pane can show only
+ * the questions that belong to it.
  */
 
 /** One option of a mirrored question, safe to send over the wire. */
@@ -21,6 +22,8 @@ export interface AskOptionView {
 export interface AskQuestionView {
   id: string;
   chatId: number;
+  /** Owning worker/Lead id; undefined means Atlas's shared main chat. */
+  agentId?: string;
   header: string;
   question: string;
   multiSelect: boolean;

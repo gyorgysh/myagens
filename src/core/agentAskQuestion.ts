@@ -16,9 +16,10 @@ interface PendingQuestion {
  * buttons into. Mirrors telegram/askQuestion.ts's AskQuestionManager, but the
  * only surface that can answer is the panel: the question is mirrored into the
  * shared `askQueue` (the same one Telegram's inline buttons and the panel's
- * main Chat AsksBar use), so it renders in the panel's Command Center chat and
- * resolves through the existing `/api/asks/resolve` endpoint. Falls back to the
- * first option after a timeout so a turn can never wedge forever.
+ * Chat AsksBar use), tagged with the asking agent's id so it renders in that
+ * agent's own Command Center pane, and resolves through the existing
+ * `/api/asks/resolve` endpoint. Falls back to the first option after a
+ * timeout so a turn can never wedge forever.
  */
 export class AgentAskManager {
   private pending = new Map<string, PendingQuestion>();
@@ -30,24 +31,23 @@ export class AgentAskManager {
   /**
    * Ask all questions in an AskUserQuestion tool input and return a formatted
    * answer string suitable for handing back to the model as the tool result.
-   * `who` labels the question in the panel (e.g. the agent's name) since these
-   * questions surface in the shared main-chat inbox alongside Atlas's own.
+   * `agentId` scopes the question to that agent's own chat pane.
    */
-  async ask(who: string, input: unknown): Promise<string> {
+  async ask(agentId: string, input: unknown): Promise<string> {
     const questions = parseAskInput(input);
     if (questions.length === 0) {
       return "The user was not shown any question (the tool input had no questions).";
     }
     const parts: string[] = [];
     for (const q of questions) {
-      const answer = await this.askOne(who, q);
+      const answer = await this.askOne(agentId, q);
       parts.push(`Q: ${q.question}\nA: ${answer}`);
     }
     return `The user answered:\n\n${parts.join("\n\n")}`;
   }
 
   /** Mirror one question into the panel's ask queue and await its resolution. */
-  private askOne(who: string, question: AskQuestion): Promise<string> {
+  private askOne(agentId: string, question: AskQuestion): Promise<string> {
     return new Promise<string>((resolve) => {
       const id = randomBytes(4).toString("hex");
       const timeout = setTimeout(() => {
@@ -63,11 +63,13 @@ export class AgentAskManager {
       // No real Telegram chat backs a panel agent chat, so there's no
       // meaningful chatId to scope this to; 0 marks it as panel-only context
       // (mirrors the `primaryChatId: 0` convention used elsewhere for
-      // President-driven panel turns).
+      // President-driven panel turns). agentId is what actually scopes it to
+      // the right chat pane.
       askQueue.add({
         id,
         chatId: 0,
-        header: `${who}: ${question.header}`,
+        agentId,
+        header: question.header,
         question: question.question,
         multiSelect: question.multiSelect,
         options: question.options.map((o) => ({ label: o.label, description: o.description })),

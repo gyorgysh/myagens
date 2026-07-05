@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, openHealthSocket, type AgentChatView, type ChatMessage } from "../api.ts";
+import { api, openHealthSocket, type AgentChatView, type AskQuestionView, type ChatMessage } from "../api.ts";
 import type { ChatStream } from "./useChatEvents.ts";
 
 type AgentMsg =
@@ -9,6 +9,9 @@ type AgentMsg =
   | { type: "agentchat"; event: "tool"; agentId: string; id: string; tool: string; arg: string; diffLines?: string; diffSnippet?: string }
   | { type: "agentchat"; event: "busy"; agentId: string; busy: boolean }
   | { type: "agentchat"; event: "cleared"; agentId: string };
+
+/** The ask-queue broadcast pushed whenever the pending question set changes. */
+type AsksMsg = { type: "asks"; asks: AskQuestionView[] };
 
 /**
  * Subscribe to the per-agent chat stream for one worker / Lead. Mirrors
@@ -20,6 +23,7 @@ export function useAgentChatEvents(agentId: string | null, onAuthError: () => vo
   const [stream, setStream] = useState<ChatStream | null>(null);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<AgentChatView | null>(null);
+  const [asks, setAsks] = useState<AskQuestionView[]>([]);
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
   const refreshRef = useRef<() => void>(() => {});
 
@@ -32,6 +36,7 @@ export function useAgentChatEvents(agentId: string | null, onAuthError: () => vo
         setMessages(v.messages);
         setBusy(v.busy);
         setStream(null);
+        setAsks(v.asks ?? []);
       })
       .catch((e) => {
         if (e?.name === "AuthError") onAuthError();
@@ -46,6 +51,7 @@ export function useAgentChatEvents(agentId: string | null, onAuthError: () => vo
     setStream(null);
     setBusy(false);
     setView(null);
+    setAsks([]);
     refresh();
   }, [refresh]);
 
@@ -62,14 +68,21 @@ export function useAgentChatEvents(agentId: string | null, onAuthError: () => vo
         if (!closed) refreshRef.current();
       };
       ws.onmessage = (e) => {
-        let m: AgentMsg;
+        let parsed: unknown;
         try {
-          const parsed = JSON.parse(e.data);
-          if (parsed.type !== "agentchat" || parsed.agentId !== agentId) return;
-          m = parsed as AgentMsg;
+          parsed = JSON.parse(e.data);
         } catch {
           return;
         }
+        const t = (parsed as { type?: string }).type;
+        if (t === "asks") {
+          // The broadcast carries every pending ask across all chats; only show
+          // the ones that belong to this agent's own pane.
+          setAsks((parsed as AsksMsg).asks.filter((a) => a.agentId === agentId));
+          return;
+        }
+        if (t !== "agentchat" || (parsed as { agentId?: string }).agentId !== agentId) return;
+        const m = parsed as AgentMsg;
         switch (m.event) {
           case "user":
             setMessages((xs) => [...xs, m.message]);
@@ -110,5 +123,5 @@ export function useAgentChatEvents(agentId: string | null, onAuthError: () => vo
     };
   }, [agentId]);
 
-  return { messages, stream, busy, view, setView, refresh };
+  return { messages, stream, busy, view, setView, asks, refresh };
 }

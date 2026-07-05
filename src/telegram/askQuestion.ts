@@ -49,7 +49,7 @@ export class AskQuestionManager {
    * Ask all questions in an AskUserQuestion tool input and return a formatted
    * answer string suitable for handing back to the model as the tool result.
    */
-  async ask(chatId: number, input: unknown): Promise<string> {
+  async ask(chatId: number, input: unknown, agentId?: string): Promise<string> {
     const questions = parseAskInput(input);
     if (questions.length === 0) {
       return "The user was not shown any question (the tool input had no questions).";
@@ -57,16 +57,16 @@ export class AskQuestionManager {
 
     const parts: string[] = [];
     for (const q of questions) {
-      const answer = await this.askOne(chatId, q);
+      const answer = await this.askOne(chatId, q, agentId);
       parts.push(`Q: ${q.question}\nA: ${answer}`);
     }
     return `The user answered:\n\n${parts.join("\n\n")}`;
   }
 
   /** Render and await one question. */
-  private askOne(chatId: number, question: AskQuestion): Promise<string> {
+  private askOne(chatId: number, question: AskQuestion, agentId?: string): Promise<string> {
     return new Promise<string>((resolve) => {
-      void this.post(chatId, question, resolve);
+      void this.post(chatId, question, resolve, agentId);
     });
   }
 
@@ -74,6 +74,7 @@ export class AskQuestionManager {
     chatId: number,
     question: AskQuestion,
     resolve: (answer: string) => void,
+    agentId?: string,
   ): Promise<void> {
     const id = randomBytes(4).toString("hex");
     const lang = langForChat(chatId);
@@ -139,6 +140,7 @@ export class AskQuestionManager {
     askQueue.add({
       id,
       chatId,
+      agentId,
       header: question.header,
       question: question.question,
       multiSelect: question.multiSelect,

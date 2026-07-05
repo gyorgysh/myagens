@@ -665,7 +665,7 @@ function AgentChat({
   onAuthError: () => void;
 }) {
   const { t } = useI18n();
-  const { messages, stream, busy, view, setView } = useAgentChatEvents(agentId, onAuthError);
+  const { messages, stream, busy, view, setView, asks } = useAgentChatEvents(agentId, onAuthError);
   const [editingCwd, setEditingCwd] = useState(false);
   const [planning, setPlanning] = usePlanningMode(agentId);
   const role = worker ? roleLabel(worker, t) : undefined;
@@ -723,6 +723,7 @@ function AgentChat({
       agentRole={role}
       avatar={view?.avatar}
       empty={<>{t("chat_agent_empty").replace("{name}", view?.name ?? "")}<br />{t("chat_agent_empty_2")}</>}
+      asks={asks}
       planning={planning}
       onPlanningChange={setPlanning}
       onSend={(txt, imgs) => api.sendAgentChat(agentId, txt, planning, imgs).then(() => {})}
@@ -770,7 +771,7 @@ function ChatPane({
   avatar?: string;
   /** Pending tool-call approvals to surface above the composer (Atlas only). */
   approvals?: ApprovalView[];
-  /** Pending AskUserQuestion prompts to surface above the composer (Atlas only). */
+  /** Pending AskUserQuestion prompts to surface above the composer, scoped to this pane's owner (Atlas or one Lead/worker). */
   asks?: AskQuestionView[];
   /** When defined, renders a Planning/Execution mode pill in the composer. */
   planning?: boolean;

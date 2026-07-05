@@ -56,8 +56,9 @@ export class ChatManager {
       // Pending tool-call approvals can be resolved from the panel too (the same
       // promises the Telegram buttons settle).
       approvals: approvalQueue.list(),
-      // Pending AskUserQuestion prompts, answerable from the panel.
-      asks: askQueue.list(),
+      // Pending AskUserQuestion prompts, answerable from the panel. Excludes
+      // Lead-owned questions (those surface in that Lead's own chat pane).
+      asks: askQueue.list().filter((a) => !a.agentId),
     };
   }
 

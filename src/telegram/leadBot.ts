@@ -199,7 +199,7 @@ export class LeadBot {
         canUseTool: async (name, input) => {
           if (name === "AskUserQuestion") {
             log.info("AskUserQuestion intercepted (lead)", { leadId: lead.id, chatId });
-            const answer = await asks.ask(chatId, input);
+            const answer = await asks.ask(chatId, input, lead.id);
             return { behavior: "deny", message: answer };
           }
           // Unlike a scheduled/delegated worker run (src/core/workers.ts, genuinely

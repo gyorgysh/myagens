@@ -78,7 +78,10 @@ export function useChatEvents(onAuthError: () => void) {
           return;
         }
         if (t === "asks") {
-          setAsks((parsed as AsksMsg).asks);
+          // The broadcast carries every pending ask across all chats; Atlas's
+          // pane only shows its own (agent-owned ones render in that agent's
+          // per-agent chat pane instead).
+          setAsks((parsed as AsksMsg).asks.filter((a) => !a.agentId));
           return;
         }
         if (t !== "chat") return;

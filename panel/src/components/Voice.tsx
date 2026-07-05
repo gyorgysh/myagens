@@ -11,6 +11,7 @@ type TtsEngine = "openai" | "piper" | "xai";
 const blankProvider = { name: "", baseUrl: "", authToken: "" };
 const XAI_BASE_URL = "https://api.x.ai/v1";
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
+const VOXTRAL_BASE_URL = "https://api.mistral.ai/v1";
 // Built-in fallbacks shown when no voice provider is selected (env-based auth).
 // Provider-backed pickers replace these with models fetched live from the provider.
 const STT_MODEL_SUGGESTIONS = ["whisper-1"];
@@ -145,12 +146,13 @@ export function VoiceView({ onAuthError }: { onAuthError: () => void }) {
     }
   };
 
-  const startNewProvider = (engine: "openai" | "xai") => {
-    setProviderForm({
-      name: engine === "xai" ? "xAI Voice" : "OpenAI Voice",
-      baseUrl: engine === "xai" ? XAI_BASE_URL : OPENAI_BASE_URL,
-      authToken: "",
-    });
+  const startNewProvider = (engine: "openai" | "xai" | "voxtral") => {
+    const preset = {
+      xai: { name: "xAI Voice", baseUrl: XAI_BASE_URL },
+      voxtral: { name: "Voxtral (Mistral)", baseUrl: VOXTRAL_BASE_URL },
+      openai: { name: "OpenAI Voice", baseUrl: OPENAI_BASE_URL },
+    }[engine];
+    setProviderForm({ ...preset, authToken: "" });
     setEditingProvider("new");
   };
 
@@ -326,6 +328,7 @@ export function VoiceView({ onAuthError }: { onAuthError: () => void }) {
           <div className="flex gap-2">
             <Button onClick={() => startNewProvider("openai")}>+ {t("settings_voice_engine_openai")}</Button>
             <Button onClick={() => startNewProvider("xai")}>+ {t("settings_voice_engine_xai")}</Button>
+            <Button onClick={() => startNewProvider("voxtral")}>+ {t("settings_voice_engine_voxtral")}</Button>
           </div>
         </div>
         <p className="mt-1 text-xs text-fg-dim">{t("settings_voice_providers_desc")}</p>

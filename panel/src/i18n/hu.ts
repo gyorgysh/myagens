@@ -528,6 +528,7 @@ export const hu: Translations = {
   settings_voice_engine_vosk: "Vosk (helyi, offline)",
   settings_voice_engine_piper: "Piper (helyi, offline)",
   settings_voice_engine_xai: "xAI",
+  settings_voice_engine_voxtral: "Voxtral (Mistral)",
   settings_voice_provider: "API-kulcs",
   settings_voice_provider_env: "A .env használata (OPENAI_API_KEY / XAI_API_KEY)",
   settings_voice_vosk_path: "Vosk modell elérési útja",
@@ -539,7 +540,7 @@ export const hu: Translations = {
     "Az xAI/Piper WAV kimenetének átkódolása Opus formátumba ffmpeg-gel, hogy a válasz valódi Telegram hangüzenetként érkezzen, ne fájlmellékletként.",
   settings_voice_providers_title: "Hang API-kulcsok",
   settings_voice_providers_desc:
-    "xAI vagy OpenAI-kompatibilis (pl. a Groq ingyenes Whisper csomagja) API-kulcsok, amelyeket a fenti átirat és/vagy felolvasás használhat.",
+    "xAI, Mistral/Voxtral vagy OpenAI-kompatibilis (pl. a Groq ingyenes Whisper csomagja) API-kulcsok, amelyeket a fenti átirat és/vagy felolvasás használhat.",
   settings_voice_providers_empty: "Még nincs hang API-kulcs.",
   settings_voice_no_token: "nincs kulcs beállítva",
   settings_agent: "Főügynök",

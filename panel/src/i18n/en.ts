@@ -527,6 +527,7 @@ export const en = {
   settings_voice_engine_vosk: "Vosk (local, offline)",
   settings_voice_engine_piper: "Piper (local, offline)",
   settings_voice_engine_xai: "xAI",
+  settings_voice_engine_voxtral: "Voxtral (Mistral)",
   settings_voice_provider: "API key",
   settings_voice_provider_env: "Use .env (OPENAI_API_KEY / XAI_API_KEY)",
   settings_voice_vosk_path: "Vosk model path",
@@ -538,7 +539,7 @@ export const en = {
     "Transcode xAI/Piper's WAV output to Opus via ffmpeg so replies arrive as a real Telegram voice note instead of a file attachment.",
   settings_voice_providers_title: "Voice provider keys",
   settings_voice_providers_desc:
-    "xAI or OpenAI-compatible (e.g. Groq's free Whisper tier) API keys, usable for transcription and/or spoken replies above.",
+    "xAI, Mistral/Voxtral, or OpenAI-compatible (e.g. Groq's free Whisper tier) API keys, usable for transcription and/or spoken replies above.",
   settings_voice_providers_empty: "No voice provider keys yet.",
   settings_voice_no_token: "no key set",
   settings_agent: "Main Agent",

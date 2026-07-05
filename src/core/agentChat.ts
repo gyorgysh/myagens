@@ -38,6 +38,7 @@ import { createCrewMcp } from "../mcp/crew.js";
 import { audit } from "./audit.js";
 import { log, preview } from "../logger.js";
 import { toolDiffMeta } from "../telegram/formatting.js";
+import { agentAsks } from "./agentAskQuestion.js";
 
 export interface AgentChatMessage {
   id: string;
@@ -241,7 +242,13 @@ export class AgentChatManager {
           skills: skillsMcp,
           crew: crewMcp,
         },
-        canUseTool: async (_n, input) => ({ behavior: "allow", updatedInput: input }),
+        canUseTool: async (name, input) => {
+          if (name === "AskUserQuestion") {
+            const answer = await agentAsks.ask(w.name, input);
+            return { behavior: "deny", message: answer };
+          }
+          return { behavior: "allow", updatedInput: input };
+        },
         onText: (delta) => {
           output += delta;
           this.broadcast({ type: "agentchat", event: "delta", agentId, id: streamId, delta });

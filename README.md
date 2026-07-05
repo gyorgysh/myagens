@@ -515,9 +515,10 @@ The condensed pitch is above; this is everything, including the security hardeni
 | `/inbox` | Review pending agent suggestions with Park / Delegate / Dismiss buttons |
 | `/digest` | Summary of the last 24h of fleet activity (tasks, runs, memory, skills, cost) |
 | `/templates` | List saved prompt templates |
+| `/reload` | Rescue command: discard local changes, pull latest, rebuild, and restart (inline-confirmed) |
 | `/help` | Show help |
 
-Lead bots support `/ping`, `/status`, `/stop`, `/mode`, `/lang`, and `/help`.
+Lead bots support `/ping`, `/status`, `/cd`, `/pwd`, `/stop`, `/mode`, `/lang`, `/reload`, and `/help`.
 
 ## Architecture
 

@@ -24,6 +24,7 @@ import { DraftStreamer } from "./draftStreamer.js";
 import { RichDraftStreamer } from "./richDraftStreamer.js";
 import { setBotProfilePhoto } from "./botPhoto.js";
 import { AskQuestionManager } from "./askQuestion.js";
+import { PermissionManager, bashLeadCmd } from "./permissions.js";
 import { sendExpandableQuote, sendFormattedMarkdown } from "./send.js";
 import { escapeHtml, normalizeAgentText, summarizeArg, summarizeInput, toolDiffMeta } from "./formatting.js";
 import { downloadIncomingFile, isViewableImage, readImageInput } from "./files.js";
@@ -36,6 +37,7 @@ import { guardCwd, cwdFallbackNotice } from "../core/cwdGuard.js";
 import { log } from "../logger.js";
 import { config } from "../config.js";
 import { agentUsage } from "../core/agentUsage.js";
+import { notifyAsAtlas } from "../core/atlasNotify.js";
 
 /**
  * A standalone Telegram bot for a single Lead worker. It reuses the same
@@ -48,6 +50,7 @@ export class LeadBot {
   private sessions: SessionManager;
   private lead: Worker;
   private asks: AskQuestionManager;
+  private permissions: PermissionManager;
   // Flips true once long-polling actually ends (intentional stop() or an
   // unrecoverable error e.g. a Telegram 409 Conflict from a second poller on
   // the same token). LeadBotManager's watchdog polls this to notice a Lead
@@ -73,6 +76,10 @@ export class LeadBot {
     this.sessions = new SessionManager(`lead-${lead.id}-state.json`);
     // Renders AskUserQuestion tool calls as inline buttons in this Lead's chat.
     this.asks = new AskQuestionManager(this.bot.telegram);
+    // Renders Approve/Deny/Always buttons for risky tools at standard/supervised
+    // autonomy — this Lead's own scoped slot in the shared approvalQueue (see
+    // approvals.ts), so it can't clobber the main bot's or another Lead's.
+    this.permissions = new PermissionManager(this.bot.telegram, lead.id, lead.name);
   }
 
   /** Core turn-runner shared by text, photo, and document handlers. */
@@ -83,7 +90,7 @@ export class LeadBot {
     prompt: string,
     images?: ImageInput[],
   ): Promise<void> {
-    const { lead, asks } = this;
+    const { lead, asks, permissions } = this;
     const s = sessions.get(chatId);
     if (s.busy) {
       // Reassure (debounced) without interrupting the running turn — same UX as
@@ -165,9 +172,13 @@ export class LeadBot {
         : undefined;
 
       const crewMcp = createCrewMcp({
-        notify: async (text) => {
-          await tg.sendMessage(chatId, text).catch(() => {});
-        },
+        // toPresident notifications need to actually reach the president as a
+        // distinct ping from Atlas, not just re-echo into this Lead's own chat
+        // via this Lead's own bot (which the president can't tell apart from
+        // the Lead simply continuing to talk). Route through Atlas's own bot
+        // token instead — see core/atlasNotify.ts for why that still reaches
+        // the same person.
+        notify: (text) => notifyAsAtlas(text, lead.name),
         primaryChatId: chatId,
         fromAgentId: lead.id,
       });
@@ -190,19 +201,42 @@ export class LeadBot {
             const answer = await asks.ask(chatId, input);
             return { behavior: "deny", message: answer };
           }
-          // A Lead runs unattended: there's no human to show approval buttons to.
-          // Only `full` autonomy grants unrestricted tools (via bypassPermissions,
-          // where this gate is a no-op). In every other mode the turn runs in
-          // `default` permission mode and we must gate here — mirroring
-          // WorkerManager.execute, only the read-only/safe set auto-runs; risky
-          // tools (Bash/Write/Edit) are denied rather than silently executed, so
-          // /mode supervised/standard is actually enforced.
+          // Unlike a scheduled/delegated worker run (src/core/workers.ts, genuinely
+          // unattended), this is an interactive chat: the president is on the other
+          // end of this Lead's own Telegram bot, so standard/supervised can prompt
+          // them for risky tools exactly like the main bot does, instead of just
+          // silently denying everything outside 'full'.
           if (s.autonomy === "full") return { behavior: "allow", updatedInput: input };
-          if (AUTO_ALLOWED_TOOLS.has(name)) return { behavior: "allow", updatedInput: input };
-          return {
-            behavior: "deny",
-            message: "Tool not permitted for an unattended Lead outside 'full' autonomy — set the Lead to full to allow it.",
-          };
+
+          const bashCmd = name === "Bash" ? bashLeadCmd(input) : undefined;
+          if (s.autonomy === "standard") {
+            if (
+              AUTO_ALLOWED_TOOLS.has(name) ||
+              s.sessionAllowedTools.has(name) ||
+              (bashCmd !== undefined && s.allowedBashCmds.has(bashCmd))
+            ) {
+              return { behavior: "allow", updatedInput: input };
+            }
+          }
+          // supervised: always prompt (skip the auto-allow check above).
+
+          log.info("Approval requested (lead)", { leadId: lead.id, chatId, tool: name });
+          const choice = await permissions.request(chatId, name, input);
+          log.info("Approval resolved (lead)", { leadId: lead.id, chatId, tool: name, choice });
+          if (choice === "always") {
+            s.sessionAllowedTools.add(name);
+            sessions.save();
+            return { behavior: "allow", updatedInput: input };
+          }
+          if (choice === "alwayscmd" && bashCmd) {
+            s.allowedBashCmds.add(bashCmd);
+            sessions.save();
+            return { behavior: "allow", updatedInput: input };
+          }
+          if (choice === "allow" || choice === "alwayscmd") {
+            return { behavior: "allow", updatedInput: input };
+          }
+          return { behavior: "deny", message: "User denied this action." };
         },
         onText: (delta) => {
           streamer.appendText(normalizeAgentText(delta));
@@ -304,7 +338,7 @@ export class LeadBot {
   }
 
   async start(): Promise<void> {
-    const { bot, sessions, lead, asks } = this;
+    const { bot, sessions, lead, asks, permissions } = this;
 
     // Auth middleware — identical rule to the main bot: allow-listed user in a
     // private 1:1 chat. The shared helper also enforces the private-chat check,
@@ -325,15 +359,19 @@ export class LeadBot {
       });
     });
 
-    // AskUserQuestion inline buttons resolve through here, mirroring the main
-    // bot's callback_query handler. The blocking canUseTool promise is settled
-    // by asks.resolve once the user taps an option (or Done for multi-select).
+    // AskUserQuestion and tool-approval inline buttons resolve through here,
+    // mirroring the main bot's callback_query handler. Each blocking promise
+    // (asks.ask / permissions.request) is settled once the user taps a button.
     bot.on("callback_query", async (ctx) => {
       const data =
         ctx.callbackQuery && "data" in ctx.callbackQuery ? ctx.callbackQuery.data : undefined;
       if (data && asks.isAskCallback(data)) {
         log.debug("AskQuestion button pressed (lead)", { leadId: lead.id, chatId: ctx.chat?.id, data });
         const toast = await asks.resolve(data);
+        await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
+      } else if (data && permissions.isApprovalCallback(data)) {
+        log.debug("Approval button pressed (lead)", { leadId: lead.id, chatId: ctx.chat?.id, data });
+        const toast = await permissions.resolve(data, ctx.chat?.id);
         await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
       } else {
         await ctx.answerCbQuery().catch(() => {});
@@ -574,6 +612,7 @@ export class LeadBot {
   stop(signal: "SIGINT" | "SIGTERM"): void {
     this.stopped = true;
     this.bot.stop(signal);
+    this.permissions.dispose();
     this.sessions.flush();
   }
 }

@@ -92,9 +92,19 @@ export class PermissionManager {
   /** One open batch per chat while buffering / awaiting resolution. */
   private batches = new Map<number, Batch>();
 
-  constructor(private tg: Telegram) {
+  /**
+   * @param agentId Scopes this instance's slot in the shared `approvalQueue`
+   *   (defaults to the main Atlas bot). A Lead bot passes its own worker id so
+   *   its resolver doesn't clobber another instance's — see approvals.ts.
+   * @param agentName Display label surfaced in the panel's approvals view.
+   */
+  constructor(
+    private tg: Telegram,
+    private agentId: string = "main",
+    private agentName?: string,
+  ) {
     // Let the panel resolve the same pending requests the Telegram buttons do.
-    approvalQueue.attach((id, choice) => this.resolveById(id, choice));
+    approvalQueue.attach((id, choice) => this.resolveById(id, choice), this.agentId);
   }
 
   async request(chatId: number, toolName: string, input: unknown): Promise<ApprovalChoice> {
@@ -125,6 +135,8 @@ export class PermissionManager {
       preview: previewText,
       lead,
       ts: Date.now(),
+      agentId: this.agentId,
+      agentName: this.agentName,
     });
 
     // Nudge any subscribed browsers so an approval isn't missed when the tab is
@@ -283,6 +295,12 @@ export class PermissionManager {
   /** Returns true if the callback was an approval button this manager owns. */
   isApprovalCallback(data: string): boolean {
     return data.startsWith(`${CB_PREFIX}:`);
+  }
+
+  /** Unwire this instance's slot in the shared approvalQueue (e.g. a Lead bot
+   *  being stopped/replaced), so a stale resolver can't linger. */
+  dispose(): void {
+    approvalQueue.detach(this.agentId);
   }
 
   /**

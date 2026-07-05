@@ -12,6 +12,7 @@ const blankProvider = { name: "", baseUrl: "", authToken: "" };
 const XAI_BASE_URL = "https://api.x.ai/v1";
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
 const VOXTRAL_BASE_URL = "https://api.mistral.ai/v1";
+const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 // Built-in fallbacks shown when no voice provider is selected (env-based auth).
 // Provider-backed pickers replace these with models fetched live from the provider.
 const STT_MODEL_SUGGESTIONS = ["whisper-1"];
@@ -146,10 +147,11 @@ export function VoiceView({ onAuthError }: { onAuthError: () => void }) {
     }
   };
 
-  const startNewProvider = (engine: "openai" | "xai" | "voxtral") => {
+  const startNewProvider = (engine: "openai" | "xai" | "voxtral" | "groq") => {
     const preset = {
       xai: { name: "xAI Voice", baseUrl: XAI_BASE_URL },
       voxtral: { name: "Voxtral (Mistral)", baseUrl: VOXTRAL_BASE_URL },
+      groq: { name: "Groq Voice", baseUrl: GROQ_BASE_URL },
       openai: { name: "OpenAI Voice", baseUrl: OPENAI_BASE_URL },
     }[engine];
     setProviderForm({ ...preset, authToken: "" });
@@ -329,6 +331,7 @@ export function VoiceView({ onAuthError }: { onAuthError: () => void }) {
             <Button onClick={() => startNewProvider("openai")}>+ {t("settings_voice_engine_openai")}</Button>
             <Button onClick={() => startNewProvider("xai")}>+ {t("settings_voice_engine_xai")}</Button>
             <Button onClick={() => startNewProvider("voxtral")}>+ {t("settings_voice_engine_voxtral")}</Button>
+            <Button onClick={() => startNewProvider("groq")}>+ {t("settings_voice_engine_groq")}</Button>
           </div>
         </div>
         <p className="mt-1 text-xs text-fg-dim">{t("settings_voice_providers_desc")}</p>

@@ -529,6 +529,7 @@ export const hu: Translations = {
   settings_voice_engine_piper: "Piper (helyi, offline)",
   settings_voice_engine_xai: "xAI",
   settings_voice_engine_voxtral: "Voxtral (Mistral)",
+  settings_voice_engine_groq: "Groq",
   settings_voice_provider: "API-kulcs",
   settings_voice_provider_env: "A .env használata (OPENAI_API_KEY / XAI_API_KEY)",
   settings_voice_vosk_path: "Vosk modell elérési útja",

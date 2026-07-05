@@ -1749,6 +1749,14 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     // (otherwise it falls back to config.CLAUDE_MODEL and the CLI exits non-zero
     // when no Anthropic credential is present, surfacing as an opaque 500).
     const mainRun = resolveMainRun();
+    // Config generation benefits from a stronger model than whatever the main
+    // agent happens to be set to — but only on the default Anthropic cloud path.
+    // If mainRun.env carries a local/proxy override (Ollama, LM Studio, custom
+    // base URL) a hardcoded cloud model id would break the wizard entirely, so
+    // fall back to mainRun.model there exactly as before.
+    const isCloud = !mainRun.env || Object.keys(mainRun.env).length === 0;
+    const WIZARD_CLOUD_MODEL = "claude-sonnet-5";
+    const WIZARD_CLOUD_THINKING_BUDGET = 24_000;
     // Generate the human-readable fields in the user's configured language so
     // they can actually understand the config they're about to create, rather
     // than always getting English back regardless of their panel/agent language.
@@ -1807,7 +1815,8 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
       const result = await getBackend(mainRun.backendId).runTurn({
         prompt,
         cwd: wizardCwd,
-        model: mainRun.model,
+        model: isCloud ? WIZARD_CLOUD_MODEL : mainRun.model,
+        maxThinkingTokens: isCloud ? WIZARD_CLOUD_THINKING_BUDGET : undefined,
         env: mainRun.env,
         permissionMode: "bypassPermissions",
         settingSources: ["user"],

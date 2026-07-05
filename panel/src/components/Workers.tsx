@@ -17,7 +17,21 @@ import type { TranslationKey } from "../i18n/en.ts";
 import { Avatar, Badge, Button, Card, ConfirmDialog, Empty, InfoCard, Input, Label, Modal, ModelSelect, Select, TextArea } from "./ui.tsx";
 import { MODEL_SUGGESTIONS } from "../lib/models.ts";
 import { useAvatarList, resolveAvatarSlug, AVATAR_SLUGS } from "../lib/avatar.ts";
-import { RefreshCw } from "lucide-react";
+import {
+  RefreshCw,
+  ChevronDown,
+  Server,
+  Rss,
+  GitPullRequest,
+  PenLine,
+  Banknote,
+  Terminal,
+  Layers,
+  Palette,
+  HeartPulse,
+  Apple,
+  type LucideIcon,
+} from "lucide-react";
 import { RunLog } from "./RunLog.tsx";
 import { CrewArt } from "./onboarding.tsx";
 import { ms, relTime, usd } from "../lib/format.ts";
@@ -91,12 +105,19 @@ const AUTONOMY_DESC_KEY: Record<Autonomy, TranslationKey> = {
   auto_until_error: "settings_autonomy_auto_until_error_desc",
 };
 
-// Tappable example goals for the wizard's goal field (chips prefill the textarea).
-const WIZARD_GOAL_EXAMPLES: Array<{ labelKey: TranslationKey; goal: string }> = [
-  { labelKey: "wizard_goal_ex_server", goal: "Monitor my server's CPU, memory and disk health and alert me when something looks wrong." },
-  { labelKey: "wizard_goal_ex_digest", goal: "Every morning, research a topic I care about and send me a concise digest of what's new." },
-  { labelKey: "wizard_goal_ex_review", goal: "Review recent code changes for bugs, style issues and security problems, then summarise findings." },
-  { labelKey: "wizard_goal_ex_writer", goal: "Draft and polish written content (posts, docs, emails) in a clear, consistent voice." },
+// Tappable preset buttons for the wizard's goal field (prefill the textarea with
+// a translated starter phrase; the user can still edit freely before generating).
+const WIZARD_GOAL_EXAMPLES: Array<{ labelKey: TranslationKey; goalKey: TranslationKey; icon: LucideIcon }> = [
+  { labelKey: "wizard_goal_ex_server", goalKey: "wizard_goal_ex_server_text", icon: Server },
+  { labelKey: "wizard_goal_ex_digest", goalKey: "wizard_goal_ex_digest_text", icon: Rss },
+  { labelKey: "wizard_goal_ex_review", goalKey: "wizard_goal_ex_review_text", icon: GitPullRequest },
+  { labelKey: "wizard_goal_ex_writer", goalKey: "wizard_goal_ex_writer_text", icon: PenLine },
+  { labelKey: "wizard_goal_ex_finance", goalKey: "wizard_goal_ex_finance_text", icon: Banknote },
+  { labelKey: "wizard_goal_ex_devops", goalKey: "wizard_goal_ex_devops_text", icon: Terminal },
+  { labelKey: "wizard_goal_ex_fullstack", goalKey: "wizard_goal_ex_fullstack_text", icon: Layers },
+  { labelKey: "wizard_goal_ex_webdesign", goalKey: "wizard_goal_ex_webdesign_text", icon: Palette },
+  { labelKey: "wizard_goal_ex_health", goalKey: "wizard_goal_ex_health_text", icon: HeartPulse },
+  { labelKey: "wizard_goal_ex_nutrition", goalKey: "wizard_goal_ex_nutrition_text", icon: Apple },
 ];
 
 // Schedule chip presets → the cron/interval string the backend understands.
@@ -668,6 +689,7 @@ function WorkerWizard({
   // Schedule chip picker: which preset chip is active. "custom" reveals the raw
   // input; an empty string maps to manual. Starts on "Manually".
   const [scheduleChip, setScheduleChip] = useState<string>("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [configs, setConfigs] = useState<Form[]>([]);
   const [created, setCreated] = useState<Set<number>>(new Set());
   const [genError, setGenError] = useState<string | null>(null);
@@ -775,6 +797,30 @@ function WorkerWizard({
         <p className="mb-4 text-xs text-fg-dim">{t("wizard_subtitle")}</p>
         <div className="space-y-4">
           <div>
+            <p className="mb-2 text-xs text-fg-faint">{t("wizard_goal_freeform_hint")}</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {WIZARD_GOAL_EXAMPLES.map((ex) => {
+                const Icon = ex.icon;
+                const active = answers.goal === t(ex.goalKey);
+                return (
+                  <button
+                    key={ex.labelKey}
+                    type="button"
+                    onClick={() => setAnswers({ ...answers, goal: t(ex.goalKey) })}
+                    className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center text-xs transition-colors ${
+                      active
+                        ? "bg-accent/10 border-accent/40 text-fg"
+                        : "border-line text-fg-dim hover:text-fg hover:border-accent/40"
+                    }`}
+                  >
+                    <Icon size={18} />
+                    <span>{t(ex.labelKey)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
             <Label>{t("wizard_q_goal")} <span className="text-critical-fg">*</span></Label>
             <TextArea
               rows={3}
@@ -782,97 +828,96 @@ function WorkerWizard({
               onChange={(e) => setAnswers({ ...answers, goal: e.target.value })}
               placeholder={t("wizard_q_goal_placeholder")}
             />
-            <div className="mt-1.5">
-              <p className="mb-1 text-xs text-fg-faint">{t("wizard_goal_inspiration")}</p>
-              <div className="flex flex-wrap gap-1">
-                {WIZARD_GOAL_EXAMPLES.map((ex) => (
-                  <button
-                    key={ex.labelKey}
-                    type="button"
-                    onClick={() => setAnswers({ ...answers, goal: ex.goal })}
-                    className="rounded px-2 py-0.5 text-xs border border-line text-fg-dim transition-colors hover:text-fg hover:border-accent/40"
-                  >
-                    {t(ex.labelKey)}
-                  </button>
-                ))}
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="flex items-center gap-1 text-xs text-fg-dim transition-colors hover:text-fg"
+            >
+              <ChevronDown size={14} className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
+              {showAdvanced ? t("wizard_advanced_toggle_hide") : t("wizard_advanced_toggle")}
+            </button>
+          </div>
+          {showAdvanced && (
+            <div className="space-y-4">
+              <div>
+                <Label>{t("wizard_q_context")}</Label>
+                <TextArea
+                  rows={2}
+                  value={answers.context}
+                  onChange={(e) => setAnswers({ ...answers, context: e.target.value })}
+                  placeholder={t("wizard_q_context_placeholder")}
+                />
+                <p className="mt-1 text-xs text-fg-faint">{t("wizard_context_hint")}</p>
+              </div>
+              <div>
+                <Label>{t("wizard_q_cwd")}</Label>
+                <Input
+                  value={answers.cwd}
+                  onChange={(e) => setAnswers({ ...answers, cwd: e.target.value })}
+                  placeholder={t("wizard_q_cwd_placeholder")}
+                />
+                <p className="mt-1 text-xs text-fg-faint">{t("wizard_q_cwd_help")}</p>
+              </div>
+              <div>
+                <Label>{t("wizard_q_schedule")}</Label>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {WIZARD_SCHEDULE_CHIPS.map((chip) => (
+                    <button
+                      key={chip.labelKey}
+                      type="button"
+                      onClick={() => {
+                        setScheduleChip(chip.value);
+                        // "custom" reveals the raw input and keeps the current value;
+                        // any other chip writes its mapped schedule string directly.
+                        if (chip.value !== "custom") {
+                          setAnswers({ ...answers, schedule: chip.value });
+                        }
+                      }}
+                      className={`rounded px-3 py-1.5 text-xs border transition-colors ${
+                        scheduleChip === chip.value
+                          ? "bg-[var(--accent)] text-white border-transparent"
+                          : "border-line text-fg-dim hover:text-fg"
+                      }`}
+                    >
+                      {t(chip.labelKey)}
+                    </button>
+                  ))}
+                </div>
+                {scheduleChip === "custom" && (
+                  <Input
+                    className="mt-2"
+                    value={answers.schedule}
+                    onChange={(e) => setAnswers({ ...answers, schedule: e.target.value })}
+                    placeholder={t("wizard_q_schedule_placeholder")}
+                  />
+                )}
+              </div>
+              <div>
+                <Label>{t("wizard_q_crew")}</Label>
+                <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+                  {([false, true] as const).map((val) => (
+                    <button
+                      key={String(val)}
+                      type="button"
+                      onClick={() => setAnswers({ ...answers, crew: val })}
+                      className={`flex-1 rounded px-3 py-2 text-left text-xs border transition-colors ${
+                        answers.crew === val
+                          ? "bg-accent/10 border-accent/40 text-fg"
+                          : "border-line text-fg-dim hover:text-fg"
+                      }`}
+                    >
+                      <span className="font-medium">{val ? t("wizard_opt_crew") : t("wizard_opt_single")}</span>
+                      <span className="mt-0.5 block text-fg-faint">
+                        {val ? t("wizard_opt_crew_desc") : t("wizard_opt_single_desc")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-          <div>
-            <Label>{t("wizard_q_context")}</Label>
-            <TextArea
-              rows={2}
-              value={answers.context}
-              onChange={(e) => setAnswers({ ...answers, context: e.target.value })}
-              placeholder={t("wizard_q_context_placeholder")}
-            />
-            <p className="mt-1 text-xs text-fg-faint">{t("wizard_context_hint")}</p>
-          </div>
-          <div>
-            <Label>{t("wizard_q_cwd")}</Label>
-            <Input
-              value={answers.cwd}
-              onChange={(e) => setAnswers({ ...answers, cwd: e.target.value })}
-              placeholder={t("wizard_q_cwd_placeholder")}
-            />
-            <p className="mt-1 text-xs text-fg-faint">{t("wizard_q_cwd_help")}</p>
-          </div>
-          <div>
-            <Label>{t("wizard_q_schedule")}</Label>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {WIZARD_SCHEDULE_CHIPS.map((chip) => (
-                <button
-                  key={chip.labelKey}
-                  type="button"
-                  onClick={() => {
-                    setScheduleChip(chip.value);
-                    // "custom" reveals the raw input and keeps the current value;
-                    // any other chip writes its mapped schedule string directly.
-                    if (chip.value !== "custom") {
-                      setAnswers({ ...answers, schedule: chip.value });
-                    }
-                  }}
-                  className={`rounded px-3 py-1.5 text-xs border transition-colors ${
-                    scheduleChip === chip.value
-                      ? "bg-[var(--accent)] text-white border-transparent"
-                      : "border-line text-fg-dim hover:text-fg"
-                  }`}
-                >
-                  {t(chip.labelKey)}
-                </button>
-              ))}
-            </div>
-            {scheduleChip === "custom" && (
-              <Input
-                className="mt-2"
-                value={answers.schedule}
-                onChange={(e) => setAnswers({ ...answers, schedule: e.target.value })}
-                placeholder={t("wizard_q_schedule_placeholder")}
-              />
-            )}
-          </div>
-          <div>
-            <Label>{t("wizard_q_crew")}</Label>
-            <div className="mt-1 flex flex-col gap-2 sm:flex-row">
-              {([false, true] as const).map((val) => (
-                <button
-                  key={String(val)}
-                  type="button"
-                  onClick={() => setAnswers({ ...answers, crew: val })}
-                  className={`flex-1 rounded px-3 py-2 text-left text-xs border transition-colors ${
-                    answers.crew === val
-                      ? "bg-accent/10 border-accent/40 text-fg"
-                      : "border-line text-fg-dim hover:text-fg"
-                  }`}
-                >
-                  <span className="font-medium">{val ? t("wizard_opt_crew") : t("wizard_opt_single")}</span>
-                  <span className="mt-0.5 block text-fg-faint">
-                    {val ? t("wizard_opt_crew_desc") : t("wizard_opt_single_desc")}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
           {genError && (
             <p className="rounded bg-critical-subtle px-3 py-2 text-xs text-critical-fg">
               {t("wizard_error").replace("{error}", genError)}

@@ -68,6 +68,8 @@ export interface RunOptions {
   resume?: string;
   /** Model id override for this turn; falls back to CLAUDE_MODEL. */
   model?: string;
+  /** Maximum thinking-token budget for this turn; omit to use the SDK default. */
+  maxThinkingTokens?: number;
   /** Env overrides for the spawned CLI (e.g. ANTHROPIC_BASE_URL for a local
    *  model). Merged over process.env; undefined values drop the variable. */
   env?: Record<string, string | undefined>;
@@ -163,6 +165,7 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
         cwd: opts.cwd,
         resume: opts.resume,
         model: normalizeModelId(opts.model ?? config.CLAUDE_MODEL),
+        maxThinkingTokens: opts.maxThinkingTokens,
         // Only override the child env when asked (e.g. a local-model provider);
         // otherwise the SDK defaults to process.env.
         env: opts.env ? { ...process.env, ...opts.env } : undefined,

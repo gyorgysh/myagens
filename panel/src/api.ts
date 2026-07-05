@@ -832,6 +832,8 @@ export interface ChatView {
   messages: ChatMessage[];
   cwd: string;
   busy: boolean;
+  /** The shared session's actual autonomy level (what gates tool approvals). */
+  autonomy: Autonomy;
   auto: boolean;
   hasContext: boolean;
   /** The shared session's persisted "always allow" tool presets (read-only). */
@@ -1403,7 +1405,7 @@ export const api = {
     req<ChatView>("POST", "/api/chat/send", { text, planning, images }),
   stopChat: () => req<{ ok: boolean }>("POST", "/api/chat/stop"),
   clearChat: () => req<ChatView>("POST", "/api/chat/clear"),
-  chatSettings: (s: { cwd?: string; auto?: boolean }) =>
+  chatSettings: (s: { cwd?: string; auto?: boolean; autonomy?: Autonomy }) =>
     req<ChatView>("PUT", "/api/chat/settings", s),
   resolveApproval: (approvalId: string, allow: boolean) =>
     req<{ ok: boolean }>("POST", "/api/chat/approve", { approvalId, allow }),

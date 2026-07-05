@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { sessions } from "../session/manager.js";
+import { sessions, type Autonomy } from "../session/manager.js";
 import { chatBridge, mainChatId, type BridgeMessage } from "./chatBridge.js";
 import { approvalQueue, type ApprovalChoice } from "./approvals.js";
 import { askQueue } from "./askQueue.js";
@@ -44,7 +44,9 @@ export class ChatManager {
       messages: chatBridge.history(),
       cwd: s?.cwd ?? config.WORKDIR,
       busy: s?.busy ?? false,
-      // "auto" maps to the shared session's full-autonomy mode.
+      // The shared session's actual autonomy level (what bot.ts's canUseTool
+      // really gates on), plus the old boolean for any lingering callers.
+      autonomy: s?.autonomy ?? "standard",
       auto: s?.autonomy === "full",
       hasContext: Boolean(s?.sessionId),
       // The shared session's persisted "always allow" presets, surfaced read-only
@@ -71,6 +73,19 @@ export class ChatManager {
     const s = this.mainSession();
     if (!s) return;
     s.autonomy = auto ? "full" : "standard";
+    sessions.save();
+  }
+
+  /**
+   * Set the shared session's autonomy level directly. This is the field
+   * bot.ts's canUseTool actually gates on for the live Telegram/panel chat -
+   * distinct from (and previously confused with) the global mainSettings
+   * default, which only seeds *new* sessions and has no effect on this one.
+   */
+  setAutonomy(level: Autonomy): void {
+    const s = this.mainSession();
+    if (!s) return;
+    s.autonomy = level;
     sessions.save();
   }
 

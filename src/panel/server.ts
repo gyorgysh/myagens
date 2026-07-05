@@ -1871,9 +1871,16 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     return chat.view();
   });
   app.put("/api/chat/settings", async (req) => {
-    const { cwd, auto } = (req.body ?? {}) as { cwd?: string; auto?: boolean };
+    const { cwd, auto, autonomy } = (req.body ?? {}) as {
+      cwd?: string;
+      auto?: boolean;
+      autonomy?: string;
+    };
     if (typeof cwd === "string") chat.setCwd(cwd);
     if (typeof auto === "boolean") chat.setAuto(auto);
+    if (autonomy === "supervised" || autonomy === "standard" || autonomy === "full") {
+      chat.setAutonomy(autonomy);
+    }
     return chat.view();
   });
   app.post("/api/chat/approve", async (req, reply) => {

@@ -553,20 +553,24 @@ function AtlasChat({ onAuthError }: { onAuthError: () => void }) {
   // how the next message is framed to Atlas, not server state.
   const [planning, setPlanning] = usePlanningMode(ATLAS);
 
-  // Autonomy level: fetched from the server on mount, updated via PUT /api/agent.
+  // Autonomy level: this is the *shared session's* live autonomy (what bot.ts's
+  // canUseTool actually gates on for this Telegram-mirrored chat) - distinct
+  // from the global mainSettings default that only seeds brand-new sessions.
+  // Sourced from the chat view (`GET /api/chat`) and written via
+  // `PUT /api/chat/settings`, not `/api/agent`.
   const [autonomy, setAutonomyState] = useState<Autonomy>("standard");
   useEffect(() => {
-    api.agent().then((a) => {
-      // Only track the three UI-exposed levels; map auto_until_error → standard.
-      const level = a.autonomy === "supervised" || a.autonomy === "full" ? a.autonomy : "standard";
-      setAutonomyState(level);
-    }).catch(() => {});
-  }, []);
+    if (!view) return;
+    // Only track the three UI-exposed levels; map auto_until_error → standard.
+    const level =
+      view.autonomy === "supervised" || view.autonomy === "full" ? view.autonomy : "standard";
+    setAutonomyState(level);
+  }, [view?.autonomy]);
   const setAutonomy = async (a: Autonomy) => {
     const prev = autonomy;
     setAutonomyState(a);
     try {
-      await api.saveAgent({ autonomy: a });
+      setView(await api.chatSettings({ autonomy: a }));
     } catch (e) {
       // Roll back on failure. This selector controls whether tool calls prompt,
       // so leaving it showing a level the server never accepted is misleading

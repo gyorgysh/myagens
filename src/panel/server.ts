@@ -16,7 +16,7 @@ import {
   billingPeriodStart,
   daysUntilReset,
 } from "../core/planSettings.js";
-import { AGENT_LANGUAGES } from "../core/languages.js";
+import { AGENT_LANGUAGES, languageName } from "../core/languages.js";
 import {
   log,
   onLog,
@@ -1744,6 +1744,20 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
         ? `Existing leads: ${existingLeads.map((w) => `${w.name} (${w.portfolio ?? "general"})`).join(", ")}`
         : "No existing leads.";
 
+    // Run the generation on the same model/provider the main agent is configured
+    // to use, so the wizard works when the bot runs on a local model or proxy
+    // (otherwise it falls back to config.CLAUDE_MODEL and the CLI exits non-zero
+    // when no Anthropic credential is present, surfacing as an opaque 500).
+    const mainRun = resolveMainRun();
+    // Generate the human-readable fields in the user's configured language so
+    // they can actually understand the config they're about to create, rather
+    // than always getting English back regardless of their panel/agent language.
+    const wizardLang = mainRun.defaultLanguage;
+    const languageInstruction =
+      wizardLang && wizardLang !== "en"
+        ? `\n\nWrite all human-readable text fields (name, portfolio, prompt, persona, systemPrompt) in ${languageName(wizardLang)}, since that's the user's configured language. Keep JSON keys and enum values (role, autonomy) exactly as specified in English.`
+        : "";
+
     const prompt = `You are a configuration generator for an AI agent orchestration system.
 
 The user wants to set up an autonomous agent (or crew of agents) to handle a recurring task.
@@ -1768,6 +1782,7 @@ Generate a JSON array of worker configuration objects. Each object must include:
 - autonomy: "supervised" | "standard" | "full"
 - when: string — schedule token like "09:00", "1h", "30m", or "" for manual
 - model: string — leave "" for default
+- language: string — BCP 47 code, "${wizardLang ?? ""}" so this worker's own future runs also respond in that language, or "" for default
 - enabled: boolean
 
 Rules:
@@ -1775,16 +1790,11 @@ Rules:
 - If crew=true, design a minimal effective crew: one lead and 1-3 assistants that each own a slice of the work.
 - The prompt must be a complete, standalone task description — the agent has no other context when it runs.
 - Autonomy should be "full" for unattended work, "standard" if the task touches risky resources.
-- Be specific and practical. No placeholders.
+- Be specific and practical. No placeholders.${languageInstruction}
 
 Respond with ONLY a JSON array, no markdown fences, no explanation. Example format:
-[{"name":"Finance Lead","role":"lead","portfolio":"Finance","parentId":"","cwd":"/home/user","prompt":"...","persona":"...","systemPrompt":"...","autonomy":"full","when":"09:00","model":"","enabled":true}]`;
+[{"name":"Finance Lead","role":"lead","portfolio":"Finance","parentId":"","cwd":"/home/user","prompt":"...","persona":"...","systemPrompt":"...","autonomy":"full","when":"09:00","model":"","language":"${wizardLang ?? ""}","enabled":true}]`;
 
-    // Run the generation on the same model/provider the main agent is configured
-    // to use, so the wizard works when the bot runs on a local model or proxy
-    // (otherwise it falls back to config.CLAUDE_MODEL and the CLI exits non-zero
-    // when no Anthropic credential is present, surfacing as an opaque 500).
-    const mainRun = resolveMainRun();
     const abort = new AbortController();
     // Bound the turn so a stuck/slow CLI doesn't hang the request indefinitely
     // (the model occasionally takes ~30s; give it generous headroom then abort).

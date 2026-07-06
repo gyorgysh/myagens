@@ -31,8 +31,15 @@ RUN_USER="${SUDO_USER:-$USER}"
   exit 1
 }
 
-echo "• Building the project…"
-( cd "$APP_DIR" && npm install && npm run build )
+# MYAGENS_SKIP_BUILD=1 (set by the installer's browser-setup path, which built
+# moments earlier) skips the redundant reinstall+rebuild so the service starts
+# in seconds — but only when a build output actually exists.
+if [ "${MYAGENS_SKIP_BUILD:-}" = "1" ] && [ -f "$APP_DIR/dist/index.js" ]; then
+  echo "• Skipping build (already built)."
+else
+  echo "• Building the project…"
+  ( cd "$APP_DIR" && npm install && npm run build )
+fi
 
 UNIT="/etc/systemd/system/${SERVICE}.service"
 echo "• Writing $UNIT (user: $RUN_USER)…"

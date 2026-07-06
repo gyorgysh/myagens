@@ -10,14 +10,33 @@
 # the repo, builds it, walks you through .env, and finally asks whether to run
 # as a background service or by hand.
 #
+# Browser setup (recommended for desktops):
+#
+#   curl -fsSL https://gyorgy.sh/myagens-install.sh | bash -s -- --browser
+#
+# does the mechanical work here (prerequisites, clone, build) with no questions,
+# then opens a local web wizard in your browser for everything else — bot token,
+# owner verification, Claude sign-in — with every value validated live. The
+# plain command above stays the full terminal wizard ("CLI installer").
+#
 # Non-interactive overrides (env vars): MYAGENS_REPO, MYAGENS_DIR, MYAGENS_BRANCH,
 # MYAGENS_TOKEN, MYAGENS_USER_IDS, MYAGENS_API_KEY, MYAGENS_MODEL, MYAGENS_MODE=service|manual,
 # MYAGENS_VOICE=none|api|vosk, MYAGENS_OPENAI_KEY,
 # MYAGENS_PANEL=y|n, MYAGENS_PANEL_PORT, MYAGENS_PANEL_TOKEN,
 # MYAGENS_HOSTS=y|n (add a 'myagens' -> 127.0.0.1 line to /etc/hosts),
-# MYAGENS_REMOTE=none|ngrok|cloudflare|both, MYAGENS_YES=1.
+# MYAGENS_REMOTE=none|ngrok|cloudflare|both, MYAGENS_YES=1,
+# MYAGENS_SETUP=browser (same as --browser).
 
 set -euo pipefail
+
+BROWSER_MODE=0
+[ "${MYAGENS_SETUP:-}" = "browser" ] && BROWSER_MODE=1
+for arg in "$@"; do
+  case "$arg" in
+    --browser) BROWSER_MODE=1 ;;
+    --cli) BROWSER_MODE=0 ;;
+  esac
+done
 
 REPO_URL="${MYAGENS_REPO:-https://github.com/gyorgysh/myagens.git}"
 BRANCH="${MYAGENS_BRANCH:-main}"
@@ -368,7 +387,11 @@ check_ram_swap() {
 APP_DIR=""
 clone_repo() {
   local dir
-  dir="$(ask "Install location" "$DEFAULT_DIR")"
+  if [ "$BROWSER_MODE" = "1" ]; then
+    dir="$DEFAULT_DIR"   # browser setup asks its questions in the browser, not here
+  else
+    dir="$(ask "Install location" "$DEFAULT_DIR")"
+  fi
   # Expand a leading ~ since it's a literal inside a quoted answer.
   case "$dir" in "~"/*) dir="$HOME/${dir#~/}" ;; "~") dir="$HOME" ;; esac
   APP_DIR="$dir"
@@ -762,6 +785,54 @@ install_vosk_model() {
   [ -d "$target" ] && printf '%s' "$target"
 }
 
+# --- browser setup (--browser) -----------------------------------------------
+# The terminal's job ends after clone+build: the app boots in setup mode (no
+# .env yet), serves a loopback-only wizard, and opens it in the browser. All
+# questions and validations happen there. When the wizard finishes it writes
+# .env and exits 0 (MYAGENS_SETUP_HANDOFF=exit), and we install + start the
+# service — the wizard's success page is polling the panel port and signs the
+# user in the moment it comes up.
+browser_setup() {
+  local env="$APP_DIR/.env"
+  if [ -f "$env" ] && grep -q '^TELEGRAM_BOT_TOKEN=..*' "$env" \
+      && ! grep -q 'ABC-your-token-here' "$env"; then
+    ok "Already configured — skipping the browser wizard."
+  else
+    printf '\n%s\n%s\n\n' \
+      "${B}The rest happens in your browser.${R}" \
+      "${DIM}A setup page opens in a moment. Keep this window open until it says you're done.${R}"
+
+    # Linux installs a system service afterwards, which needs sudo. Take the
+    # password now — while the user is still looking at the terminal — and keep
+    # the timestamp warm so nothing prompts behind their back later.
+    local keepalive_pid=""
+    if [ "$OS" = "linux" ] && [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
+      say "One password now, so the background service can be installed at the end:"
+      sudo -v || die "sudo is required to install the background service."
+      ( while sudo -n true 2>/dev/null; do sleep 50; done ) >/dev/null 2>&1 &
+      keepalive_pid=$!
+    fi
+
+    if ! ( cd "$APP_DIR" && MYAGENS_SETUP_HANDOFF=exit node dist/index.js ); then
+      [ -n "$keepalive_pid" ] && kill "$keepalive_pid" 2>/dev/null || true
+      die "Setup was interrupted before it finished. Run the installer again to retry."
+    fi
+    [ -n "$keepalive_pid" ] && kill "$keepalive_pid" 2>/dev/null || true
+    grep -q '^TELEGRAM_BOT_TOKEN=..*' "$env" \
+      || die "Setup didn't finish. Run the installer again to retry."
+    ok "Configuration saved."
+  fi
+
+  say "Installing the background service…"
+  ( cd "$APP_DIR" && MYAGENS_SKIP_BUILD=1 ./scripts/install-service.sh )
+  SERVICE_MODE=1
+
+  # Surface the panel login in the final notes (the browser tab signs itself in,
+  # this is the durable copy).
+  PANEL_PORT_CHOSEN="$(sed -n 's/^PANEL_PORT=//p' "$env" | head -n1)"
+  PANEL_TOKEN_CHOSEN="$(sed -n 's/^PANEL_TOKEN=//p' "$env" | head -n1)"
+}
+
 # --- run mode ---------------------------------------------------------------
 choose_run_mode() {
   local mode="${MYAGENS_MODE:-}"
@@ -868,6 +939,16 @@ main() {
   ensure_node
   ensure_git
   ensure_claude_cli
+  if [ "$BROWSER_MODE" = "1" ]; then
+    # Browser setup: no terminal questions past this point. Optional extras
+    # (Ollama embeddings, voice, remote access) are configured later in the
+    # panel instead of here.
+    clone_repo
+    build_app
+    browser_setup
+    final_notes
+    return
+  fi
   ensure_ollama
   clone_repo
   build_app

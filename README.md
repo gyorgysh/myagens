@@ -96,9 +96,19 @@ The same agents, two front doors:
 
 ## Quick Install
 
-### Linux / macOS
+### Linux / macOS — browser setup (recommended)
 
-On a fresh machine, the wizard installs everything (Node 20+, git, the Claude CLI), clones the repo, builds it, walks you through `.env`, and optionally sets up a background service:
+One command in the terminal, everything else in your browser. The terminal part installs the prerequisites (Node 20+, git, the Claude CLI), clones, and builds — no questions asked. Then a local setup page opens where you create your bot, prove it's you (press START in Telegram and you appear on the page — no user IDs to look up), and connect Claude, with every value verified live before it's saved. It finishes signed in to the panel.
+
+```bash
+curl -fsSL https://gyorgy.sh/myagens-install.sh | bash -s -- --browser
+```
+
+The setup page is served on `127.0.0.1` only, behind a single-use key printed in the terminal, and shuts down the moment setup completes.
+
+### Linux / macOS — terminal wizard (CLI)
+
+The classic fully-in-terminal wizard — same result, plus optional extras (voice, local embeddings, remote access) asked inline. Right choice for servers you SSH into:
 
 ```bash
 curl -fsSL https://gyorgy.sh/myagens-install.sh | bash
@@ -126,7 +136,7 @@ The first line lets PowerShell run the `npm`/`claude` script shims for this sess
 
 If you run it **without** administrator rights, the installer prints these same steps and waits for a keypress before closing, so the window won't vanish on you.
 
-You will need a [bot token](#setup-manual) and your numeric Telegram user id. The wizard prompts for both. Prefer to read before you run? The scripts are [`scripts/myagens-install.sh`](scripts/myagens-install.sh) and [`scripts/windows/myagens-install.ps1`](scripts/windows/myagens-install.ps1).
+With the browser setup you only need a [bot token](#setup-manual) — your user id is detected when you press START in the bot's chat. The terminal and Windows wizards prompt for both the token and your numeric id. Prefer to read before you run? The scripts are [`scripts/myagens-install.sh`](scripts/myagens-install.sh) and [`scripts/windows/myagens-install.ps1`](scripts/windows/myagens-install.ps1).
 
 > For an unattended run, set `MYAGENS_TOKEN`, `MYAGENS_USER_IDS`, and `MYAGENS_MODE=service|manual` (and `MYAGENS_YES=1`) in the environment before running.
 

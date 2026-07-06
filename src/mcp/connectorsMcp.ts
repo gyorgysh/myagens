@@ -8,6 +8,7 @@ import nodemailer from "nodemailer";
 import { listConnectors, connectorScope, type ConnectorScope } from "../core/connectors.js";
 import { resolveSecret } from "../core/vault.js";
 import { safeFetch } from "../core/safeUrl.js";
+import { dataPath } from "../core/jsonStore.js";
 import { log } from "../logger.js";
 
 /**
@@ -3928,6 +3929,9 @@ function facebookMcp(accounts: SocialAccount[], scope: ConnectorScope) {
 
 type McpServer = ReturnType<typeof createSdkMcpServer>;
 
+/** Pinned Playwright MCP version for the Browser Sketchpad connector (bump deliberately). */
+const PLAYWRIGHT_MCP_VERSION = "0.0.77";
+
 /** Raw external MCP server config (SSE/HTTP to local process, or stdio subprocess). */
 type ExternalMcpServer =
   | { type: "sse" | "http"; url: string; headers?: Record<string, string> }
@@ -3976,6 +3980,25 @@ export function buildConnectorMcps(): Record<string, McpServer | ExternalMcpServ
     // Credential is the absolute path to the mcp-unity Server~/build/index.js script.
     out["unity"] = { type: "stdio", command: "node", args: [unityScript] };
   }
+  if (connectorIsEnabled("browser")) {
+    // Browser Sketchpad: Playwright MCP as a stdio subprocess. Headless, with a
+    // persistent scratch profile under the data dir — deliberately never used
+    // for real logins, so a prompt-injected page can't act on any account.
+    // The version is pinned (not @latest): this spawns via npx on agent turns,
+    // so an unpinned tag would be a silent supply-chain/stability risk.
+    const args = [
+      "-y",
+      `@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}`,
+      "--headless",
+      "--user-data-dir",
+      dataPath("browser-playground"),
+    ];
+    // Optional credential = path to a browser executable (e.g. Chromium on a
+    // server with no Google Chrome install).
+    const execPath = credentialFor("browser");
+    if (execPath) args.push("--executable-path", execPath);
+    out.browser = { type: "stdio", command: "npx", args };
+  }
   const pgConn = credentialFor("postgres");
   if (pgConn) out.postgres = postgresMcp(pgConn, connectorScope("postgres"));
   const sqlitePath = credentialFor("sqlite");
@@ -4004,4 +4027,4 @@ export function buildConnectorMcps(): Record<string, McpServer | ExternalMcpServ
 }
 
 /** Names of the live connectors that have wired MCP servers (for the panel). */
-export const LIVE_CONNECTORS = ["notion", "gcal", "gmail", "gdrive", "apple-calendar", "apple-mail", "slack", "github", "jira", "linear", "unreal-engine", "unity", "postgres", "sqlite", "bluesky", "mastodon", "discord", "reddit", "x", "youtube", "facebook"] as const;
+export const LIVE_CONNECTORS = ["notion", "gcal", "gmail", "gdrive", "apple-calendar", "apple-mail", "slack", "github", "jira", "linear", "unreal-engine", "unity", "postgres", "sqlite", "bluesky", "mastodon", "discord", "reddit", "x", "youtube", "facebook", "browser"] as const;

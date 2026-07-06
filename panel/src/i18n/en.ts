@@ -1921,6 +1921,23 @@ export const en = {
   connectors_facebook_write_3: "Delete posts",
   connectors_facebook_tip: "Photo posts need a public image URL Facebook can fetch — pair with the tunnel or any image host. The token identifies the Page, so each Page you manage is its own account here.",
 
+  // Browser Sketchpad
+  connectors_browser_summary: "A local headless browser (powered by Playwright) your agents drive to verify what they build and to smoke-test live sites: open a page or local HTML file, click through flows, log in when asked, read console errors, and take screenshots. Runs in its own persistent profile, separate from your browsers.",
+  connectors_browser_credential: "None needed. Optional override: absolute path to a browser executable.",
+  connectors_browser_step_1: "Enable the connector — no credential required. The browser runs headless in its own profile, separate from your browsers.",
+  connectors_browser_step_2: "Have Google Chrome installed, or run \"npx playwright install chromium\" once — or simply press \"Ask your agent to set it up\" on the card and let the agent handle it.",
+  connectors_browser_step_3: "Ask an agent to open a page or HTML file and screenshot it. The first run takes a minute while npx fetches Playwright.",
+  connectors_browser_setup_btn: "Ask your agent to set it up",
+  connectors_browser_setup_sent: "Asked — follow the progress in the chat.",
+  connectors_browser_setup_prompt: "Please set up the Browser Sketchpad for me: check that Playwright can launch a browser (an installed Google Chrome works; otherwise run npx playwright install chromium), then verify it by opening a simple page and taking a screenshot, and report back.",
+  connectors_browser_read_1: "Open & read pages",
+  connectors_browser_read_2: "Take screenshots",
+  connectors_browser_read_3: "Read console & network logs",
+  connectors_browser_write_1: "Click & navigate",
+  connectors_browser_write_2: "Type & fill forms",
+  connectors_browser_write_3: "Manage tabs",
+  connectors_browser_tip: "Agents verify their own web work here (build → open → click through → screenshot) and can smoke-test live sites, including logins, when you ask. They're instructed to confirm before entering credentials you didn't provide for the task, and every browser action goes through the tool-approval flow. Heads-up: logged-in sessions persist in the profile (data/browser-playground) until you delete that folder.",
+
   // Generic webhook tools (custom HTTP endpoints as agent tools)
   webhooks_title: "Custom webhook tools",
   webhooks_desc: "Register any HTTP endpoint as a tool the fleet can call. Each tool runs through the same SSRF guard as the built-in connectors; auth tokens are pulled from the vault at call time.",

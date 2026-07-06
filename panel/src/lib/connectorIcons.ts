@@ -20,7 +20,7 @@ import {
   siYoutube,
   siFacebook,
 } from "simple-icons";
-import { PenTool, Type, Zap, HardDrive, type LucideIcon } from "lucide-react";
+import { PenTool, Type, Zap, HardDrive, AppWindow, type LucideIcon } from "lucide-react";
 
 export type ConnectorIcon = {
   path: string;
@@ -101,6 +101,7 @@ const FALLBACK_ICON_MAP: Record<string, ConnectorFallbackIcon> = {
   ideogram: { Icon: Type, hex: "1A1A1A" }, // rendered-text-in-image
   fal: { Icon: Zap, hex: "7C3AED" }, // fast inference
   local_sd: { Icon: HardDrive, hex: "10B981" }, // self-hosted/local server
+  browser: { Icon: AppWindow, hex: "0EA5E9" }, // local browser window / sketchpad
 };
 
 export function getConnectorFallbackIcon(id: string): ConnectorFallbackIcon | undefined {

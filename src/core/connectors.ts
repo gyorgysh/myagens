@@ -53,6 +53,12 @@ export interface ConnectorDef {
    * side project).
    */
   multiAccount?: boolean;
+  /**
+   * Connector works without a credential (Unreal Engine, Browser Sketchpad):
+   * the panel lets it be enabled with no secret attached, and any attached
+   * secret is an optional override rather than a requirement.
+   */
+  credentialFree?: boolean;
 }
 
 export const CONNECTORS: ConnectorDef[] = [
@@ -66,7 +72,8 @@ export const CONNECTORS: ConnectorDef[] = [
   { id: "github", name: "GitHub", description: "List repos, issues and PRs, read file contents; create/comment on issues, open PRs, and push files.", credential: "GitHub personal access token (ghp_… / fine-grained)", status: "live", hasWrite: true, category: "dev" },
   { id: "jira", name: "Jira", description: "List projects, search issues (JQL), read issue detail; create issues, transition status, and add comments in Jira Cloud.", credential: "email:api-token@your-site.atlassian.net", status: "live", hasWrite: true, category: "dev" },
   { id: "linear", name: "Linear", description: "List teams and projects, search issues, read issue detail; create issues, move issue state, and add comments via the Linear GraphQL API.", credential: "Linear API key (lin_api_…)", status: "live", hasWrite: true, category: "dev" },
-  { id: "unreal-engine", name: "Unreal Engine", description: "Control a running Unreal Engine 5.8+ editor via the built-in MCP plugin (no credential needed; enable the plugin and toggle this on).", credential: "Editor MCP URL (optional override; defaults to http://127.0.0.1:8000/mcp)", status: "live", hasWrite: true, category: "dev" },
+  { id: "unreal-engine", name: "Unreal Engine", description: "Control a running Unreal Engine 5.8+ editor via the built-in MCP plugin (no credential needed; enable the plugin and toggle this on).", credential: "Editor MCP URL (optional override; defaults to http://127.0.0.1:8000/mcp)", status: "live", hasWrite: true, category: "dev", credentialFree: true },
+  { id: "browser", name: "Browser Sketchpad", description: "A local headless browser agents can drive to verify what they build and to smoke-test live sites: open a page or local HTML file, click through flows, log in when asked, read console errors, and take screenshots. Runs in its own persistent profile, separate from your browsers.", credential: "None needed (optional override: absolute path to a browser executable)", status: "live", hasWrite: true, category: "dev", credentialFree: true },
   { id: "unity", name: "Unity", description: "Control a running Unity Editor via the mcp-unity package (CoderGamester). Requires Node.js 18+.", credential: "Absolute path to mcp-unity server script (e.g. /path/to/project/Library/PackageCache/com.gamelovers.mcp-unity@<hash>/Server~/build/index.js)", status: "live", hasWrite: true, category: "dev" },
   { id: "postgres", name: "PostgreSQL", description: "Inspect and query a PostgreSQL database: list tables, describe schemas, run read-only SELECTs (and, with write scope, mutating statements).", credential: "PostgreSQL connection string (postgresql://user:pass@host:5432/db)", status: "live", hasWrite: true, category: "database" },
   { id: "sqlite", name: "SQLite", description: "Inspect and query a local SQLite database file: list tables, describe schemas, run read-only SELECTs (and, with write scope, mutating statements).", credential: "Absolute path to the SQLite database file (e.g. /path/to/app.db)", status: "live", hasWrite: true, category: "database" },
@@ -186,6 +193,11 @@ export function setConnector(
 /** The resolved access scope for a connector (read-only when unset/unknown). */
 export function connectorScope(id: string): ConnectorScope {
   return load().config[id]?.scope ?? "read";
+}
+
+/** Whether a connector is toggled on (used for prompt-injection gates). */
+export function connectorEnabled(id: string): boolean {
+  return load().config[id]?.enabled ?? false;
 }
 
 // ---------------------------------------------------------------------------

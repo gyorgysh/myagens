@@ -55,6 +55,7 @@ export const CONNECTOR_HELP: Record<string, ConnectorHelpShape> = {
   x: { steps: 5, readTools: 1, writeTools: 2, tip: true },
   youtube: { steps: 4, readTools: 3, writeTools: 4, tip: true },
   facebook: { steps: 5, readTools: 3, writeTools: 3, tip: true },
+  browser: { steps: 3, readTools: 3, writeTools: 3, tip: true },
 };
 
 /** Normalise a connector id into the underscore form used in i18n keys. */

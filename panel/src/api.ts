@@ -591,6 +591,8 @@ export interface Connector {
   category: ConnectorCategory;
   /** Social connectors hold named accounts instead of a single secretId. */
   multiAccount?: boolean;
+  /** Can be enabled with no credential (any attached secret is an optional override). */
+  credentialFree?: boolean;
   secretId?: string;
   enabled: boolean;
   scope: ConnectorScope;

@@ -1924,6 +1924,23 @@ export const hu: Translations = {
   connectors_facebook_write_3: "Posztok törlése",
   connectors_facebook_tip: "A képes posztokhoz nyilvános kép-URL kell, amit a Facebook le tud tölteni — használd a tunnelt vagy bármilyen képtárhelyet. A token magát az oldalt azonosítja, így minden kezelt oldal külön fiók itt.",
 
+  // Browser Sketchpad
+  connectors_browser_summary: "Helyi, fej nélküli böngésző (Playwright alapon), amit az ügynökeid vezetnek: ellenőrzik a saját munkájukat és élő oldalakat smoke-tesztelnek — megnyitnak egy oldalt vagy helyi HTML fájlt, végigkattintják a folyamatokat, kérésre bejelentkeznek, olvassák a konzol hibáit, és képernyőképet készítenek. Saját, különálló profilban fut, a te böngészőidtől függetlenül.",
+  connectors_browser_credential: "Nem szükséges. Opcionális felülírás: böngésző futtatható fájl abszolút elérési útja.",
+  connectors_browser_step_1: "Engedélyezd a csatlakozót — hitelesítő adat nem kell. A böngésző fej nélkül, saját különálló profilban fut.",
+  connectors_browser_step_2: "Legyen telepítve a Google Chrome, vagy futtasd egyszer az \"npx playwright install chromium\" parancsot — vagy egyszerűen nyomd meg a kártyán a „Kérd meg az ügynöködet a beállításra” gombot, és az ügynök elintézi.",
+  connectors_browser_step_3: "Kérd meg egy ügynököt, hogy nyisson meg egy oldalt vagy HTML fájlt és készítsen képernyőképet. Az első futás eltart egy percig, amíg az npx letölti a Playwrightot.",
+  connectors_browser_setup_btn: "Kérd meg az ügynöködet a beállításra",
+  connectors_browser_setup_sent: "Elküldve — a csevegésben követheted a folyamatot.",
+  connectors_browser_setup_prompt: "Kérlek állítsd be nekem a Browser Sketchpadet: ellenőrizd, hogy a Playwright el tud-e indítani egy böngészőt (a telepített Google Chrome megfelel; különben futtasd az npx playwright install chromium parancsot), majd ellenőrzésképp nyiss meg egy egyszerű oldalt, készíts róla képernyőképet, és jelezz vissza.",
+  connectors_browser_read_1: "Oldalak megnyitása és olvasása",
+  connectors_browser_read_2: "Képernyőképek",
+  connectors_browser_read_3: "Konzol- és hálózati naplók",
+  connectors_browser_write_1: "Kattintás és navigálás",
+  connectors_browser_write_2: "Gépelés, űrlapok kitöltése",
+  connectors_browser_write_3: "Fülek kezelése",
+  connectors_browser_tip: "Az ügynökök itt ellenőrzik a saját webes munkájukat (építés → megnyitás → végigkattintás → képernyőkép), és kérésre élő oldalakat is smoke-tesztelnek, bejelentkezéssel együtt. Utasításuk szerint rákérdeznek, mielőtt olyan hitelesítő adatot írnának be, amit nem a feladathoz adtál meg, és minden böngészőművelet a jóváhagyási folyamaton megy át. Figyelem: a bejelentkezett munkamenetek a profilban (data/browser-playground) megmaradnak, amíg nem törlöd a mappát.",
+
   // Általános webhook eszközök (egyéni HTTP végpontok mint ágens eszközök)
   webhooks_title: "Egyéni webhook eszközök",
   webhooks_desc: "Regisztrálj bármilyen HTTP végpontot a flotta által hívható eszközként. Minden eszköz ugyanazon az SSRF védelmen megy át, mint a beépített csatlakozók; a hitelesítő tokeneket híváskor a széfből oldja fel.",

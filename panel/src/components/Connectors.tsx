@@ -305,6 +305,7 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
   const [error, setError] = useState<string | null>(null);
   const [infoConnector, setInfoConnector] = useState<Connector | null>(null);
   const [category, setCategory] = useState<CategoryFilter>("all");
+  const [setupAsked, setSetupAsked] = useState(false);
 
   const load = () =>
     Promise.all([api.connectors(), api.vault()])
@@ -338,6 +339,19 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
   const setExpiry = async (id: string, expiresAt: number | null) => {
     await api.saveConnector(id, { expiresAt }).catch(() => {});
     void load();
+  };
+
+  // Fire a chat turn asking the agent to install/verify the sketchpad browser,
+  // then jump to the chat so the user can watch it happen.
+  const askBrowserSetup = async () => {
+    try {
+      await api.sendChat(t("connectors_browser_setup_prompt"));
+      setSetupAsked(true);
+      onGoto?.("chat");
+    } catch (e) {
+      if (e instanceof AuthError) onAuthError();
+      else setError(errorMessage(e, t));
+    }
   };
 
   const replaceConnector = (updated: Connector) =>
@@ -515,14 +529,24 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
                     <input
                       type="checkbox"
                       checked={c.enabled}
-                      disabled={c.multiAccount ? c.accounts.length === 0 : !c.secretId}
+                      disabled={c.multiAccount ? c.accounts.length === 0 : c.credentialFree ? false : !c.secretId}
                       onChange={(e) => setEnabled(c.id, e.target.checked)}
                     />
                     {t("connectors_enable")}
                   </label>
                 )}
-                {live && c.enabled && (c.multiAccount ? c.accounts.length > 0 : !!c.secretId) && (
+                {live && c.enabled && (c.multiAccount ? c.accounts.length > 0 : c.credentialFree || !!c.secretId) && (
                   <p className="mt-1 text-xs text-accent">{t("connectors_active")}</p>
+                )}
+                {c.id === "browser" && live && c.enabled && (
+                  <div className="mt-2">
+                    <Button variant="ghost" disabled={setupAsked} onClick={() => void askBrowserSetup()}>
+                      {t("connectors_browser_setup_btn")}
+                    </Button>
+                    {setupAsked && (
+                      <p className="mt-1 text-xs text-fg-faint">{t("connectors_browser_setup_sent")}</p>
+                    )}
+                  </div>
                 )}
                 {live && c.secretId && (
                   <div className="mt-2">

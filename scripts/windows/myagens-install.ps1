@@ -13,7 +13,7 @@
 
 .EXAMPLE
     # Download and run directly:
-    irm https://gyorgy.sh/myagens-install.ps1 | iex
+    irm https://myagens.com/install.ps1 | iex
 
     # Or with overrides:
     $env:MYAGENS_REPO="https://github.com/yourfork/myagens.git"; iwr ... | iex
@@ -118,7 +118,7 @@ function Ensure-Admin {
     Write-Host ""
     Write-Host "  Then run these two lines:" -ForegroundColor Cyan
     Write-Host "    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force"
-    Write-Host "    irm https://gyorgy.sh/myagens-install.ps1 | iex"
+    Write-Host "    irm https://myagens.com/install.ps1 | iex"
     Write-Host ""
     # Pause so the window doesn't vanish before this can be read (a freshly
     # launched window closes the moment the script exits). Skipped in automation.

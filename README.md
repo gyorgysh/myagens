@@ -101,7 +101,7 @@ The same agents, two front doors:
 One command in the terminal, everything else in your browser. The terminal part installs the prerequisites (Node 20+, git, the Claude CLI), clones, and builds — no questions asked. Then a local setup page opens where you create your bot, prove it's you (press START in Telegram and you appear on the page — no user IDs to look up), and connect Claude, with every value verified live before it's saved. It finishes signed in to the panel.
 
 ```bash
-curl -fsSL https://gyorgy.sh/myagens-install.sh | bash -s -- --browser
+curl -fsSL https://myagens.com/install.sh | bash -s -- --browser
 ```
 
 The setup page is served on `127.0.0.1` only, behind a single-use key printed in the terminal, and shuts down the moment setup completes.
@@ -111,7 +111,7 @@ The setup page is served on `127.0.0.1` only, behind a single-use key printed in
 The classic fully-in-terminal wizard — same result, plus optional extras (voice, local embeddings, remote access) asked inline. Right choice for servers you SSH into:
 
 ```bash
-curl -fsSL https://gyorgy.sh/myagens-install.sh | bash
+curl -fsSL https://myagens.com/install.sh | bash
 ```
 
 ### Windows
@@ -129,7 +129,7 @@ The title bar should read **Administrator: Windows PowerShell**.
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-irm https://gyorgy.sh/myagens-install.ps1 | iex
+irm https://myagens.com/install.ps1 | iex
 ```
 
 The first line lets PowerShell run the `npm`/`claude` script shims for this session only (Windows blocks them by default); it isn't persisted and needs no admin. The Windows installer uses `winget` for Node.js and Git, and creates a NSSM service (with Task Scheduler as a fallback). To update later, run `.\scripts\windows\update.ps1` or use the panel's Updates view.

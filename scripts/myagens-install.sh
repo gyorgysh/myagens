@@ -2,7 +2,7 @@
 #
 # myagens-install.sh — one-shot installer/wizard for MyAgens.
 #
-#   curl -fsSL https://gyorgy.sh/myagens-install.sh | bash
+#   curl -fsSL https://myagens.com/install.sh | bash
 #
 # Self-contained: it does NOT assume the repo is checked out. It installs the
 # prerequisites (Homebrew on macOS; Node 20+, git, and the Claude Code CLI on
@@ -12,7 +12,7 @@
 #
 # Browser setup (recommended for desktops):
 #
-#   curl -fsSL https://gyorgy.sh/myagens-install.sh | bash -s -- --browser
+#   curl -fsSL https://myagens.com/install.sh | bash -s -- --browser
 #
 # does the mechanical work here (prerequisites, clone, build) with no questions,
 # then opens a local web wizard in your browser for everything else — bot token,

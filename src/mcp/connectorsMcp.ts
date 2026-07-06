@@ -1,4 +1,6 @@
 import { createHmac, randomBytes } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { basename } from "node:path";
 import { createSdkMcpServer, tool, type SdkMcpToolDefinition } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { ImapFlow } from "imapflow";
@@ -72,6 +74,15 @@ const WRITE_TOOLS = new Set<string>([
   // X
   "x_post",
   "x_delete_post",
+  // YouTube
+  "youtube_upload_video",
+  "youtube_update_video",
+  "youtube_comment",
+  "youtube_reply_comment",
+  // Facebook Pages
+  "facebook_post",
+  "facebook_comment",
+  "facebook_delete_post",
 ]);
 
 /**
@@ -3534,6 +3545,384 @@ function xMcp(accounts: SocialAccount[], scope: ConnectorScope) {
 }
 
 // ---------------------------------------------------------------------------
+// YouTube (Data API v3, Google OAuth token per channel)
+// ---------------------------------------------------------------------------
+
+const YT_BASE = "https://www.googleapis.com/youtube/v3";
+const YT_UPLOAD_BASE = "https://www.googleapis.com/upload/youtube/v3";
+/** Simple (non-resumable) upload buffers the file in memory — cap it. */
+const YT_MAX_UPLOAD_BYTES = 256 * 1024 * 1024;
+
+function youtubeMcp(accounts: SocialAccount[], scope: ConnectorScope) {
+  async function ytFetch(
+    label: string | undefined,
+    method: string,
+    path: string,
+    params: Record<string, string>,
+    body?: unknown,
+  ): Promise<{ res: Response; acct: SocialAccount } | string> {
+    const acct = pickAccount(accounts, label);
+    if (typeof acct === "string") return acct;
+    const qs = new URLSearchParams(params).toString();
+    const res = await fetch(`${YT_BASE}${path}${qs ? `?${qs}` : ""}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${acct.credential}`,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    return { res, acct };
+  }
+
+  return createSdkMcpServer({
+    name: "youtube",
+    version: "1.0.0",
+    tools: scopeTools([
+      tool(
+        "youtube_channel_stats",
+        "Read the channel's stats: title, subscriber/view/video counts, and channel id.",
+        {
+          account: accountParam(accounts),
+        },
+        async (a) => {
+          const r = await ytFetch(a.account, "GET", "/channels", { part: "snippet,statistics", mine: "true" });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const items = (((await r.res.json()) as { items?: { id?: string; snippet?: { title?: string }; statistics?: { subscriberCount?: string; viewCount?: string; videoCount?: string } }[] }).items) ?? [];
+          if (!items.length) return text("No channel found for this token.");
+          const ch = items[0];
+          return text(
+            `${ch.snippet?.title ?? "?"} · id ${ch.id}\n` +
+              `Subscribers: ${ch.statistics?.subscriberCount ?? "?"} · Views: ${ch.statistics?.viewCount ?? "?"} · Videos: ${ch.statistics?.videoCount ?? "?"}`,
+          );
+        },
+      ),
+      tool(
+        "youtube_list_videos",
+        "List the channel's uploaded videos (newest first) with ids and publish dates.",
+        {
+          account: accountParam(accounts),
+          limit: z.number().int().min(1).max(50).optional().describe("Max videos (default 15)."),
+        },
+        async (a) => {
+          const chRes = await ytFetch(a.account, "GET", "/channels", { part: "contentDetails", mine: "true" });
+          if (typeof chRes === "string") return text(chRes);
+          if (!chRes.res.ok) return text(`Error: ${await asError(chRes.res)}`);
+          const chItems = (((await chRes.res.json()) as { items?: { contentDetails?: { relatedPlaylists?: { uploads?: string } } }[] }).items) ?? [];
+          const uploads = chItems[0]?.contentDetails?.relatedPlaylists?.uploads;
+          if (!uploads) return text("No uploads playlist found for this token.");
+          const r = await ytFetch(a.account, "GET", "/playlistItems", {
+            part: "snippet,contentDetails",
+            playlistId: uploads,
+            maxResults: String(a.limit ?? 15),
+          });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const items = (((await r.res.json()) as { items?: { snippet?: { title?: string; publishedAt?: string }; contentDetails?: { videoId?: string } }[] }).items) ?? [];
+          const lines = items.map((v) => `- ${v.snippet?.title ?? "?"} · id ${v.contentDetails?.videoId} · ${v.snippet?.publishedAt ?? ""}`);
+          return text(lines.join("\n") || "No videos.");
+        },
+      ),
+      tool(
+        "youtube_list_comments",
+        "List top-level comments on a video (with comment ids for replying).",
+        {
+          account: accountParam(accounts),
+          videoId: z.string().describe("Video id."),
+          limit: z.number().int().min(1).max(50).optional().describe("Max comment threads (default 20)."),
+        },
+        async (a) => {
+          const r = await ytFetch(a.account, "GET", "/commentThreads", {
+            part: "snippet",
+            videoId: a.videoId,
+            maxResults: String(a.limit ?? 20),
+            order: "time",
+          });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const items = (((await r.res.json()) as { items?: { snippet?: { topLevelComment?: { id?: string; snippet?: { authorDisplayName?: string; textDisplay?: string; likeCount?: number; publishedAt?: string } } } }[] }).items) ?? [];
+          const lines = items.map((it) => {
+            const c = it.snippet?.topLevelComment;
+            const s = c?.snippet;
+            return `- ${s?.authorDisplayName ?? "?"} · ♥${s?.likeCount ?? 0} · ${s?.publishedAt ?? ""} · id ${c?.id}\n  ${stripHtml(s?.textDisplay ?? "").slice(0, 300)}`;
+          });
+          return text(lines.join("\n") || "No comments.");
+        },
+      ),
+      tool(
+        "youtube_upload_video",
+        "Upload a local video file to the channel. Defaults to private so it can be " +
+          "reviewed before publishing — pass privacy: \"public\" to go live immediately. " +
+          `Files up to ${YT_MAX_UPLOAD_BYTES / (1024 * 1024)}MB (use YouTube Studio for bigger ones). ` +
+          "Note: uploads cost 1600 of the API's 10000 free daily quota units (~6 uploads/day).",
+        {
+          account: accountParam(accounts),
+          filePath: z.string().describe("Absolute path to the video file on this machine."),
+          title: z.string().max(100).describe("Video title."),
+          description: z.string().optional().describe("Video description."),
+          tags: z.array(z.string()).optional().describe("Video tags."),
+          privacy: z.enum(["private", "unlisted", "public"]).optional().describe("Default private."),
+        },
+        async (a) => {
+          const acct = pickAccount(accounts, a.account);
+          if (typeof acct === "string") return text(acct);
+          let size: number;
+          try {
+            size = statSync(a.filePath).size;
+          } catch {
+            return text(`File not found: ${a.filePath}`);
+          }
+          if (size > YT_MAX_UPLOAD_BYTES) {
+            return text(`File is ${Math.round(size / (1024 * 1024))}MB — over the ${YT_MAX_UPLOAD_BYTES / (1024 * 1024)}MB limit for this tool.`);
+          }
+          const metadata = {
+            snippet: { title: a.title, description: a.description ?? "", tags: a.tags },
+            status: { privacyStatus: a.privacy ?? "private" },
+          };
+          // Same random-boundary multipart trick as the Drive connector, but the
+          // parts are concatenated as Buffers since video bytes are binary.
+          const boundary = `myagens_youtube_${randomBytes(16).toString("hex")}`;
+          const head = Buffer.from(
+            [
+              `--${boundary}`,
+              "Content-Type: application/json; charset=UTF-8",
+              "",
+              JSON.stringify(metadata),
+              `--${boundary}`,
+              "Content-Type: application/octet-stream",
+              "",
+              "",
+            ].join("\r\n"),
+            "utf-8",
+          );
+          const tail = Buffer.from(`\r\n--${boundary}--`, "utf-8");
+          const body = Buffer.concat([head, readFileSync(a.filePath), tail]);
+          const res = await fetch(`${YT_UPLOAD_BASE}/videos?uploadType=multipart&part=snippet,status`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${acct.credential}`,
+              "Content-Type": `multipart/related; boundary=${boundary}`,
+            },
+            body,
+          });
+          if (!res.ok) return text(`Error: ${await asError(res)}`);
+          const data = (await res.json()) as { id?: string };
+          return text(`Uploaded ${basename(a.filePath)} as ${acct.label} (${a.privacy ?? "private"}). video id: ${data.id ?? "?"}`);
+        },
+      ),
+      tool(
+        "youtube_update_video",
+        "Update a video's title, description, or tags (leaves the rest unchanged).",
+        {
+          account: accountParam(accounts),
+          videoId: z.string().describe("Video id to update."),
+          title: z.string().max(100).optional(),
+          description: z.string().optional(),
+          tags: z.array(z.string()).optional(),
+        },
+        async (a) => {
+          if (a.title === undefined && a.description === undefined && a.tags === undefined) {
+            return text("Nothing to update — pass title, description, and/or tags.");
+          }
+          // videos.update replaces the whole snippet (title and categoryId are
+          // mandatory), so read-modify-write the current one.
+          const cur = await ytFetch(a.account, "GET", "/videos", { part: "snippet", id: a.videoId });
+          if (typeof cur === "string") return text(cur);
+          if (!cur.res.ok) return text(`Error: ${await asError(cur.res)}`);
+          const items = (((await cur.res.json()) as { items?: { snippet?: Record<string, unknown> }[] }).items) ?? [];
+          const snippet = items[0]?.snippet;
+          if (!snippet) return text("Video not found (or not owned by this channel).");
+          if (a.title !== undefined) snippet.title = a.title;
+          if (a.description !== undefined) snippet.description = a.description;
+          if (a.tags !== undefined) snippet.tags = a.tags;
+          const r = await ytFetch(a.account, "PUT", "/videos", { part: "snippet" }, { id: a.videoId, snippet });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          return text(`Video ${a.videoId} updated.`);
+        },
+      ),
+      tool(
+        "youtube_comment",
+        "Post a new top-level comment on a video.",
+        {
+          account: accountParam(accounts),
+          videoId: z.string().describe("Video id to comment on."),
+          text: z.string().describe("Comment text."),
+        },
+        async (a) => {
+          const r = await ytFetch(a.account, "POST", "/commentThreads", { part: "snippet" }, {
+            snippet: { videoId: a.videoId, topLevelComment: { snippet: { textOriginal: a.text } } },
+          });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          return text(`Comment posted as ${r.acct.label} on video ${a.videoId}.`);
+        },
+      ),
+      tool(
+        "youtube_reply_comment",
+        "Reply to an existing comment by its comment id (from youtube_list_comments).",
+        {
+          account: accountParam(accounts),
+          commentId: z.string().describe("Parent (top-level) comment id."),
+          text: z.string().describe("Reply text."),
+        },
+        async (a) => {
+          const r = await ytFetch(a.account, "POST", "/comments", { part: "snippet" }, {
+            snippet: { parentId: a.commentId, textOriginal: a.text },
+          });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          return text(`Reply posted as ${r.acct.label} under comment ${a.commentId}.`);
+        },
+      ),
+    ], scope),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Facebook Pages (Graph API, long-lived Page access token per Page)
+// ---------------------------------------------------------------------------
+
+const FB_BASE = "https://graph.facebook.com/v21.0";
+
+function facebookMcp(accounts: SocialAccount[], scope: ConnectorScope) {
+  async function fbFetch(
+    label: string | undefined,
+    method: string,
+    path: string,
+    params: Record<string, string> = {},
+    body?: Record<string, unknown>,
+  ): Promise<{ res: Response; acct: SocialAccount } | string> {
+    const acct = pickAccount(accounts, label);
+    if (typeof acct === "string") return acct;
+    // The Page token identifies the Page, so /me resolves to the Page itself.
+    const qs = new URLSearchParams({ ...params, access_token: acct.credential }).toString();
+    const res = await fetch(`${FB_BASE}${path}?${qs}`, {
+      method,
+      ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+    });
+    return { res, acct };
+  }
+
+  return createSdkMcpServer({
+    name: "facebook",
+    version: "1.0.0",
+    tools: scopeTools([
+      tool(
+        "facebook_page_info",
+        "Read the Page's name, follower/like counts, and link.",
+        {
+          account: accountParam(accounts),
+        },
+        async (a) => {
+          const r = await fbFetch(a.account, "GET", "/me", { fields: "id,name,about,followers_count,fan_count,link" });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const p = (await r.res.json()) as { id?: string; name?: string; about?: string; followers_count?: number; fan_count?: number; link?: string };
+          return text(
+            `${p.name ?? "?"} · id ${p.id}\n${p.about ?? ""}\nFollowers: ${p.followers_count ?? "?"} · Likes: ${p.fan_count ?? "?"}\n${p.link ?? ""}`,
+          );
+        },
+      ),
+      tool(
+        "facebook_page_feed",
+        "Read the Page's recent posts with like/comment counts and post ids.",
+        {
+          account: accountParam(accounts),
+          limit: z.number().int().min(1).max(50).optional().describe("Max posts (default 15)."),
+        },
+        async (a) => {
+          const r = await fbFetch(a.account, "GET", "/me/feed", {
+            fields: "id,message,created_time,permalink_url,likes.summary(true).limit(0),comments.summary(true).limit(0)",
+            limit: String(a.limit ?? 15),
+          });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { data?: { id?: string; message?: string; created_time?: string; permalink_url?: string; likes?: { summary?: { total_count?: number } }; comments?: { summary?: { total_count?: number } } }[] };
+          const lines = (data.data ?? []).map(
+            (p) =>
+              `- ${p.created_time ?? ""} · ♥${p.likes?.summary?.total_count ?? 0} · ${p.comments?.summary?.total_count ?? 0} comments · id ${p.id}\n  ${(p.message ?? "").slice(0, 300)}`,
+          );
+          return text(lines.join("\n") || "No posts.");
+        },
+      ),
+      tool(
+        "facebook_post_comments",
+        "Read comments on a Page post by post id.",
+        {
+          account: accountParam(accounts),
+          postId: z.string().describe("Post id (from facebook_page_feed)."),
+          limit: z.number().int().min(1).max(50).optional().describe("Max comments (default 20)."),
+        },
+        async (a) => {
+          const r = await fbFetch(a.account, "GET", `/${encodeURIComponent(a.postId)}/comments`, {
+            fields: "id,from,message,created_time,like_count",
+            limit: String(a.limit ?? 20),
+          });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { data?: { id?: string; from?: { name?: string }; message?: string; created_time?: string; like_count?: number }[] };
+          const lines = (data.data ?? []).map(
+            (c) => `- ${c.from?.name ?? "?"} · ♥${c.like_count ?? 0} · ${c.created_time ?? ""} · id ${c.id}\n  ${(c.message ?? "").slice(0, 300)}`,
+          );
+          return text(lines.join("\n") || "No comments.");
+        },
+      ),
+      tool(
+        "facebook_post",
+        "Publish a post on the Page: a text post, a link post, or a photo post (photoUrl " +
+          "must be a public image URL Facebook can fetch).",
+        {
+          account: accountParam(accounts),
+          message: z.string().describe("Post text (or photo caption)."),
+          link: z.string().optional().describe("URL to attach as a link post."),
+          photoUrl: z.string().optional().describe("Public image URL to publish as a photo post."),
+        },
+        async (a) => {
+          const r = a.photoUrl
+            ? await fbFetch(a.account, "POST", "/me/photos", {}, { url: a.photoUrl, caption: a.message })
+            : await fbFetch(a.account, "POST", "/me/feed", {}, { message: a.message, ...(a.link ? { link: a.link } : {}) });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { id?: string; post_id?: string };
+          return text(`Posted to ${r.acct.label}. post id: ${data.post_id ?? data.id ?? "?"}`);
+        },
+      ),
+      tool(
+        "facebook_comment",
+        "Comment on a post (or reply to a comment) as the Page.",
+        {
+          account: accountParam(accounts),
+          objectId: z.string().describe("Post id or comment id to comment on."),
+          message: z.string().describe("Comment text."),
+        },
+        async (a) => {
+          const r = await fbFetch(a.account, "POST", `/${encodeURIComponent(a.objectId)}/comments`, {}, { message: a.message });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          return text(`Comment posted as ${r.acct.label} on ${a.objectId}.`);
+        },
+      ),
+      tool(
+        "facebook_delete_post",
+        "Delete one of the Page's own posts by id.",
+        {
+          account: accountParam(accounts),
+          postId: z.string().describe("Post id to delete."),
+        },
+        async (a) => {
+          const r = await fbFetch(a.account, "DELETE", `/${encodeURIComponent(a.postId)}`);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          return text("Post deleted.");
+        },
+      ),
+    ], scope),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -3602,6 +3991,10 @@ export function buildConnectorMcps(): Record<string, McpServer | ExternalMcpServ
   if (redditAccounts.length) out.reddit = redditMcp(redditAccounts, connectorScope("reddit"));
   const xAccounts = socialAccountsFor("x");
   if (xAccounts.length) out.x = xMcp(xAccounts, connectorScope("x"));
+  const youtubeAccounts = socialAccountsFor("youtube");
+  if (youtubeAccounts.length) out.youtube = youtubeMcp(youtubeAccounts, connectorScope("youtube"));
+  const facebookAccounts = socialAccountsFor("facebook");
+  if (facebookAccounts.length) out.facebook = facebookMcp(facebookAccounts, connectorScope("facebook"));
   if (Object.keys(out).length) {
     log.debug("Connector MCPs enabled", {
       connectors: Object.keys(out).map((id) => `${id}:${connectorScope(id)}`),
@@ -3611,4 +4004,4 @@ export function buildConnectorMcps(): Record<string, McpServer | ExternalMcpServ
 }
 
 /** Names of the live connectors that have wired MCP servers (for the panel). */
-export const LIVE_CONNECTORS = ["notion", "gcal", "gmail", "gdrive", "apple-calendar", "apple-mail", "slack", "github", "jira", "linear", "unreal-engine", "unity", "postgres", "sqlite", "bluesky", "mastodon", "discord", "reddit", "x"] as const;
+export const LIVE_CONNECTORS = ["notion", "gcal", "gmail", "gdrive", "apple-calendar", "apple-mail", "slack", "github", "jira", "linear", "unreal-engine", "unity", "postgres", "sqlite", "bluesky", "mastodon", "discord", "reddit", "x", "youtube", "facebook"] as const;

@@ -1892,6 +1892,38 @@ export const hu: Translations = {
   connectors_x_write_2: "Tweetek törlése",
   connectors_x_tip: "Ha a posztolás 403-at ad, generáld újra az Access Tokent azután, hogy az appot Read and write módba kapcsoltad — a tokenek a létrehozáskori jogosultságokat őrzik meg.",
 
+  // YouTube
+  connectors_youtube_summary: "Az ügynökeid olvashatják a csatorna statisztikáit, listázhatják a feltöltéseket és a kommentjeiket, videót tölthetnek fel, frissíthetik a címeket/leírásokat, és válaszolhatnak a kommentekre — csatornánként külön hitelesítéssel.",
+  connectors_youtube_credential: "Google OAuth hozzáférési token (youtube.force-ssl scope)",
+  connectors_youtube_step_1: "Menj a console.cloud.google.com oldalra, hozz létre egy projektet, és engedélyezd a YouTube Data API v3-at.",
+  connectors_youtube_step_2: "Az APIs & Services > Credentials alatt hozz létre egy OAuth 2.0 kliens azonosítót (Desktop app).",
+  connectors_youtube_step_3: "Szerezz hozzáférési tokent a https://www.googleapis.com/auth/youtube.force-ssl scope-pal, a csatorna fiókjával bejelentkezve.",
+  connectors_youtube_step_4: "Tedd a tokent a széfbe, majd add hozzá itt fiókként egy rövid címkével (pl. main-channel).",
+  connectors_youtube_read_1: "Csatorna statisztikák",
+  connectors_youtube_read_2: "Videók listázása",
+  connectors_youtube_read_3: "Kommentek olvasása",
+  connectors_youtube_write_1: "Videók feltöltése",
+  connectors_youtube_write_2: "Videó adatok frissítése",
+  connectors_youtube_write_3: "Kommentelés",
+  connectors_youtube_write_4: "Válasz kommentekre",
+  connectors_youtube_tip: "A feltöltések alapból privátak, így publikálás előtt átnézheted őket; egy feltöltés az API napi 10000 ingyenes kvótaegységéből 1600-at fogyaszt (~6 feltöltés/nap).",
+
+  // Facebook Pages
+  connectors_facebook_summary: "Az ügynökeid olvashatják egy oldal adatait és hírfolyamát az elköteleződési számokkal, szöveges/linkes/képes posztokat tehetnek közzé, kommentelhetnek és posztot törölhetnek — oldalanként külön hitelesítéssel. Személyes profilokat a Meta API nem támogat.",
+  connectors_facebook_credential: "Hosszú élettartamú Page hozzáférési token",
+  connectors_facebook_step_1: "Menj a developers.facebook.com oldalra, hozz létre egy appot (Business típus), és a Graph API Explorerben add hozzá a pages_manage_posts, pages_read_engagement és pages_read_user_content jogosultságokat.",
+  connectors_facebook_step_2: "A Graph API Explorerben generálj User tokent ezekkel a jogosultságokkal, oldal-adminként bejelentkezve (a saját, dev módú appodhoz nem kell App Review).",
+  connectors_facebook_step_3: "Cseréld hosszú élettartamú tokenre, majd kérdezd le a /me/accounts végpontot a Page tokenért (a hosszú élettartamú Page tokenek nem járnak le).",
+  connectors_facebook_step_4: "Tedd a Page tokent a széfbe titokként.",
+  connectors_facebook_step_5: "Add hozzá itt fiókként egy rövid címkével (pl. company-page), majd engedélyezd a csatlakozót.",
+  connectors_facebook_read_1: "Oldal adatai",
+  connectors_facebook_read_2: "Hírfolyam és elköteleződés",
+  connectors_facebook_read_3: "Kommentek olvasása",
+  connectors_facebook_write_1: "Posztok közzététele",
+  connectors_facebook_write_2: "Kommentelés az oldal nevében",
+  connectors_facebook_write_3: "Posztok törlése",
+  connectors_facebook_tip: "A képes posztokhoz nyilvános kép-URL kell, amit a Facebook le tud tölteni — használd a tunnelt vagy bármilyen képtárhelyet. A token magát az oldalt azonosítja, így minden kezelt oldal külön fiók itt.",
+
   // Általános webhook eszközök (egyéni HTTP végpontok mint ágens eszközök)
   webhooks_title: "Egyéni webhook eszközök",
   webhooks_desc: "Regisztrálj bármilyen HTTP végpontot a flotta által hívható eszközként. Minden eszköz ugyanazon az SSRF védelmen megy át, mint a beépített csatlakozók; a hitelesítő tokeneket híváskor a széfből oldja fel.",

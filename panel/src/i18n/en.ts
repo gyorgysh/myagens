@@ -1889,6 +1889,38 @@ export const en = {
   connectors_x_write_2: "Delete tweets",
   connectors_x_tip: "If posting returns 403, regenerate the Access Token after switching the app to Read and write — tokens keep the permissions they were created with.",
 
+  // YouTube
+  connectors_youtube_summary: "Lets your agents read channel stats, list uploads and their comments, upload videos, update titles/descriptions, and reply to comments — one credential per channel.",
+  connectors_youtube_credential: "Google OAuth access token (youtube.force-ssl scope)",
+  connectors_youtube_step_1: "Go to console.cloud.google.com, create a project, and enable the YouTube Data API v3.",
+  connectors_youtube_step_2: "Under APIs & Services > Credentials, create an OAuth 2.0 client ID (Desktop app).",
+  connectors_youtube_step_3: "Obtain an access token with the scope https://www.googleapis.com/auth/youtube.force-ssl, signed in as the channel's account.",
+  connectors_youtube_step_4: "Vault the token, then add it here as an account with a short label (e.g. main-channel).",
+  connectors_youtube_read_1: "Channel stats",
+  connectors_youtube_read_2: "List videos",
+  connectors_youtube_read_3: "Read comments",
+  connectors_youtube_write_1: "Upload videos",
+  connectors_youtube_write_2: "Update video metadata",
+  connectors_youtube_write_3: "Comment",
+  connectors_youtube_write_4: "Reply to comments",
+  connectors_youtube_tip: "Uploads default to private so you can review before publishing, and each upload costs 1600 of the API's 10000 free daily quota units (~6 uploads/day).",
+
+  // Facebook Pages
+  connectors_facebook_summary: "Lets your agents read a Page's info and feed with engagement counts, publish text/link/photo posts, comment, and delete posts — one credential per Page. Personal profiles are not supported by Meta's API.",
+  connectors_facebook_credential: "Long-lived Page access token",
+  connectors_facebook_step_1: "Go to developers.facebook.com, create an app (type Business), and add the pages_manage_posts, pages_read_engagement, and pages_read_user_content permissions in Graph API Explorer.",
+  connectors_facebook_step_2: "In Graph API Explorer, generate a User token with those permissions, signed in as a Page admin (your own app in dev mode needs no App Review).",
+  connectors_facebook_step_3: "Exchange it for a long-lived token, then request /me/accounts to get the Page access token (long-lived Page tokens do not expire).",
+  connectors_facebook_step_4: "Vault the Page token as a secret.",
+  connectors_facebook_step_5: "Add it here as an account with a short label (e.g. company-page), then enable the connector.",
+  connectors_facebook_read_1: "Page info",
+  connectors_facebook_read_2: "Read feed & engagement",
+  connectors_facebook_read_3: "Read comments",
+  connectors_facebook_write_1: "Publish posts",
+  connectors_facebook_write_2: "Comment as the Page",
+  connectors_facebook_write_3: "Delete posts",
+  connectors_facebook_tip: "Photo posts need a public image URL Facebook can fetch — pair with the tunnel or any image host. The token identifies the Page, so each Page you manage is its own account here.",
+
   // Generic webhook tools (custom HTTP endpoints as agent tools)
   webhooks_title: "Custom webhook tools",
   webhooks_desc: "Register any HTTP endpoint as a tool the fleet can call. Each tool runs through the same SSRF guard as the built-in connectors; auth tokens are pulled from the vault at call time.",

@@ -17,6 +17,8 @@ import {
   siDiscord,
   siReddit,
   siX,
+  siYoutube,
+  siFacebook,
 } from "simple-icons";
 import { PenTool, Type, Zap, HardDrive, type LucideIcon } from "lucide-react";
 
@@ -76,6 +78,8 @@ const ICON_MAP: Record<string, ConnectorIcon> = {
   discord: siDiscord,
   reddit: siReddit,
   x: siX,
+  youtube: siYoutube,
+  facebook: siFacebook,
 };
 
 export function getConnectorIcon(id: string): ConnectorIcon | undefined {

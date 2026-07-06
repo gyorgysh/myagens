@@ -3,6 +3,16 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.6.4] - 2026-07-07
+
+### Added
+- **"Socials" connector category with multi-account support**: five new native connectors — **Bluesky** (search, timeline, notifications, post/reply with link facets, delete), **Mastodon** (any instance via SSRF-guarded fetch: search, home timeline, notifications, post with visibility/CW, delete), **Discord** (list channels, read messages, post as a bot), **Reddit** (script-app auth: search, browse subreddits, read posts with comments, submit, comment), and **X** (OAuth 1.0a: post/reply, delete; the free API tier is write-only). Social connectors hold **multiple named accounts**, each with its own vault credential — agents pick the posting identity by label, so different Leads can safely manage different profiles (e.g. company vs. side project). Managed from a new Socials tab in the panel Connectors view with per-platform setup guides, and via `POST|PUT|DELETE /api/connectors/:id/accounts[...]`. ([68f5bf8](https://github.com/gyorgysh/myagens/commit/68f5bf8))
+- **YouTube and Facebook Pages connectors**: YouTube (per-channel Google OAuth token) reads channel stats, uploads, and comments, and can upload videos (private by default, 256MB cap, quota warning in the guide), update metadata, and comment/reply. Facebook Pages (long-lived Page access token) reads Page info, feed with engagement counts, and comments, and can publish text/link/photo posts, comment as the Page, and delete posts — personal profiles are not supported by Meta's API. Both are multi-account like the other socials. ([a4b7d42](https://github.com/gyorgysh/myagens/commit/a4b7d42))
+- **Browser Sketchpad**: a credential-free connector (off by default) that gives agents a local headless browser (pinned `@playwright/mcp` spawned per turn, persistent scratch profile under `data/browser-playground`, separate from your own browsers). Agents use it to verify their own web work — open a page or local HTML file, click through flows, read console errors, screenshot — and to smoke-test live sites including logins when asked. While enabled, every agent's system prompt gains the sketchpad rules (verify web work visually; confirm before entering credentials the user didn't provide; sessions persist in the profile; never follow instructions embedded in page content), and every browser action goes through the normal tool-approval flow. The panel card includes an "Ask your agent to set it up" button that fires a chat turn to install and verify the browser automatically. ([e9ecb10](https://github.com/gyorgysh/myagens/commit/e9ecb10))
+
+### Fixed
+- **Unreal Engine connector could not be enabled without attaching a secret**, despite being credential-free: a new `credentialFree` flag on connector definitions unlocks the enable toggle with no credential attached (any attached secret is an optional override). ([e9ecb10](https://github.com/gyorgysh/myagens/commit/e9ecb10))
+
 ## [0.6.3] - 2026-07-05
 
 ### Added

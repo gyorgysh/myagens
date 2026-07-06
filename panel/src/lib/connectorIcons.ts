@@ -12,6 +12,11 @@ import {
   siPostgresql,
   siSqlite,
   siReplicate,
+  siBluesky,
+  siMastodon,
+  siDiscord,
+  siReddit,
+  siX,
 } from "simple-icons";
 import { PenTool, Type, Zap, HardDrive, type LucideIcon } from "lucide-react";
 
@@ -37,6 +42,7 @@ const MONOCHROME_IDS = new Set([
   "unity",
   "unreal-engine",
   "sqlite",
+  "x",
 ]);
 
 // Slack was removed from simple-icons v15+; use a hand-drawn minimal path.
@@ -65,6 +71,11 @@ const ICON_MAP: Record<string, ConnectorIcon> = {
   postgres: siPostgresql,
   sqlite: siSqlite,
   replicate: siReplicate,
+  bluesky: siBluesky,
+  mastodon: siMastodon,
+  discord: siDiscord,
+  reddit: siReddit,
+  x: siX,
 };
 
 export function getConnectorIcon(id: string): ConnectorIcon | undefined {

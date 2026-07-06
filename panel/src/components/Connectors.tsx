@@ -196,7 +196,107 @@ const CATEGORY_TABS: { id: CategoryFilter; labelKey: TranslationKey }[] = [
   { id: "dev", labelKey: "connectors_category_dev" },
   { id: "database", labelKey: "connectors_category_database" },
   { id: "image", labelKey: "connectors_category_image" },
+  { id: "social", labelKey: "connectors_category_social" },
 ];
+
+// ─── Multi-account credentials (social connectors) ─────────────────────────
+
+function SocialAccounts({
+  connector,
+  secrets,
+  noSecrets,
+  onUpdated,
+  onError,
+}: {
+  connector: Connector;
+  secrets: SecretView[];
+  noSecrets: boolean;
+  onUpdated: (c: Connector) => void;
+  onError: (msg: string) => void;
+}) {
+  const { t } = useI18n();
+  const [label, setLabel] = useState("");
+  const [secretId, setSecretId] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const run = async (p: Promise<Connector>) => {
+    setBusy(true);
+    try {
+      onUpdated(await p);
+    } catch (e) {
+      onError(errorMessage(e, t));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <Label>{t("connectors_accounts")}</Label>
+      <div className="mt-1 space-y-1.5">
+        {connector.accounts.map((a) => (
+          <div key={a.id} className="flex items-center gap-2">
+            <span className="w-28 shrink-0 truncate text-sm font-medium text-fg" title={a.label}>
+              {a.label}
+            </span>
+            <Select
+              value={a.secretId}
+              onChange={(e) =>
+                void run(api.updateConnectorAccount(connector.id, a.id, { secretId: e.target.value }))
+              }
+            >
+              {secrets.map((s) => (
+                <option key={s.id} value={`vault:${s.id}`}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void run(api.deleteConnectorAccount(connector.id, a.id))}
+              aria-label={t("connectors_account_remove")}
+              className="shrink-0 rounded p-1.5 text-fg-faint transition-colors hover:bg-surface-2 hover:text-critical-fg"
+            >
+              <X className="h-4 w-4" strokeWidth={2} />
+            </button>
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder={t("connectors_account_label_ph")}
+            className="w-28 shrink-0 rounded border border-line bg-surface px-2 py-2 text-sm text-fg placeholder:text-fg-faint"
+          />
+          <Select value={secretId} onChange={(e) => setSecretId(e.target.value)}>
+            <option value="">{t("none")}</option>
+            {secrets.map((s) => (
+              <option key={s.id} value={`vault:${s.id}`}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+          <Button
+            variant="ghost"
+            className="shrink-0"
+            disabled={busy || !label.trim() || !secretId}
+            onClick={() => {
+              void run(api.addConnectorAccount(connector.id, { label: label.trim(), secretId }));
+              setLabel("");
+              setSecretId("");
+            }}
+          >
+            {t("connectors_account_add")}
+          </Button>
+        </div>
+      </div>
+      {noSecrets && <p className="mt-1 text-xs text-fg-faint">{t("connectors_no_secret")}</p>}
+      <p className="mt-1 text-xs text-fg-faint">{t("connectors_accounts_hint")}</p>
+    </div>
+  );
+}
 
 export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => void; onGoto?: (t: Tab) => void }) {
   const { t } = useI18n();
@@ -240,7 +340,11 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
     void load();
   };
 
-  const noneConfigured = connectors.length > 0 && !connectors.some((c) => c.secretId);
+  const replaceConnector = (updated: Connector) =>
+    setConnectors((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
+
+  const noneConfigured =
+    connectors.length > 0 && !connectors.some((c) => c.secretId || c.accounts.length > 0);
   const noSecrets = secrets.length === 0;
   const filteredConnectors =
     category === "all" ? connectors : connectors.filter((c) => c.category === category);
@@ -360,18 +464,28 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
                   {t("connectors_needs").replace("{credential}", "")}
                   <span className="font-medium text-fg-dim">{credential}</span>
                 </p>
-                <div className="mt-2">
-                  <Label>{t("connectors_credential")}</Label>
-                  <Select value={c.secretId ?? ""} onChange={(e) => setSecret(c.id, e.target.value)}>
-                    <option value="">{t("none")}</option>
-                    {secrets.map((s) => (
-                      <option key={s.id} value={`vault:${s.id}`}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </Select>
-                  {noSecrets && <p className="mt-1 text-xs text-fg-faint">{t("connectors_no_secret")}</p>}
-                </div>
+                {c.multiAccount ? (
+                  <SocialAccounts
+                    connector={c}
+                    secrets={secrets}
+                    noSecrets={noSecrets}
+                    onUpdated={replaceConnector}
+                    onError={setError}
+                  />
+                ) : (
+                  <div className="mt-2">
+                    <Label>{t("connectors_credential")}</Label>
+                    <Select value={c.secretId ?? ""} onChange={(e) => setSecret(c.id, e.target.value)}>
+                      <option value="">{t("none")}</option>
+                      {secrets.map((s) => (
+                        <option key={s.id} value={`vault:${s.id}`}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </Select>
+                    {noSecrets && <p className="mt-1 text-xs text-fg-faint">{t("connectors_no_secret")}</p>}
+                  </div>
+                )}
                 {live && c.hasWrite && (
                   <div className="mt-2">
                     <Label>{t("connectors_access")}</Label>
@@ -401,13 +515,13 @@ export function ConnectorsView({ onAuthError, onGoto }: { onAuthError: () => voi
                     <input
                       type="checkbox"
                       checked={c.enabled}
-                      disabled={!c.secretId}
+                      disabled={c.multiAccount ? c.accounts.length === 0 : !c.secretId}
                       onChange={(e) => setEnabled(c.id, e.target.checked)}
                     />
                     {t("connectors_enable")}
                   </label>
                 )}
-                {live && c.enabled && c.secretId && (
+                {live && c.enabled && (c.multiAccount ? c.accounts.length > 0 : !!c.secretId) && (
                   <p className="mt-1 text-xs text-accent">{t("connectors_active")}</p>
                 )}
                 {live && c.secretId && (

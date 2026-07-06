@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { loadJson, saveJson } from "./jsonStore.js";
 import { audit } from "./audit.js";
 
@@ -28,7 +29,7 @@ const FILE = "connectors.json";
 export type ConnectorScope = "read" | "write";
 
 /** Broad grouping used for panel category filter tabs. */
-export type ConnectorCategory = "productivity" | "dev" | "database" | "image";
+export type ConnectorCategory = "productivity" | "dev" | "database" | "image" | "social";
 
 export interface ConnectorDef {
   id: string;
@@ -44,6 +45,14 @@ export interface ConnectorDef {
   hasWrite: boolean;
   /** Grouping for the panel's category filter tabs. */
   category: ConnectorCategory;
+  /**
+   * Multi-account connectors (the social platforms) hold a list of named
+   * accounts, each with its own vault credential, instead of the single
+   * `secretId`. Tools take an `account` label so different agents can drive
+   * different accounts (e.g. one Lead posts as the company, another as a
+   * side project).
+   */
+  multiAccount?: boolean;
 }
 
 export const CONNECTORS: ConnectorDef[] = [
@@ -66,7 +75,21 @@ export const CONNECTORS: ConnectorDef[] = [
   { id: "replicate", name: "Replicate", description: "Generic gateway to hundreds of hosted image models (Flux, SDXL, LoRA fine-tunes, and more) via a model id you supply per generation.", credential: "Replicate API token", status: "live", hasWrite: false, category: "image" },
   { id: "fal", name: "fal.ai", description: "Fast inference gateway for Flux, SDXL, and other diffusion models via a model id you supply per generation.", credential: "fal.ai API key", status: "live", hasWrite: false, category: "image" },
   { id: "local_sd", name: "Local Stable Diffusion", description: "Generate images through your own Automatic1111/SD.Next/Forge-compatible server — no API key, no cloud cost.", credential: "Base URL of the local server (e.g. http://127.0.0.1:7860)", status: "live", hasWrite: false, category: "image" },
+  { id: "bluesky", name: "Bluesky", description: "Search posts, read your timeline and notifications; post, reply, and delete posts on Bluesky. Supports multiple accounts.", credential: "handle:app-password (e.g. me.bsky.social:xxxx-xxxx-xxxx-xxxx — generate under Settings → App Passwords)", status: "live", hasWrite: true, category: "social", multiAccount: true },
+  { id: "mastodon", name: "Mastodon", description: "Search, read your home timeline and notifications; post, reply, and delete statuses on any Mastodon instance. Supports multiple accounts.", credential: "access-token@instance (e.g. AbC123@mastodon.social — token from Preferences → Development)", status: "live", hasWrite: true, category: "social", multiAccount: true },
+  { id: "discord", name: "Discord", description: "List servers and channels, read recent messages; post messages as a bot. Supports multiple bot accounts.", credential: "Discord bot token (from the Developer Portal; invite the bot to your server)", status: "live", hasWrite: true, category: "social", multiAccount: true },
+  { id: "reddit", name: "Reddit", description: "Search Reddit, browse subreddits, read posts and comments; submit posts and comment. Supports multiple accounts.", credential: "client_id:client_secret:username:password (create a \"script\" app at reddit.com/prefs/apps)", status: "live", hasWrite: true, category: "social", multiAccount: true },
+  { id: "x", name: "X (Twitter)", description: "Post, reply, and delete tweets via the X API. The free API tier is effectively write-only (posting works; reading requires a paid tier). Supports multiple accounts.", credential: "api_key:api_secret:access_token:access_secret (OAuth 1.0a keys from developer.x.com, app with Read & Write)", status: "live", hasWrite: true, category: "social", multiAccount: true },
 ];
+
+/** One named account on a multi-account (social) connector. */
+export interface ConnectorAccount {
+  id: string;
+  /** Short human label the agent uses to pick the account (e.g. "company"). */
+  label: string;
+  /** Vault secret id (`vault:<id>`) holding this account's credential. */
+  secretId: string;
+}
 
 interface ConnectorConfig {
   /** Vault secret id (`vault:<id>`) holding this connector's credential. */
@@ -80,6 +103,8 @@ interface ConnectorConfig {
    * so the panel can warn before they go stale. Undefined = no known expiry.
    */
   expiresAt?: number;
+  /** Named accounts for `multiAccount` connectors (socials). */
+  accounts?: ConnectorAccount[];
 }
 
 /** How soon (ms) before expiry we start warning. */
@@ -110,6 +135,8 @@ export interface ConnectorView extends ConnectorDef {
   expiresAt?: number;
   /** Derived credential freshness from `expiresAt`. */
   tokenStatus: ConnectorTokenStatus;
+  /** Named accounts (multi-account connectors only; empty otherwise). */
+  accounts: ConnectorAccount[];
 }
 
 function load(): ConnectorFile {
@@ -127,6 +154,7 @@ export function listConnectors(): ConnectorView[] {
       scope: config[c.id]?.scope ?? "read",
       expiresAt,
       tokenStatus: tokenStatus(expiresAt),
+      accounts: config[c.id]?.accounts ?? [],
     };
   });
 }
@@ -156,4 +184,77 @@ export function setConnector(
 /** The resolved access scope for a connector (read-only when unset/unknown). */
 export function connectorScope(id: string): ConnectorScope {
   return load().config[id]?.scope ?? "read";
+}
+
+// ---------------------------------------------------------------------------
+// Multi-account CRUD (social connectors)
+// ---------------------------------------------------------------------------
+
+/** Validation/normalisation shared by add + update. Returns an error string or the clean label. */
+function cleanLabel(label: string, existing: ConnectorAccount[], selfId?: string): string | { error: string } {
+  const l = label.trim();
+  if (!l) return { error: "label required" };
+  if (l.length > 40) return { error: "label too long (max 40 chars)" };
+  if (existing.some((a) => a.id !== selfId && a.label.toLowerCase() === l.toLowerCase())) {
+    return { error: "an account with that label already exists" };
+  }
+  return l;
+}
+
+/** Add a named account to a multi-account connector. Returns the view or an error. */
+export function addConnectorAccount(
+  id: string,
+  input: { label: string; secretId: string },
+): ConnectorView | { error: string } {
+  const def = CONNECTORS.find((c) => c.id === id);
+  if (!def) return { error: "unknown connector" };
+  if (!def.multiAccount) return { error: "connector does not support accounts" };
+  if (!input.secretId) return { error: "secretId required" };
+  const file = load();
+  const cur = file.config[id] ?? { enabled: false };
+  const accounts = cur.accounts ?? [];
+  const label = cleanLabel(input.label, accounts);
+  if (typeof label !== "string") return label;
+  const account: ConnectorAccount = { id: randomBytes(6).toString("hex"), label, secretId: input.secretId };
+  cur.accounts = [...accounts, account];
+  file.config[id] = cur;
+  saveJson<ConnectorFile>(FILE, file);
+  audit("connector.account.add", { id, accountId: account.id, label: account.label });
+  return listConnectors().find((c) => c.id === id)!;
+}
+
+/** Update an account's label and/or credential. Returns the view or an error. */
+export function updateConnectorAccount(
+  id: string,
+  accountId: string,
+  patch: { label?: string; secretId?: string },
+): ConnectorView | { error: string } {
+  const file = load();
+  const accounts = file.config[id]?.accounts ?? [];
+  const account = accounts.find((a) => a.id === accountId);
+  if (!account) return { error: "account not found" };
+  if (patch.label !== undefined) {
+    const label = cleanLabel(patch.label, accounts, accountId);
+    if (typeof label !== "string") return label;
+    account.label = label;
+  }
+  if (patch.secretId !== undefined) {
+    if (!patch.secretId) return { error: "secretId required" };
+    account.secretId = patch.secretId;
+  }
+  saveJson<ConnectorFile>(FILE, file);
+  audit("connector.account.update", { id, accountId, label: account.label });
+  return listConnectors().find((c) => c.id === id)!;
+}
+
+/** Remove an account from a multi-account connector. Returns the view or an error. */
+export function removeConnectorAccount(id: string, accountId: string): ConnectorView | { error: string } {
+  const file = load();
+  const cur = file.config[id];
+  const accounts = cur?.accounts ?? [];
+  if (!cur || !accounts.some((a) => a.id === accountId)) return { error: "account not found" };
+  cur.accounts = accounts.filter((a) => a.id !== accountId);
+  saveJson<ConnectorFile>(FILE, file);
+  audit("connector.account.remove", { id, accountId });
+  return listConnectors().find((c) => c.id === id)!;
 }

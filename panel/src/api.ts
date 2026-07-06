@@ -572,7 +572,14 @@ export type ConnectorScope = "read" | "write";
 
 export type ConnectorTokenStatus = "none" | "ok" | "expiring" | "expired";
 
-export type ConnectorCategory = "productivity" | "dev" | "database" | "image";
+export type ConnectorCategory = "productivity" | "dev" | "database" | "image" | "social";
+
+/** One named account on a multi-account (social) connector. */
+export interface ConnectorAccount {
+  id: string;
+  label: string;
+  secretId: string;
+}
 
 export interface Connector {
   id: string;
@@ -582,6 +589,8 @@ export interface Connector {
   status: "live" | "coming-soon";
   hasWrite: boolean;
   category: ConnectorCategory;
+  /** Social connectors hold named accounts instead of a single secretId. */
+  multiAccount?: boolean;
   secretId?: string;
   enabled: boolean;
   scope: ConnectorScope;
@@ -589,6 +598,8 @@ export interface Connector {
   expiresAt?: number;
   /** Derived credential freshness from `expiresAt`. */
   tokenStatus: ConnectorTokenStatus;
+  /** Named accounts (multi-account connectors only; empty otherwise). */
+  accounts: ConnectorAccount[];
 }
 
 export type ImageProviderId = "recraft" | "ideogram" | "replicate" | "fal" | "local_sd";
@@ -1261,6 +1272,12 @@ export const api = {
     id: string,
     c: { secretId?: string; enabled?: boolean; scope?: ConnectorScope; expiresAt?: number | null },
   ) => req<Connector>("PUT", `/api/connectors/${id}`, c),
+  addConnectorAccount: (id: string, a: { label: string; secretId: string }) =>
+    req<Connector>("POST", `/api/connectors/${id}/accounts`, a),
+  updateConnectorAccount: (id: string, accountId: string, a: { label?: string; secretId?: string }) =>
+    req<Connector>("PUT", `/api/connectors/${id}/accounts/${accountId}`, a),
+  deleteConnectorAccount: (id: string, accountId: string) =>
+    req<Connector>("DELETE", `/api/connectors/${id}/accounts/${accountId}`),
 
   gallery: (filter?: GalleryFilter) => {
     const qs = new URLSearchParams();

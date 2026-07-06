@@ -75,7 +75,13 @@ import { memory, type MemoryEntry } from "../core/memory.js";
 import { suggestions } from "../core/suggestions.js";
 import { getStatus } from "../core/status.js";
 import { heartbeat } from "../core/heartbeat.js";
-import { listConnectors, setConnector } from "../core/connectors.js";
+import {
+  listConnectors,
+  setConnector,
+  addConnectorAccount,
+  updateConnectorAccount,
+  removeConnectorAccount,
+} from "../core/connectors.js";
 import { listImages, getImage, updateImage, deleteImage, listTags, type GalleryImage } from "../core/gallery.js";
 import { generateImage, ImageGenError, type ImageProviderId } from "../core/imageGen.js";
 import { listWebhookTools, createWebhookTool, updateWebhookTool, deleteWebhookTool } from "../core/webhookTools.js";
@@ -1344,6 +1350,29 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     });
     if (!updated) return reply.code(404).send({ error: "not found" });
     return updated;
+  });
+  // Multi-account (social) connectors: named accounts, each with its own credential.
+  app.post("/api/connectors/:id/accounts", async (req, reply) => {
+    const body = (req.body ?? {}) as { label?: string; secretId?: string };
+    const result = addConnectorAccount((req.params as { id: string }).id, {
+      label: body.label ?? "",
+      secretId: body.secretId ?? "",
+    });
+    if ("error" in result) return reply.code(400).send(result);
+    return result;
+  });
+  app.put("/api/connectors/:id/accounts/:accountId", async (req, reply) => {
+    const p = req.params as { id: string; accountId: string };
+    const body = (req.body ?? {}) as { label?: string; secretId?: string };
+    const result = updateConnectorAccount(p.id, p.accountId, { label: body.label, secretId: body.secretId });
+    if ("error" in result) return reply.code(result.error === "account not found" ? 404 : 400).send(result);
+    return result;
+  });
+  app.delete("/api/connectors/:id/accounts/:accountId", async (req, reply) => {
+    const p = req.params as { id: string; accountId: string };
+    const result = removeConnectorAccount(p.id, p.accountId);
+    if ("error" in result) return reply.code(404).send(result);
+    return result;
   });
 
   // --- image gallery (generated images from Recraft/Ideogram etc.) ---

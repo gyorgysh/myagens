@@ -1,10 +1,11 @@
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { createSdkMcpServer, tool, type SdkMcpToolDefinition } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
 import { listConnectors, connectorScope, type ConnectorScope } from "../core/connectors.js";
 import { resolveSecret } from "../core/vault.js";
+import { safeFetch } from "../core/safeUrl.js";
 import { log } from "../logger.js";
 
 /**
@@ -57,6 +58,20 @@ const WRITE_TOOLS = new Set<string>([
   "postgres_execute",
   // SQLite
   "sqlite_execute",
+  // Bluesky
+  "bluesky_post",
+  "bluesky_delete_post",
+  // Mastodon
+  "mastodon_post",
+  "mastodon_delete_post",
+  // Discord
+  "discord_post",
+  // Reddit
+  "reddit_submit",
+  "reddit_comment",
+  // X
+  "x_post",
+  "x_delete_post",
 ]);
 
 /**
@@ -2580,6 +2595,945 @@ function sqliteMcp(path: string, scope: ConnectorScope) {
 }
 
 // ---------------------------------------------------------------------------
+// Social connectors — shared multi-account plumbing
+// ---------------------------------------------------------------------------
+
+/**
+ * Social connectors are multi-account: the panel stores a list of named
+ * accounts (label + vault secret) per platform, so e.g. one Lead can post as
+ * the company account while another drives a side project. Every social tool
+ * takes an optional `account` label; with a single configured account it can
+ * be omitted.
+ */
+interface SocialAccount {
+  id: string;
+  label: string;
+  credential: string;
+}
+
+/** Resolve the enabled, credentialed accounts for a social connector id. */
+function socialAccountsFor(connectorId: string): SocialAccount[] {
+  const c = listConnectors().find((x) => x.id === connectorId);
+  if (!c || !c.enabled) return [];
+  const out: SocialAccount[] = [];
+  for (const a of c.accounts) {
+    const credential = a.secretId ? resolveSecret(a.secretId) : undefined;
+    if (credential) out.push({ id: a.id, label: a.label, credential });
+  }
+  return out;
+}
+
+/**
+ * Pick the account a tool call should act as. Returns the account, or an
+ * error string ready to hand back to the agent (listing the valid labels).
+ */
+function pickAccount(accounts: SocialAccount[], label: string | undefined): SocialAccount | string {
+  const labels = () => accounts.map((a) => `"${a.label}"`).join(", ");
+  if (label !== undefined && label !== "") {
+    const hit = accounts.find((a) => a.label.toLowerCase() === label.toLowerCase());
+    return hit ?? `Unknown account "${label}". Configured accounts: ${labels()}.`;
+  }
+  if (accounts.length === 1) return accounts[0];
+  return `Multiple accounts are configured — pass account: one of ${labels()}.`;
+}
+
+/** Zod schema for the shared `account` parameter, with labels baked into the description. */
+function accountParam(accounts: SocialAccount[]) {
+  const hint =
+    accounts.length > 1
+      ? `Required — one of: ${accounts.map((a) => a.label).join(", ")}.`
+      : `Optional (single account "${accounts[0]?.label ?? ""}" is used by default).`;
+  return z.string().optional().describe(`Account to act as. ${hint}`);
+}
+
+// ---------------------------------------------------------------------------
+// Bluesky (AT Protocol, bsky.social PDS)
+// ---------------------------------------------------------------------------
+
+const BSKY_BASE = "https://bsky.social/xrpc";
+/** Access tokens last ~2h; refresh sessions well within that. */
+const BSKY_SESSION_TTL_MS = 60 * 60 * 1000;
+
+interface BskySession {
+  jwt: string;
+  did: string;
+  at: number;
+  cred: string;
+}
+
+/**
+ * Session cache keyed by account id, module-level so repeated turns reuse one
+ * session instead of re-authenticating — createSession is rate-limited to
+ * 300/day per account. Invalidated when the stored credential changes.
+ */
+const bskySessions = new Map<string, BskySession>();
+
+async function bskySession(acct: SocialAccount): Promise<{ jwt: string; did: string } | { error: string }> {
+  const cached = bskySessions.get(acct.id);
+  if (cached && cached.cred === acct.credential && Date.now() - cached.at < BSKY_SESSION_TTL_MS) {
+    return { jwt: cached.jwt, did: cached.did };
+  }
+  const sep = acct.credential.indexOf(":");
+  if (sep <= 0) return { error: `Account "${acct.label}": credential must be handle:app-password.` };
+  const identifier = acct.credential.slice(0, sep).trim();
+  const password = acct.credential.slice(sep + 1).trim();
+  const res = await fetch(`${BSKY_BASE}/com.atproto.server.createSession`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier, password }),
+  });
+  if (!res.ok) return { error: `Bluesky login failed for "${acct.label}": ${await asError(res)}` };
+  const data = (await res.json()) as { accessJwt?: string; did?: string };
+  if (!data.accessJwt || !data.did) return { error: `Bluesky login failed for "${acct.label}": no session returned.` };
+  bskySessions.set(acct.id, { jwt: data.accessJwt, did: data.did, at: Date.now(), cred: acct.credential });
+  return { jwt: data.accessJwt, did: data.did };
+}
+
+async function bskyGet(jwt: string, nsid: string, params: Record<string, string>): Promise<Response> {
+  const qs = new URLSearchParams(params).toString();
+  return fetch(`${BSKY_BASE}/${nsid}${qs ? `?${qs}` : ""}`, { headers: { Authorization: `Bearer ${jwt}` } });
+}
+
+async function bskyProc(jwt: string, nsid: string, body: unknown): Promise<Response> {
+  return fetch(`${BSKY_BASE}/${nsid}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Detect bare URLs and mark them as link facets (byte offsets, per AT proto's
+ * richtext spec) so they render as clickable links instead of plain text.
+ */
+function bskyLinkFacets(postText: string): object[] | undefined {
+  const facets: object[] = [];
+  const re = /https?:\/\/[^\s<>"')\]]+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(postText))) {
+    const byteStart = Buffer.byteLength(postText.slice(0, m.index), "utf-8");
+    facets.push({
+      index: { byteStart, byteEnd: byteStart + Buffer.byteLength(m[0], "utf-8") },
+      features: [{ $type: "app.bsky.richtext.facet#link", uri: m[0] }],
+    });
+  }
+  return facets.length ? facets : undefined;
+}
+
+/**
+ * Normalise a post reference — an `at://` URI or a bsky.app profile URL — to
+ * the canonical at-URI, resolving the handle to a DID when needed.
+ */
+async function bskyPostUri(jwt: string, ref: string): Promise<string | { error: string }> {
+  if (ref.startsWith("at://")) return ref;
+  const m = ref.match(/bsky\.app\/profile\/([^/]+)\/post\/([\w.~-]+)/);
+  if (!m) return { error: `Cannot parse post reference "${ref}" — pass an at:// URI or a bsky.app post URL.` };
+  let actor = m[1];
+  if (!actor.startsWith("did:")) {
+    const res = await bskyGet(jwt, "com.atproto.identity.resolveHandle", { handle: actor });
+    if (!res.ok) return { error: `Could not resolve handle "${actor}": ${await asError(res)}` };
+    actor = ((await res.json()) as { did?: string }).did ?? "";
+    if (!actor) return { error: `Could not resolve handle "${m[1]}".` };
+  }
+  return `at://${actor}/app.bsky.feed.post/${m[2]}`;
+}
+
+interface BskyPostView {
+  uri?: string;
+  cid?: string;
+  author?: { handle?: string; displayName?: string };
+  record?: { text?: string; reply?: { root?: { uri?: string; cid?: string } } };
+  indexedAt?: string;
+  likeCount?: number;
+  repostCount?: number;
+}
+
+function summarizeBskyPost(p: BskyPostView): string {
+  const when = p.indexedAt ? ` · ${p.indexedAt}` : "";
+  const stats = ` · ♥${p.likeCount ?? 0} ↻${p.repostCount ?? 0}`;
+  return `- @${p.author?.handle ?? "?"}${when}${stats}\n  ${(p.record?.text ?? "").slice(0, 300)}\n  uri: ${p.uri}`;
+}
+
+function blueskyMcp(accounts: SocialAccount[], scope: ConnectorScope) {
+  /** Resolve account + session in one step; string result = error for the agent. */
+  async function session(label: string | undefined): Promise<{ acct: SocialAccount; jwt: string; did: string } | string> {
+    const acct = pickAccount(accounts, label);
+    if (typeof acct === "string") return acct;
+    const s = await bskySession(acct);
+    if ("error" in s) return s.error;
+    return { acct, jwt: s.jwt, did: s.did };
+  }
+
+  return createSdkMcpServer({
+    name: "bluesky",
+    version: "1.0.0",
+    tools: scopeTools([
+      tool(
+        "bluesky_search",
+        "Search Bluesky posts. Returns author, text, engagement counts, and the post uri.",
+        {
+          account: accountParam(accounts),
+          query: z.string().describe("Search query."),
+          limit: z.number().int().min(1).max(50).optional().describe("Max results (default 15)."),
+        },
+        async (a) => {
+          const s = await session(a.account);
+          if (typeof s === "string") return text(s);
+          const res = await bskyGet(s.jwt, "app.bsky.feed.searchPosts", { q: a.query, limit: String(a.limit ?? 15) });
+          if (!res.ok) return text(`Error: ${await asError(res)}`);
+          const posts = ((await res.json()) as { posts?: BskyPostView[] }).posts ?? [];
+          return text(posts.map(summarizeBskyPost).join("\n") || "No matches.");
+        },
+      ),
+      tool(
+        "bluesky_timeline",
+        "Read the account's home timeline (recent posts from followed accounts).",
+        {
+          account: accountParam(accounts),
+          limit: z.number().int().min(1).max(50).optional().describe("Max posts (default 15)."),
+        },
+        async (a) => {
+          const s = await session(a.account);
+          if (typeof s === "string") return text(s);
+          const res = await bskyGet(s.jwt, "app.bsky.feed.getTimeline", { limit: String(a.limit ?? 15) });
+          if (!res.ok) return text(`Error: ${await asError(res)}`);
+          const feed = ((await res.json()) as { feed?: { post?: BskyPostView }[] }).feed ?? [];
+          return text(feed.map((f) => summarizeBskyPost(f.post ?? {})).join("\n") || "Timeline is empty.");
+        },
+      ),
+      tool(
+        "bluesky_notifications",
+        "List recent notifications (likes, reposts, replies, follows, mentions) for the account.",
+        {
+          account: accountParam(accounts),
+          limit: z.number().int().min(1).max(50).optional().describe("Max notifications (default 20)."),
+        },
+        async (a) => {
+          const s = await session(a.account);
+          if (typeof s === "string") return text(s);
+          const res = await bskyGet(s.jwt, "app.bsky.notification.listNotifications", { limit: String(a.limit ?? 20) });
+          if (!res.ok) return text(`Error: ${await asError(res)}`);
+          const items =
+            ((await res.json()) as { notifications?: { reason?: string; author?: { handle?: string }; indexedAt?: string; record?: { text?: string }; uri?: string }[] }).notifications ?? [];
+          const lines = items.map(
+            (n) => `- ${n.reason ?? "?"} by @${n.author?.handle ?? "?"} · ${n.indexedAt ?? ""}${n.record?.text ? `\n  ${n.record.text.slice(0, 200)}` : ""}`,
+          );
+          return text(lines.join("\n") || "No notifications.");
+        },
+      ),
+      tool(
+        "bluesky_post",
+        "Publish a post on Bluesky (max 300 chars). Optionally reply to an existing post " +
+          "by its at:// URI or bsky.app URL. URLs in the text become clickable links.",
+        {
+          account: accountParam(accounts),
+          text: z.string().max(300).describe("Post text (300 chars max)."),
+          replyTo: z.string().optional().describe("Post to reply to: at:// URI or https://bsky.app/... URL."),
+        },
+        async (a) => {
+          const s = await session(a.account);
+          if (typeof s === "string") return text(s);
+          const record: Record<string, unknown> = {
+            $type: "app.bsky.feed.post",
+            text: a.text,
+            createdAt: new Date().toISOString(),
+          };
+          const facets = bskyLinkFacets(a.text);
+          if (facets) record.facets = facets;
+          if (a.replyTo) {
+            const uri = await bskyPostUri(s.jwt, a.replyTo);
+            if (typeof uri !== "string") return text(uri.error);
+            const parentRes = await bskyGet(s.jwt, "app.bsky.feed.getPosts", { uris: uri });
+            if (!parentRes.ok) return text(`Error fetching parent post: ${await asError(parentRes)}`);
+            const parent = (((await parentRes.json()) as { posts?: BskyPostView[] }).posts ?? [])[0];
+            if (!parent?.uri || !parent.cid) return text("Parent post not found.");
+            const parentRef = { uri: parent.uri, cid: parent.cid };
+            record.reply = { root: parent.record?.reply?.root ?? parentRef, parent: parentRef };
+          }
+          const res = await bskyProc(s.jwt, "com.atproto.repo.createRecord", {
+            repo: s.did,
+            collection: "app.bsky.feed.post",
+            record,
+          });
+          if (!res.ok) return text(`Error: ${await asError(res)}`);
+          const out = (await res.json()) as { uri?: string };
+          return text(`Posted as ${s.acct.label}. uri: ${out.uri ?? "unknown"}`);
+        },
+      ),
+      tool(
+        "bluesky_delete_post",
+        "Delete one of the account's own Bluesky posts by at:// URI or bsky.app URL.",
+        {
+          account: accountParam(accounts),
+          uri: z.string().describe("at:// URI or bsky.app URL of the post to delete."),
+        },
+        async (a) => {
+          const s = await session(a.account);
+          if (typeof s === "string") return text(s);
+          const uri = await bskyPostUri(s.jwt, a.uri);
+          if (typeof uri !== "string") return text(uri.error);
+          const m = uri.match(/^at:\/\/([^/]+)\/([^/]+)\/(.+)$/);
+          if (!m) return text(`Cannot parse at-URI "${uri}".`);
+          const res = await bskyProc(s.jwt, "com.atproto.repo.deleteRecord", {
+            repo: m[1],
+            collection: m[2],
+            rkey: m[3],
+          });
+          if (!res.ok) return text(`Error: ${await asError(res)}`);
+          return text("Post deleted.");
+        },
+      ),
+    ], scope),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Mastodon (any instance; credential is access-token@instance)
+// ---------------------------------------------------------------------------
+
+/** Split a `token@instance` credential into a base URL + token, or an error. */
+function mastodonCred(acct: SocialAccount): { base: string; token: string } | { error: string } {
+  const sep = acct.credential.indexOf("@");
+  if (sep <= 0) return { error: `Account "${acct.label}": credential must be access-token@instance.` };
+  const token = acct.credential.slice(0, sep).trim();
+  let host = acct.credential.slice(sep + 1).trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(host)) host = `https://${host}`;
+  return { base: host, token };
+}
+
+/** Strip the HTML Mastodon wraps status content in, for compact tool output. */
+function stripHtml(s: string): string {
+  return s
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>\s*<p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+interface MastodonStatus {
+  id?: string;
+  content?: string;
+  created_at?: string;
+  visibility?: string;
+  account?: { acct?: string };
+  favourites_count?: number;
+  reblogs_count?: number;
+  url?: string;
+}
+
+function summarizeStatus(st: MastodonStatus): string {
+  return `- @${st.account?.acct ?? "?"} · ${st.created_at ?? ""} · ★${st.favourites_count ?? 0} ↻${st.reblogs_count ?? 0}\n  ${stripHtml(st.content ?? "").slice(0, 300)}\n  id: ${st.id} · ${st.url ?? ""}`;
+}
+
+function mastodonMcp(accounts: SocialAccount[], scope: ConnectorScope) {
+  /**
+   * The instance host is user-supplied, so every request goes through the
+   * SSRF-guarded safeFetch (same treatment as other user-provided URLs).
+   */
+  async function mastoFetch(
+    label: string | undefined,
+    method: string,
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<{ res: Response; acct: SocialAccount } | string> {
+    const acct = pickAccount(accounts, label);
+    if (typeof acct === "string") return acct;
+    const cred = mastodonCred(acct);
+    if ("error" in cred) return cred.error;
+    try {
+      const res = await safeFetch(`${cred.base}${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${cred.token}`,
+          ...(body ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      return { res, acct };
+    } catch (e) {
+      return `Error reaching instance: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
+  return createSdkMcpServer({
+    name: "mastodon",
+    version: "1.0.0",
+    tools: scopeTools([
+      tool(
+        "mastodon_search",
+        "Search the account's Mastodon instance for statuses and accounts.",
+        {
+          account: accountParam(accounts),
+          query: z.string().describe("Search query."),
+          limit: z.number().int().min(1).max(40).optional().describe("Max results per type (default 10)."),
+        },
+        async (a) => {
+          const q = new URLSearchParams({ q: a.query, limit: String(a.limit ?? 10) }).toString();
+          const r = await mastoFetch(a.account, "GET", `/api/v2/search?${q}`);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { statuses?: MastodonStatus[]; accounts?: { acct?: string; display_name?: string; followers_count?: number }[] };
+          const parts: string[] = [];
+          if (data.accounts?.length) {
+            parts.push("Accounts:", ...data.accounts.map((u) => `- @${u.acct} (${u.display_name ?? ""}) · ${u.followers_count ?? 0} followers`));
+          }
+          if (data.statuses?.length) parts.push("Statuses:", ...data.statuses.map(summarizeStatus));
+          return text(parts.join("\n") || "No matches.");
+        },
+      ),
+      tool(
+        "mastodon_timeline",
+        "Read the account's home timeline (recent statuses from followed accounts).",
+        {
+          account: accountParam(accounts),
+          limit: z.number().int().min(1).max(40).optional().describe("Max statuses (default 15)."),
+        },
+        async (a) => {
+          const r = await mastoFetch(a.account, "GET", `/api/v1/timelines/home?limit=${a.limit ?? 15}`);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const statuses = (await r.res.json()) as MastodonStatus[];
+          return text(statuses.map(summarizeStatus).join("\n") || "Timeline is empty.");
+        },
+      ),
+      tool(
+        "mastodon_notifications",
+        "List recent notifications (mentions, favourites, boosts, follows) for the account.",
+        {
+          account: accountParam(accounts),
+          limit: z.number().int().min(1).max(30).optional().describe("Max notifications (default 15)."),
+        },
+        async (a) => {
+          const r = await mastoFetch(a.account, "GET", `/api/v1/notifications?limit=${a.limit ?? 15}`);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const items = (await r.res.json()) as { type?: string; created_at?: string; account?: { acct?: string }; status?: MastodonStatus }[];
+          const lines = items.map(
+            (n) => `- ${n.type ?? "?"} by @${n.account?.acct ?? "?"} · ${n.created_at ?? ""}${n.status?.content ? `\n  ${stripHtml(n.status.content).slice(0, 200)}` : ""}`,
+          );
+          return text(lines.join("\n") || "No notifications.");
+        },
+      ),
+      tool(
+        "mastodon_post",
+        "Publish a status (toot) on Mastodon. Supports replies, visibility levels, and a content warning.",
+        {
+          account: accountParam(accounts),
+          text: z.string().max(5000).describe("Status text."),
+          visibility: z.enum(["public", "unlisted", "private", "direct"]).optional().describe("Default public."),
+          inReplyToId: z.string().optional().describe("Status id to reply to."),
+          spoilerText: z.string().optional().describe("Content-warning text; folds the status behind it."),
+        },
+        async (a) => {
+          const body: Record<string, unknown> = { status: a.text };
+          if (a.visibility) body.visibility = a.visibility;
+          if (a.inReplyToId) body.in_reply_to_id = a.inReplyToId;
+          if (a.spoilerText) body.spoiler_text = a.spoilerText;
+          const r = await mastoFetch(a.account, "POST", "/api/v1/statuses", body);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const st = (await r.res.json()) as MastodonStatus;
+          return text(`Posted as ${r.acct.label}. id: ${st.id ?? "?"} · ${st.url ?? ""}`);
+        },
+      ),
+      tool(
+        "mastodon_delete_post",
+        "Delete one of the account's own statuses by id.",
+        {
+          account: accountParam(accounts),
+          id: z.string().describe("Status id to delete."),
+        },
+        async (a) => {
+          const r = await mastoFetch(a.account, "DELETE", `/api/v1/statuses/${encodeURIComponent(a.id)}`);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          return text("Status deleted.");
+        },
+      ),
+    ], scope),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Discord (bot token)
+// ---------------------------------------------------------------------------
+
+const DISCORD_BASE = "https://discord.com/api/v10";
+
+function discordMcp(accounts: SocialAccount[], scope: ConnectorScope) {
+  async function discordFetch(
+    label: string | undefined,
+    method: string,
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<{ res: Response; acct: SocialAccount } | string> {
+    const acct = pickAccount(accounts, label);
+    if (typeof acct === "string") return acct;
+    const res = await fetch(`${DISCORD_BASE}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bot ${acct.credential}`,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    return { res, acct };
+  }
+
+  return createSdkMcpServer({
+    name: "discord",
+    version: "1.0.0",
+    tools: scopeTools([
+      tool(
+        "discord_list_channels",
+        "List text channels in a Discord server the bot has joined. Without a guildId, " +
+          "lists the bot's servers (or the channels directly when it is in exactly one).",
+        {
+          account: accountParam(accounts),
+          guildId: z.string().optional().describe("Server (guild) id; omit to discover."),
+        },
+        async (a) => {
+          let guildId = a.guildId;
+          if (!guildId) {
+            const r = await discordFetch(a.account, "GET", "/users/@me/guilds");
+            if (typeof r === "string") return text(r);
+            if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+            const guilds = (await r.res.json()) as { id?: string; name?: string }[];
+            if (guilds.length === 0) return text("The bot is not in any server — invite it first.");
+            if (guilds.length > 1) {
+              return text(`Bot is in ${guilds.length} servers — pass guildId:\n${guilds.map((g) => `- ${g.name} · id ${g.id}`).join("\n")}`);
+            }
+            guildId = guilds[0].id!;
+          }
+          const r = await discordFetch(a.account, "GET", `/guilds/${encodeURIComponent(guildId)}/channels`);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const channels = (await r.res.json()) as { id?: string; name?: string; type?: number }[];
+          // Types 0 (text) and 5 (announcement) are the ones messages go to.
+          const lines = channels.filter((c) => c.type === 0 || c.type === 5).map((c) => `- #${c.name} · id ${c.id}${c.type === 5 ? " (announcements)" : ""}`);
+          return text(lines.join("\n") || "No text channels visible to the bot.");
+        },
+      ),
+      tool(
+        "discord_read_messages",
+        "Read recent messages from a Discord channel by id.",
+        {
+          account: accountParam(accounts),
+          channelId: z.string().describe("Channel id (from discord_list_channels)."),
+          limit: z.number().int().min(1).max(100).optional().describe("Number of messages (default 20)."),
+        },
+        async (a) => {
+          const r = await discordFetch(a.account, "GET", `/channels/${encodeURIComponent(a.channelId)}/messages?limit=${a.limit ?? 20}`);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const msgs = (await r.res.json()) as { id?: string; content?: string; timestamp?: string; author?: { username?: string; bot?: boolean } }[];
+          const lines = msgs.map(
+            (msg) => `- ${msg.author?.username ?? "?"}${msg.author?.bot ? " [bot]" : ""} · ${msg.timestamp ?? ""} · id ${msg.id}\n  ${(msg.content ?? "").slice(0, 300)}`,
+          );
+          return text(lines.join("\n") || "No messages.");
+        },
+      ),
+      tool(
+        "discord_post",
+        "Post a message to a Discord channel as the bot. Markdown supported.",
+        {
+          account: accountParam(accounts),
+          channelId: z.string().describe("Channel id to post into."),
+          text: z.string().max(2000).describe("Message content (2000 chars max)."),
+          replyToMessageId: z.string().optional().describe("Message id to reply to."),
+        },
+        async (a) => {
+          const body: Record<string, unknown> = { content: a.text };
+          if (a.replyToMessageId) body.message_reference = { message_id: a.replyToMessageId };
+          const r = await discordFetch(a.account, "POST", `/channels/${encodeURIComponent(a.channelId)}/messages`, body);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const msg = (await r.res.json()) as { id?: string };
+          return text(`Posted as ${r.acct.label}. message id: ${msg.id ?? "?"}`);
+        },
+      ),
+    ], scope),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Reddit (script-app password grant)
+// ---------------------------------------------------------------------------
+
+const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
+const REDDIT_OAUTH_BASE = "https://oauth.reddit.com";
+/** Reddit access tokens last 1h; refresh a little early. */
+const REDDIT_TOKEN_TTL_MS = 50 * 60 * 1000;
+
+interface RedditCred {
+  clientId: string;
+  clientSecret: string;
+  username: string;
+  password: string;
+}
+
+/** Parse `client_id:client_secret:username:password` (password may contain colons). */
+function redditCred(acct: SocialAccount): RedditCred | { error: string } {
+  const parts = acct.credential.split(":");
+  if (parts.length < 4) {
+    return { error: `Account "${acct.label}": credential must be client_id:client_secret:username:password.` };
+  }
+  const [clientId, clientSecret, username] = parts;
+  return { clientId, clientSecret, username, password: parts.slice(3).join(":") };
+}
+
+function redditUserAgent(username: string): string {
+  return `myagens:connector:v1 (by /u/${username})`;
+}
+
+const redditTokens = new Map<string, { token: string; at: number; cred: string }>();
+
+/** OAuth token via the password grant, cached per account (1h token lifetime). */
+async function redditToken(acct: SocialAccount): Promise<{ token: string; ua: string } | { error: string }> {
+  const cred = redditCred(acct);
+  if ("error" in cred) return cred;
+  const ua = redditUserAgent(cred.username);
+  const cached = redditTokens.get(acct.id);
+  if (cached && cached.cred === acct.credential && Date.now() - cached.at < REDDIT_TOKEN_TTL_MS) {
+    return { token: cached.token, ua };
+  }
+  const res = await fetch(REDDIT_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${cred.clientId}:${cred.clientSecret}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": ua,
+    },
+    body: new URLSearchParams({ grant_type: "password", username: cred.username, password: cred.password }).toString(),
+  });
+  if (!res.ok) return { error: `Reddit login failed for "${acct.label}": ${await asError(res)}` };
+  const data = (await res.json()) as { access_token?: string; error?: string };
+  if (!data.access_token) {
+    return { error: `Reddit login failed for "${acct.label}": ${data.error ?? "no token"} (note: the password grant does not work with 2FA enabled).` };
+  }
+  redditTokens.set(acct.id, { token: data.access_token, at: Date.now(), cred: acct.credential });
+  return { token: data.access_token, ua };
+}
+
+interface RedditPost {
+  id?: string;
+  title?: string;
+  subreddit?: string;
+  author?: string;
+  score?: number;
+  num_comments?: number;
+  selftext?: string;
+  url?: string;
+  permalink?: string;
+  created_utc?: number;
+}
+
+function summarizeRedditPost(p: RedditPost): string {
+  return `- [${p.subreddit}] ${p.title} · by u/${p.author} · ↑${p.score ?? 0} · ${p.num_comments ?? 0} comments · id ${p.id}\n  https://reddit.com${p.permalink ?? ""}`;
+}
+
+function redditMcp(accounts: SocialAccount[], scope: ConnectorScope) {
+  async function redditFetch(
+    label: string | undefined,
+    method: string,
+    path: string,
+    form?: Record<string, string>,
+  ): Promise<{ res: Response; acct: SocialAccount } | string> {
+    const acct = pickAccount(accounts, label);
+    if (typeof acct === "string") return acct;
+    const t = await redditToken(acct);
+    if ("error" in t) return t.error;
+    const res = await fetch(`${REDDIT_OAUTH_BASE}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${t.token}`,
+        "User-Agent": t.ua,
+        ...(form ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+      },
+      ...(form ? { body: new URLSearchParams(form).toString() } : {}),
+    });
+    return { res, acct };
+  }
+
+  /** Reddit's api_type=json responses bury errors in json.errors tuples. */
+  function redditApiErrors(data: { json?: { errors?: unknown[][] } }): string | undefined {
+    const errs = data.json?.errors;
+    if (errs && errs.length) return errs.map((e) => e.join(": ")).join("; ");
+    return undefined;
+  }
+
+  return createSdkMcpServer({
+    name: "reddit",
+    version: "1.0.0",
+    tools: scopeTools([
+      tool(
+        "reddit_search",
+        "Search Reddit posts, optionally within one subreddit.",
+        {
+          account: accountParam(accounts),
+          query: z.string().describe("Search query."),
+          subreddit: z.string().optional().describe("Restrict to this subreddit (name only, no r/)."),
+          sort: z.enum(["relevance", "new", "top", "comments"]).optional().describe("Default relevance."),
+          limit: z.number().int().min(1).max(50).optional().describe("Max results (default 15)."),
+        },
+        async (a) => {
+          const qs = new URLSearchParams({ q: a.query, limit: String(a.limit ?? 15), sort: a.sort ?? "relevance" });
+          let path = `/search?${qs}`;
+          if (a.subreddit) path = `/r/${encodeURIComponent(a.subreddit)}/search?${qs}&restrict_sr=1`;
+          const r = await redditFetch(a.account, "GET", path);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { data?: { children?: { data?: RedditPost }[] } };
+          const posts = (data.data?.children ?? []).map((c) => c.data ?? {});
+          return text(posts.map(summarizeRedditPost).join("\n") || "No matches.");
+        },
+      ),
+      tool(
+        "reddit_list_subreddit",
+        "List recent/hot posts in a subreddit.",
+        {
+          account: accountParam(accounts),
+          subreddit: z.string().describe("Subreddit name (no r/)."),
+          sort: z.enum(["hot", "new", "top", "rising"]).optional().describe("Default hot."),
+          limit: z.number().int().min(1).max(50).optional().describe("Max posts (default 15)."),
+        },
+        async (a) => {
+          const r = await redditFetch(
+            a.account,
+            "GET",
+            `/r/${encodeURIComponent(a.subreddit)}/${a.sort ?? "hot"}?limit=${a.limit ?? 15}`,
+          );
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { data?: { children?: { data?: RedditPost }[] } };
+          const posts = (data.data?.children ?? []).map((c) => c.data ?? {});
+          return text(posts.map(summarizeRedditPost).join("\n") || "No posts.");
+        },
+      ),
+      tool(
+        "reddit_read_post",
+        "Read a Reddit post and its top comments by post id.",
+        {
+          account: accountParam(accounts),
+          postId: z.string().describe("Post id (with or without the t3_ prefix)."),
+          commentLimit: z.number().int().min(0).max(50).optional().describe("Top-level comments to include (default 10)."),
+        },
+        async (a) => {
+          const id = a.postId.replace(/^t3_/, "");
+          const r = await redditFetch(a.account, "GET", `/comments/${encodeURIComponent(id)}?limit=${a.commentLimit ?? 10}&depth=1`);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { data?: { children?: { data?: RedditPost & { body?: string } }[] } }[];
+          const post = data[0]?.data?.children?.[0]?.data;
+          if (!post) return text("Post not found.");
+          const comments = (data[1]?.data?.children ?? [])
+            .map((c) => c.data)
+            .filter((c): c is RedditPost & { body?: string } => !!c?.body);
+          const lines = [
+            `[${post.subreddit}] ${post.title} · by u/${post.author} · ↑${post.score ?? 0}`,
+            post.selftext ? post.selftext.slice(0, 2000) : (post.url ?? ""),
+            "",
+            ...comments.map((c) => `- u/${c.author} (↑${c.score ?? 0}, id t1_${c.id}): ${(c.body ?? "").slice(0, 400)}`),
+          ];
+          return text(lines.join("\n"));
+        },
+      ),
+      tool(
+        "reddit_submit",
+        "Submit a new post to a subreddit — either a text (self) post or a link post.",
+        {
+          account: accountParam(accounts),
+          subreddit: z.string().describe("Subreddit to post in (no r/)."),
+          title: z.string().max(300).describe("Post title."),
+          text: z.string().optional().describe("Body for a text post (markdown)."),
+          url: z.string().optional().describe("URL for a link post (instead of text)."),
+        },
+        async (a) => {
+          if (!a.text && !a.url) return text("Provide either text (self post) or url (link post).");
+          const form: Record<string, string> = {
+            sr: a.subreddit,
+            title: a.title,
+            api_type: "json",
+            kind: a.url ? "link" : "self",
+          };
+          if (a.url) form.url = a.url;
+          else form.text = a.text ?? "";
+          const r = await redditFetch(a.account, "POST", "/api/submit", form);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { json?: { errors?: unknown[][]; data?: { url?: string; id?: string } } };
+          const err = redditApiErrors(data);
+          if (err) return text(`Reddit error: ${err}`);
+          return text(`Submitted as ${r.acct.label}. ${data.json?.data?.url ?? ""}`);
+        },
+      ),
+      tool(
+        "reddit_comment",
+        "Comment on a post (t3_ id) or reply to a comment (t1_ id).",
+        {
+          account: accountParam(accounts),
+          parentId: z.string().describe("Fullname of the parent: t3_<postId> or t1_<commentId>. A bare id is treated as a post."),
+          text: z.string().describe("Comment body (markdown)."),
+        },
+        async (a) => {
+          const parent = /^t[13]_/.test(a.parentId) ? a.parentId : `t3_${a.parentId}`;
+          const r = await redditFetch(a.account, "POST", "/api/comment", {
+            parent,
+            text: a.text,
+            api_type: "json",
+          });
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { json?: { errors?: unknown[][] } };
+          const err = redditApiErrors(data);
+          if (err) return text(`Reddit error: ${err}`);
+          return text(`Comment posted as ${r.acct.label} under ${parent}.`);
+        },
+      ),
+    ], scope),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// X / Twitter (API v2 with OAuth 1.0a user context)
+// ---------------------------------------------------------------------------
+
+const X_BASE = "https://api.x.com/2";
+
+interface XCred {
+  apiKey: string;
+  apiSecret: string;
+  accessToken: string;
+  accessSecret: string;
+}
+
+function xCred(acct: SocialAccount): XCred | { error: string } {
+  const parts = acct.credential.split(":");
+  if (parts.length !== 4 || parts.some((p) => !p.trim())) {
+    return { error: `Account "${acct.label}": credential must be api_key:api_secret:access_token:access_secret.` };
+  }
+  const [apiKey, apiSecret, accessToken, accessSecret] = parts.map((p) => p.trim());
+  return { apiKey, apiSecret, accessToken, accessSecret };
+}
+
+/** RFC 3986 percent-encoding (encodeURIComponent leaves !'()* unescaped). */
+function pctEnc(s: string): string {
+  return encodeURIComponent(s).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+}
+
+/**
+ * Build an OAuth 1.0a Authorization header (HMAC-SHA1) for a request with no
+ * query parameters and a JSON body — which covers every X v2 call we make
+ * (JSON bodies are excluded from the signature base string by spec).
+ */
+function oauth1Header(method: string, url: string, c: XCred): string {
+  const params: Record<string, string> = {
+    oauth_consumer_key: c.apiKey,
+    oauth_nonce: randomBytes(16).toString("hex"),
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+    oauth_token: c.accessToken,
+    oauth_version: "1.0",
+  };
+  const paramStr = Object.keys(params)
+    .sort()
+    .map((k) => `${pctEnc(k)}=${pctEnc(params[k])}`)
+    .join("&");
+  const base = `${method.toUpperCase()}&${pctEnc(url)}&${pctEnc(paramStr)}`;
+  const key = `${pctEnc(c.apiSecret)}&${pctEnc(c.accessSecret)}`;
+  params.oauth_signature = createHmac("sha1", key).update(base).digest("base64");
+  const header = Object.keys(params)
+    .sort()
+    .map((k) => `${pctEnc(k)}="${pctEnc(params[k])}"`)
+    .join(", ");
+  return `OAuth ${header}`;
+}
+
+function xMcp(accounts: SocialAccount[], scope: ConnectorScope) {
+  async function xFetch(
+    label: string | undefined,
+    method: string,
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<{ res: Response; acct: SocialAccount } | string> {
+    const acct = pickAccount(accounts, label);
+    if (typeof acct === "string") return acct;
+    const cred = xCred(acct);
+    if ("error" in cred) return cred.error;
+    const url = `${X_BASE}${path}`;
+    const res = await fetch(url, {
+      method,
+      headers: {
+        Authorization: oauth1Header(method, url, cred),
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    return { res, acct };
+  }
+
+  return createSdkMcpServer({
+    name: "x",
+    version: "1.0.0",
+    tools: scopeTools([
+      tool(
+        "x_me",
+        "Verify the X credentials by fetching the authenticated account's handle. " +
+          "Note: heavily rate-limited on the free API tier (~25 calls/day) — use sparingly.",
+        {
+          account: accountParam(accounts),
+        },
+        async (a) => {
+          const r = await xFetch(a.account, "GET", "/users/me");
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { data?: { username?: string; name?: string; id?: string } };
+          return text(`Connected as @${data.data?.username ?? "?"} (${data.data?.name ?? ""}, id ${data.data?.id ?? "?"}).`);
+        },
+      ),
+      tool(
+        "x_post",
+        "Post a tweet on X, optionally as a reply. Works on the free API tier " +
+          "(reading tweets does not — it needs a paid tier).",
+        {
+          account: accountParam(accounts),
+          text: z.string().max(280).describe("Tweet text (280 chars max)."),
+          replyToId: z.string().optional().describe("Tweet id to reply to."),
+        },
+        async (a) => {
+          const body: Record<string, unknown> = { text: a.text };
+          if (a.replyToId) body.reply = { in_reply_to_tweet_id: a.replyToId };
+          const r = await xFetch(a.account, "POST", "/tweets", body);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          const data = (await r.res.json()) as { data?: { id?: string } };
+          return text(`Posted as ${r.acct.label}. tweet id: ${data.data?.id ?? "?"}`);
+        },
+      ),
+      tool(
+        "x_delete_post",
+        "Delete one of the account's own tweets by id.",
+        {
+          account: accountParam(accounts),
+          id: z.string().describe("Tweet id to delete."),
+        },
+        async (a) => {
+          const r = await xFetch(a.account, "DELETE", `/tweets/${encodeURIComponent(a.id)}`);
+          if (typeof r === "string") return text(r);
+          if (!r.res.ok) return text(`Error: ${await asError(r.res)}`);
+          return text("Tweet deleted.");
+        },
+      ),
+    ], scope),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -2637,6 +3591,17 @@ export function buildConnectorMcps(): Record<string, McpServer | ExternalMcpServ
   if (pgConn) out.postgres = postgresMcp(pgConn, connectorScope("postgres"));
   const sqlitePath = credentialFor("sqlite");
   if (sqlitePath) out.sqlite = sqliteMcp(sqlitePath, connectorScope("sqlite"));
+  // Social connectors are multi-account: enabled + at least one resolvable account.
+  const blueskyAccounts = socialAccountsFor("bluesky");
+  if (blueskyAccounts.length) out.bluesky = blueskyMcp(blueskyAccounts, connectorScope("bluesky"));
+  const mastodonAccounts = socialAccountsFor("mastodon");
+  if (mastodonAccounts.length) out.mastodon = mastodonMcp(mastodonAccounts, connectorScope("mastodon"));
+  const discordAccounts = socialAccountsFor("discord");
+  if (discordAccounts.length) out.discord = discordMcp(discordAccounts, connectorScope("discord"));
+  const redditAccounts = socialAccountsFor("reddit");
+  if (redditAccounts.length) out.reddit = redditMcp(redditAccounts, connectorScope("reddit"));
+  const xAccounts = socialAccountsFor("x");
+  if (xAccounts.length) out.x = xMcp(xAccounts, connectorScope("x"));
   if (Object.keys(out).length) {
     log.debug("Connector MCPs enabled", {
       connectors: Object.keys(out).map((id) => `${id}:${connectorScope(id)}`),
@@ -2646,4 +3611,4 @@ export function buildConnectorMcps(): Record<string, McpServer | ExternalMcpServ
 }
 
 /** Names of the live connectors that have wired MCP servers (for the panel). */
-export const LIVE_CONNECTORS = ["notion", "gcal", "gmail", "gdrive", "apple-calendar", "apple-mail", "slack", "github", "jira", "linear", "unreal-engine", "unity", "postgres", "sqlite"] as const;
+export const LIVE_CONNECTORS = ["notion", "gcal", "gmail", "gdrive", "apple-calendar", "apple-mail", "slack", "github", "jira", "linear", "unreal-engine", "unity", "postgres", "sqlite", "bluesky", "mastodon", "discord", "reddit", "x"] as const;

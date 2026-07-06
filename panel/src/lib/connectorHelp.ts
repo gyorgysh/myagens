@@ -48,6 +48,11 @@ export const CONNECTOR_HELP: Record<string, ConnectorHelpShape> = {
   replicate: { steps: 3, readTools: 1, writeTools: 0, tip: true },
   fal: { steps: 3, readTools: 1, writeTools: 0, tip: true },
   local_sd: { steps: 3, readTools: 1, writeTools: 0, tip: true },
+  bluesky: { steps: 4, readTools: 3, writeTools: 2, tip: true },
+  mastodon: { steps: 4, readTools: 3, writeTools: 2, tip: true },
+  discord: { steps: 5, readTools: 2, writeTools: 1, tip: true },
+  reddit: { steps: 5, readTools: 3, writeTools: 2, tip: true },
+  x: { steps: 5, readTools: 1, writeTools: 2, tip: true },
 };
 
 /** Normalise a connector id into the underscore form used in i18n keys. */

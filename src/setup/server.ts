@@ -99,6 +99,11 @@ export async function startSetupServer(): Promise<void> {
   };
 
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
+    // no-store everywhere: the wizard polls the same GET URLs across boots
+    // (and across setup re-runs on the same port), and without this a browser
+    // may heuristically replay an old empty response — the page then never
+    // sees the detected owner even though the server has it.
+    reply.header("Cache-Control", "no-store");
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("Referrer-Policy", "no-referrer");
     reply.header("X-Frame-Options", "DENY");

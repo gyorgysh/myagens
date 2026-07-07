@@ -186,7 +186,9 @@ const PAGE = `<!doctype html>
   var setupKey = k || (function(){ try { return sessionStorage.getItem(KEY_STORE); } catch(e){ return null; } })();
 
   function api(path, body){
-    var opts = { method: body ? 'POST' : 'GET', headers: { 'x-setup-key': setupKey || '' } };
+    // cache:'no-store' — polled GETs must never be satisfied from a previous
+    // (possibly previous-boot) response; the server sends no-store too.
+    var opts = { method: body ? 'POST' : 'GET', headers: { 'x-setup-key': setupKey || '' }, cache: 'no-store' };
     if (body) { opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
     return fetch('/setup/api/' + path, opts).then(function(res){
       return res.json().catch(function(){ return {}; }).then(function(data){
@@ -321,15 +323,29 @@ const PAGE = `<!doctype html>
     }
     stopPolling();
     var waitingSince = Date.now();
+    var pollFails = 0;
     pollTimer = setInterval(function(){
       api('telegram/candidates').then(function(r){
+        pollFails = 0;
         var list = r.candidates || [];
         render(list);
         var w = el('pollWarn');
         if (w){ w.textContent = r.warning || ''; w.classList.toggle('hidden', !r.warning); }
         var h = el('stuckHint');
         if (h){ h.classList.toggle('hidden', list.length > 0 || !!r.warning || Date.now() - waitingSince < 20000); }
-      }).catch(function(){ /* transient */ });
+      }).catch(function(e){
+        // Transient errors happen; a stale tab (setup was restarted — this
+        // tab's key belongs to the old run) or a gone server fails forever.
+        pollFails++;
+        if (pollFails < 5) return;
+        var w = el('pollWarn');
+        if (w){
+          w.textContent = (e.status === 401 || e.status === 410)
+            ? 'This tab belongs to an older setup run. Open the newest link shown in the terminal window.'
+            : 'Can\\'t reach the setup service — is the terminal window still open?';
+          w.classList.remove('hidden');
+        }
+      });
     }, 2000);
   }
 

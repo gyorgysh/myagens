@@ -36,6 +36,13 @@
       MYAGENS_HOSTS        y | n  (add a 'myagens' -> 127.0.0.1 hosts entry)
       MYAGENS_REMOTE       none | ngrok | cloudflare | both (phone access tunnel)
       MYAGENS_YES          Set to 1 to accept all defaults without prompting
+      MYAGENS_SETUP        browser = do prerequisites/clone/build here, then finish
+                        setup (bot token, owner, Claude) in a local browser wizard
+
+.EXAMPLE
+    # Browser setup (recommended for desktops) — one password prompt, the rest
+    # happens in your browser with every value validated live:
+    $env:MYAGENS_SETUP="browser"; irm https://myagens.com/install.ps1 | iex
 #>
 
 Set-StrictMode -Version Latest
@@ -56,11 +63,14 @@ $Branch     = if ($env:MYAGENS_BRANCH) { $env:MYAGENS_BRANCH } else { "main" }
 $InstallDir = if ($env:MYAGENS_DIR)    { $env:MYAGENS_DIR }    else { Join-Path $HOME "myagens" }
 $MinNode    = 20
 $AutoYes    = $env:MYAGENS_YES -eq "1"
+$BrowserMode = $env:MYAGENS_SETUP -eq "browser"
 $Tutorial   = "https://gyorgy.sh/blog/myagens"
 
 $Script:PanelPortChosen  = ""
 $Script:PanelTokenChosen = ""
 $Script:ServiceMode      = ""   # "service" once the bot is installed as a service
+$Script:PreMode          = ""   # run mode decided before the browser handoff
+$Script:PrePassword      = $null # service password collected before the browser handoff
 $Script:HostnameAdded    = $false  # $true once 'myagens' resolves locally (existing or freshly added)
 $Script:HostsFile        = Join-Path $env:SystemRoot "System32\drivers\etc\hosts"
 
@@ -118,7 +128,11 @@ function Ensure-Admin {
     Write-Host ""
     Write-Host "  Then run these two lines:" -ForegroundColor Cyan
     Write-Host "    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force"
-    Write-Host "    irm https://myagens.com/install.ps1 | iex"
+    if ($BrowserMode) {
+        Write-Host "    `$env:MYAGENS_SETUP=`"browser`"; irm https://myagens.com/install.ps1 | iex"
+    } else {
+        Write-Host "    irm https://myagens.com/install.ps1 | iex"
+    }
     Write-Host ""
     # Pause so the window doesn't vanish before this can be read (a freshly
     # launched window closes the moment the script exits). Skipped in automation.
@@ -579,7 +593,7 @@ function Configure-RemoteAccess {
 # ---------------------------------------------------------------------------
 function Install-Service {
     Title "Service setup"
-    $mode = if ($env:MYAGENS_MODE) { $env:MYAGENS_MODE } else {
+    $mode = if ($Script:PreMode) { $Script:PreMode } elseif ($env:MYAGENS_MODE) { $env:MYAGENS_MODE } else {
         if (Confirm "Run as a background Windows service (auto-restart on boot)?") { "service" } else { "manual" }
     }
 
@@ -643,7 +657,8 @@ function Install-Service {
         # we insist on a VALID one. No LocalSystem fallback: that would split the
         # bot's login from the user's and cause silent auth failures.
         $svcUser = "$env:USERDOMAIN\$env:USERNAME"
-        $plainPw = Get-ServicePassword $svcUser
+        $plainPw = if ($Script:PrePassword) { $Script:PrePassword } else { Get-ServicePassword $svcUser }
+        $Script:PrePassword = $null
         if (-not $plainPw) {
             Die "A valid Windows password for $svcUser is required to run the service. Re-run and enter it (or set MYAGENS_SVC_PASSWORD), or choose manual run mode."
         }
@@ -782,24 +797,97 @@ function Open-Panel {
 }
 
 # ---------------------------------------------------------------------------
+# Browser setup (MYAGENS_SETUP=browser)
+# ---------------------------------------------------------------------------
+# The terminal's job ends after clone+build: the app boots in setup mode (no
+# .env yet), serves a loopback-only wizard, and opens it in the browser — bot
+# token, owner detection, and Claude auth all happen there, validated live.
+# When the wizard finishes it writes .env and exits 0 (MYAGENS_SETUP_HANDOFF=
+# exit); we then install + start the service, and the wizard's success page —
+# which polls the panel port — signs the user in the moment it comes up.
+function Browser-Setup {
+    $envPath = Join-Path $InstallDir ".env"
+    $configured = (Test-Path $envPath) -and
+        (Select-String -Path $envPath -Pattern "^TELEGRAM_BOT_TOKEN=.+" -Quiet) -and
+        -not (Select-String -Path $envPath -Pattern "ABC-your-token-here" -Quiet)
+    if ($configured) {
+        Ok "Already configured — skipping the browser wizard."
+    } else {
+        Write-Host ""
+        Write-Host "  The rest happens in your browser." -ForegroundColor Cyan
+        Write-Host "  A setup page opens in a moment — if it doesn't, copy the http://127.0.0.1 link" -ForegroundColor DarkGray
+        Write-Host "  printed below into your browser. Keep this window open until setup finishes." -ForegroundColor DarkGray
+        Write-Host ""
+        $setupExit = 1
+        Push-Location $InstallDir
+        try {
+            $env:MYAGENS_SETUP_HANDOFF = "exit"
+            & node "dist\index.js"
+            $setupExit = $LASTEXITCODE
+        } finally {
+            Remove-Item Env:MYAGENS_SETUP_HANDOFF -ErrorAction SilentlyContinue
+            Pop-Location
+        }
+        if ($setupExit -ne 0) { Die "Setup was interrupted before it finished. Run the installer again to retry." }
+        if (-not ((Test-Path $envPath) -and (Select-String -Path $envPath -Pattern "^TELEGRAM_BOT_TOKEN=.+" -Quiet))) {
+            Die "Setup didn't finish. Run the installer again to retry."
+        }
+        Ok "Configuration saved."
+    }
+    # Surface the panel login in the final notes (the wizard's success page
+    # signs the browser in by itself; this is the durable copy).
+    $envLines = Get-Content $envPath
+    $portLine  = $envLines | Where-Object { $_ -match '^PANEL_PORT='  } | Select-Object -First 1
+    $tokenLine = $envLines | Where-Object { $_ -match '^PANEL_TOKEN=' } | Select-Object -First 1
+    if ($portLine)  { $Script:PanelPortChosen  = $portLine  -replace '^PANEL_PORT=',''  }
+    if ($tokenLine) { $Script:PanelTokenChosen = $tokenLine -replace '^PANEL_TOKEN=','' }
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 Write-Host "`n  MyAgens Windows Installer" -ForegroundColor Magenta
 Write-Host "  $Tutorial`n"
 
-Ensure-Admin
-Ensure-Node
-Ensure-Git
-Clone-Repo
-Ensure-ClaudeCLI
-Ensure-Ollama
-Build-App
-Configure-Env
-Configure-Hostname
-Configure-RemoteAccess
-Claude-Login
-Install-Service
-Open-Panel
+if ($BrowserMode) {
+    # Browser setup: no terminal questions past the password below. Optional
+    # extras (hostname, remote access, Ollama) are configured later in the
+    # panel instead of here.
+    Ensure-Admin
+    Ensure-Node
+    Ensure-Git
+    Clone-Repo
+    Ensure-ClaudeCLI
+    Build-App
+    # The service registers under the current user and Windows needs their
+    # password for that. Take it now — while the user is still looking at this
+    # terminal — so nothing prompts behind their back after the browser handoff.
+    $Script:PreMode = if ($env:MYAGENS_MODE) { $env:MYAGENS_MODE } else { "service" }
+    if ($Script:PreMode -eq "service") {
+        $svcUser = "$env:USERDOMAIN\$env:USERNAME"
+        Say "One password now, so the background service can be installed at the end:"
+        $Script:PrePassword = Get-ServicePassword $svcUser
+        if (-not $Script:PrePassword) {
+            Die "A valid Windows password for $svcUser is required to run the background service. Re-run and enter it (or set MYAGENS_SVC_PASSWORD), or use the terminal wizard (remove MYAGENS_SETUP=browser)."
+        }
+    }
+    Browser-Setup
+    Install-Service
+} else {
+    Ensure-Admin
+    Ensure-Node
+    Ensure-Git
+    Clone-Repo
+    Ensure-ClaudeCLI
+    Ensure-Ollama
+    Build-App
+    Configure-Env
+    Configure-Hostname
+    Configure-RemoteAccess
+    Claude-Login
+    Install-Service
+    Open-Panel
+}
 
 Write-Host "`n"
 Ok "MyAgens installation complete!"

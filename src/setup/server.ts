@@ -63,7 +63,10 @@ function openBrowser(url: string): void {
     if (process.platform === "darwin") {
       spawn("open", [url], { detached: true, stdio: "ignore" }).unref();
     } else if (process.platform === "win32") {
-      spawn("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" }).unref();
+      // explorer.exe, not `start`: under the elevated installer a plain
+      // ShellExecute often fails to hand off to the user's (non-elevated)
+      // default browser; explorer opens the URL in the user's context.
+      spawn("explorer.exe", [url], { detached: true, stdio: "ignore" }).unref();
     } else {
       if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return; // headless box
       spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
@@ -141,7 +144,7 @@ export async function startSetupServer(): Promise<void> {
       const poller = new CandidatePoller(token);
       session.poller = poller;
       poller.start();
-      log.info("Setup: bot token verified", { bot: `@${me.username}` });
+      log.info("Setup: bot token verified — now watching for a DM to detect the owner", { bot: `@${me.username}` });
       return { ok: true, username: me.username, name: me.firstName };
     } catch (err) {
       if (err instanceof TelegramError && err.code === 401) {
@@ -321,7 +324,10 @@ export async function startSetupServer(): Promise<void> {
   const stop = () => {
     session.poller?.stop();
     loginFlow.cancel();
-    void app.close().then(() => process.exit(0));
+    // Non-zero when interrupted mid-setup so an installer waiting on this
+    // process (MYAGENS_SETUP_HANDOFF=exit) reports the interruption instead of
+    // carrying on to the service-install step.
+    void app.close().then(() => process.exit(session.finished ? 0 : 130));
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);

@@ -423,6 +423,50 @@ build_app() {
   fi
 }
 
+# --- Telegram helpers (CLI wizard) -------------------------------------------
+# Raw curl against api.telegram.org so the terminal wizard validates the bot
+# token and detects the owner's user id the same way the browser wizard does.
+
+# tg_get_me TOKEN — echoes the bot's username on success. Returns 1 when
+# Telegram rejected the token, 2 when Telegram was unreachable (no verdict).
+tg_get_me() {
+  local resp
+  resp="$(curl -s -m 15 "https://api.telegram.org/bot$1/getMe" 2>/dev/null)" || return 2
+  [ -n "$resp" ] || return 2
+  printf '%s' "$resp" | grep -q '"ok":true' || return 1
+  printf '%s' "$resp" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p'
+}
+
+# tg_send TOKEN CHAT_ID TEXT — best-effort sendMessage.
+tg_send() {
+  curl -s -m 15 "https://api.telegram.org/bot$1/sendMessage" \
+    --data-urlencode "chat_id=$2" --data-urlencode "text=$3" >/dev/null 2>&1
+}
+
+# tg_detect_owner TOKEN SECONDS — polls getUpdates until a human DMs the bot in
+# a private chat; echoes "id|first_name". Returns 1 on timeout, 3 when timing
+# out while another consumer holds the token (Telegram 409 — e.g. an older
+# install still running with the same bot).
+tg_detect_owner() {
+  local token="$1" deadline=$(( $(date +%s) + ${2:-60} )) offset=0 resp max hit uid name conflict=0
+  # A leftover webhook makes getUpdates fail forever; clear it first.
+  curl -s -m 10 "https://api.telegram.org/bot${token}/deleteWebhook" >/dev/null 2>&1 || true
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    resp="$(curl -s -m 30 "https://api.telegram.org/bot${token}/getUpdates?timeout=20&offset=${offset}&allowed_updates=%5B%22message%22%5D" 2>/dev/null)" || resp=""
+    case "$resp" in *'"error_code":409'*) conflict=1; sleep 2; continue ;; esac
+    max="$(printf '%s' "$resp" | grep -o '"update_id":[0-9]*' | grep -o '[0-9]*$' | sort -n | tail -n1 || true)"
+    [ -n "$max" ] && offset=$((max + 1))
+    hit="$(printf '%s' "$resp" | awk -v RS='"update_id"' '/"type":"private"/ && /"is_bot":false/ && /"from"/ {print; exit}' || true)"
+    if [ -n "$hit" ]; then
+      uid="$(printf '%s' "$hit" | grep -o '"from":{"id":[0-9]*' | grep -o '[0-9]*$' || true)"
+      name="$(printf '%s' "$hit" | sed -n 's/.*"first_name":"\([^"]*\)".*/\1/p' | head -n1)"
+      if [ -n "$uid" ]; then printf '%s|%s' "$uid" "$name"; return 0; fi
+    fi
+  done
+  [ "$conflict" = 1 ] && return 3
+  return 1
+}
+
 # --- .env -------------------------------------------------------------------
 configure_env() {
   local env="$APP_DIR/.env"
@@ -432,9 +476,48 @@ configure_env() {
   fi
   cp "$APP_DIR/.env.example" "$env"
 
-  local token ids key
+  local token ids key botuser="" rc hit uid uname
   token="${MYAGENS_TOKEN:-$(ask "Telegram bot token (from @BotFather)" "")}"
-  ids="${MYAGENS_USER_IDS:-$(ask "Allowed Telegram user id(s), comma-separated (from @userinfobot)" "")}"
+
+  # Validate against Telegram while the user is still at the prompt — a typo'd
+  # token is otherwise only discovered at first boot, long after the wizard.
+  while [ -n "$token" ]; do
+    rc=0; botuser="$(tg_get_me "$token")" || rc=$?
+    if [ "$rc" = 0 ] && [ -n "$botuser" ]; then ok "Bot token verified — @${botuser}."; break; fi
+    botuser=""
+    if [ "$rc" = 2 ]; then warn "Couldn't reach Telegram to verify the token — keeping it as entered."; break; fi
+    if [ -n "${MYAGENS_TOKEN:-}" ] || [ -z "$TTY" ]; then
+      warn "Telegram rejected this bot token — fix TELEGRAM_BOT_TOKEN in .env before starting."
+      break
+    fi
+    warn "Telegram rejected that token. Copy the whole line from @BotFather (it looks like 123456789:AbCd…)."
+    token="$(ask "Telegram bot token (blank = enter it in .env later)" "")"
+  done
+
+  # Owner id: instead of sending the user to @userinfobot, watch the bot's own
+  # inbox — pressing START identifies them, same as the browser wizard.
+  ids="${MYAGENS_USER_IDS:-}"
+  if [ -z "$ids" ] && [ -n "$botuser" ] && [ -n "$TTY" ]; then
+    printf '\n' >"$TTY"
+    say "Now open Telegram, find ${B}@${botuser}${R} and press START (or send it any message)."
+    say "Watching for your message for 60 seconds — it fills in your user id automatically…"
+    rc=0; hit="$(tg_detect_owner "$token" 60)" || rc=$?
+    if [ "$rc" = 0 ] && [ -n "$hit" ]; then
+      uid="${hit%%|*}"; uname="${hit#*|}"
+      if confirm "Detected ${uname:-someone} (id ${uid}) — is that you?" "Y"; then
+        ids="$uid"
+        tg_send "$token" "$uid" "✅ It's you! Finishing setup in the terminal — I'll be ready to chat here soon." || true
+        ok "Owner confirmed — ${uname:-you} (${uid})."
+      fi
+    elif [ "$rc" = 3 ]; then
+      warn "Another process is already receiving this bot's messages (Telegram 409 conflict)."
+      warn "Usually a previous install or another server using the same token — stop it, or make a fresh bot with @BotFather."
+    else
+      warn "No message arrived in time — you can enter your id manually."
+    fi
+  fi
+  [ -n "$ids" ] || ids="$(ask "Allowed Telegram user id(s), comma-separated (from @userinfobot)" "")"
+
   key="${MYAGENS_API_KEY:-}"
   if [ -z "$key" ] && ! command -v claude >/dev/null 2>&1; then
     key="$(ask "Anthropic API key (blank = log in with a Pro/Max plan instead)" "")"

@@ -125,18 +125,18 @@ curl -fsSL https://myagens.com/install.sh | bash
 
 The title bar should read **Administrator: Windows PowerShell**.
 
-**Then paste these two lines and press Enter:**
+**Then paste these two lines and press Enter** (browser setup, recommended):
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-irm https://myagens.com/install.ps1 | iex
+$env:MYAGENS_SETUP="browser"; irm https://myagens.com/install.ps1 | iex
 ```
 
-The first line lets PowerShell run the `npm`/`claude` script shims for this session only (Windows blocks them by default); it isn't persisted and needs no admin. The Windows installer uses `winget` for Node.js and Git, and creates a NSSM service (with Task Scheduler as a fallback). To update later, run `.\scripts\windows\update.ps1` or use the panel's Updates view.
+After one Windows password prompt (for the background service) the rest happens in your browser, same as on Linux/macOS. Leave out `$env:MYAGENS_SETUP="browser";` for the classic fully-in-terminal wizard. The first line lets PowerShell run the `npm`/`claude` script shims for this session only (Windows blocks them by default); it isn't persisted and needs no admin. The Windows installer uses `winget` for Node.js and Git, and creates a NSSM service (with Task Scheduler as a fallback). To update later, run `.\scripts\windows\update.ps1` or use the panel's Updates view.
 
 If you run it **without** administrator rights, the installer prints these same steps and waits for a keypress before closing, so the window won't vanish on you.
 
-With the browser setup you only need a [bot token](#setup-manual) — your user id is detected when you press START in the bot's chat. The terminal and Windows wizards prompt for both the token and your numeric id. Prefer to read before you run? The scripts are [`scripts/myagens-install.sh`](scripts/myagens-install.sh) and [`scripts/windows/myagens-install.ps1`](scripts/windows/myagens-install.ps1).
+With the browser setup you only need a [bot token](#setup-manual) — your user id is detected when you press START in the bot's chat. The terminal wizard verifies the token against Telegram as you type it and offers the same press-START id detection, with manual entry as fallback. Prefer to read before you run? The scripts are [`scripts/myagens-install.sh`](scripts/myagens-install.sh) and [`scripts/windows/myagens-install.ps1`](scripts/windows/myagens-install.ps1).
 
 > For an unattended run, set `MYAGENS_TOKEN`, `MYAGENS_USER_IDS`, and `MYAGENS_MODE=service|manual` (and `MYAGENS_YES=1`) in the environment before running.
 

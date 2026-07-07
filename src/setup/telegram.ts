@@ -6,6 +6,8 @@
  * api.telegram.org with the token the user just pasted.
  */
 
+import { log } from "../logger.js";
+
 const API_BASE = "https://api.telegram.org";
 
 export class TelegramError extends Error {
@@ -77,6 +79,14 @@ export class CandidatePoller {
   private offset = 0;
   private stopped = false;
   private started = false;
+  /**
+   * Epoch-ms of the last 409 Conflict. Sticky: another consumer usually only
+   * collides with us intermittently (both sides retry and take turns winning),
+   * so the warning must outlive the next successful poll or the UI shows it
+   * for a 2s flash at best — the exact "nothing arrives and no explanation"
+   * failure this exists to prevent.
+   */
+  private conflictAt = 0;
   /** Set when polling hits a persistent error worth surfacing (e.g. 409 Conflict). */
   warning: string | null = null;
   readonly candidates = new Map<number, Candidate>();
@@ -102,6 +112,11 @@ export class CandidatePoller {
     }
     while (!this.stopped) {
       try {
+        // After a conflict, drop to short polls: a competing long-poller holds
+        // the connection for tens of seconds and swallows whatever arrives in
+        // that window, while each of our requests preempts theirs — asking
+        // often is the best shot at seeing the user's message at all.
+        const conflicted = this.conflictAt > 0;
         const updates = await tgCall<
           Array<{
             update_id: number;
@@ -117,14 +132,24 @@ export class CandidatePoller {
               };
             };
           }>
-        >(this.token, "getUpdates", { timeout: 25, offset: this.offset, allowed_updates: ["message"] }, 35_000);
-        this.warning = null;
+        >(
+          this.token,
+          "getUpdates",
+          { timeout: conflicted ? 2 : 25, offset: this.offset, allowed_updates: ["message"] },
+          conflicted ? 12_000 : 35_000,
+        );
+        // A success does not mean the competitor is gone — keep the warning up
+        // until they've been quiet for a while.
+        if (Date.now() - this.conflictAt > 90_000) this.warning = null;
         for (const u of updates) {
           this.offset = Math.max(this.offset, u.update_id + 1);
           const msg = u.message;
           const from = msg?.from;
           if (!from || from.is_bot) continue;
           if (msg?.chat?.type !== "private") continue;
+          if (!this.candidates.has(from.id)) {
+            log.info("Setup: detected a Telegram DM", { userId: from.id, name: from.first_name ?? "" });
+          }
           this.candidates.set(from.id, {
             id: from.id,
             firstName: from.first_name ?? "",
@@ -134,11 +159,16 @@ export class CandidatePoller {
             at: Date.now(),
           });
         }
+        if (conflicted) await new Promise((r) => setTimeout(r, 1_000));
       } catch (err) {
         if (this.stopped) return;
         if (err instanceof TelegramError && err.code === 409) {
+          if (this.conflictAt === 0) {
+            log.warn("Setup: another process is polling this bot token (Telegram 409) — its messages are being intercepted");
+          }
+          this.conflictAt = Date.now();
           this.warning =
-            "Another process is already receiving this bot's messages (Telegram 409). Stop the other instance, then try again.";
+            "Something else is already reading this bot's messages (Telegram 409 conflict) — usually a previous install or another server using the same token. Stop it (or create a fresh bot with @BotFather), then message the bot again.";
         }
         await new Promise((r) => setTimeout(r, 2_000));
       }

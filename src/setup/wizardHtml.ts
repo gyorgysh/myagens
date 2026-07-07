@@ -173,9 +173,15 @@ const PAGE = `<!doctype html>
   var url = new URL(location.href);
   var k = url.searchParams.get('k');
   if (k) {
-    try { sessionStorage.setItem(KEY_STORE, k); } catch(e){}
-    url.searchParams.delete('k');
-    history.replaceState(null, '', url.pathname + (url.search || ''));
+    // Only strip the key from the address bar once sessionStorage provably
+    // holds it — otherwise a refresh (private browsing, storage disabled)
+    // would lose the key and dead-end the wizard.
+    var stored = false;
+    try { sessionStorage.setItem(KEY_STORE, k); stored = sessionStorage.getItem(KEY_STORE) === k; } catch(e){}
+    if (stored) {
+      url.searchParams.delete('k');
+      history.replaceState(null, '', url.pathname + (url.search || ''));
+    }
   }
   var setupKey = k || (function(){ try { return sessionStorage.getItem(KEY_STORE); } catch(e){ return null; } })();
 
@@ -274,6 +280,7 @@ const PAGE = `<!doctype html>
       '<div class="waiting" id="waiting"><span class="dot"></span> Waiting for you to say hi…</div>' +
       '<div class="people" id="people"></div>' +
       '<p class="warn hidden" id="pollWarn"></p>' +
+      '<p class="warn hidden" id="stuckHint">Messaged the bot but nothing shows up? Telegram hands each message to only one listener — if this token is already used by a running bot or an older install, stop that one (or make a fresh bot with @BotFather) and send another message. You can also enter your user ID manually below.</p>' +
       '<p class="err" id="youErr"></p>' +
       '<details><summary>Enter your Telegram user ID manually</summary>' +
         '<div class="row"><input id="manualId" type="text" inputmode="numeric" placeholder="e.g. 123456789"><button id="manualGo" class="ghost">Confirm</button></div>' +
@@ -313,11 +320,15 @@ const PAGE = `<!doctype html>
       el('waiting').classList.toggle('hidden', list.length > 0);
     }
     stopPolling();
+    var waitingSince = Date.now();
     pollTimer = setInterval(function(){
       api('telegram/candidates').then(function(r){
-        render(r.candidates || []);
+        var list = r.candidates || [];
+        render(list);
         var w = el('pollWarn');
         if (w){ w.textContent = r.warning || ''; w.classList.toggle('hidden', !r.warning); }
+        var h = el('stuckHint');
+        if (h){ h.classList.toggle('hidden', list.length > 0 || !!r.warning || Date.now() - waitingSince < 20000); }
       }).catch(function(){ /* transient */ });
     }, 2000);
   }

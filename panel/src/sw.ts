@@ -49,11 +49,14 @@ registerRoute(
   }),
 );
 
-// Static assets: cache-first.
+// Static assets: cache-first. /setup is the first-run wizard's surface — if it
+// ever gets cached here, a later re-setup on this origin+port polls into the
+// cache instead of the network and the wizard wedges on stale empty responses.
 registerRoute(
   ({ url, request }) =>
     !url.pathname.startsWith("/api") &&
     !url.pathname.startsWith("/ws") &&
+    !url.pathname.startsWith("/setup") &&
     request.method === "GET",
   new CacheFirst({
     cacheName: "static-cache",

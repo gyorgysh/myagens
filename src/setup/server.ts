@@ -290,6 +290,24 @@ export async function startSetupServer(): Promise<void> {
     return { ok: true, panelPath: `/?token=${panelToken}` };
   });
 
+  // ------------------------------------------------------------ kill sw ----
+  // A previous install's panel may have registered its PWA service worker on
+  // this exact origin+port; that worker serves the cached dashboard for bare
+  // "/" navigations and replays cached (empty) /setup/api responses from
+  // CacheFirst — and it can never self-update while setup occupies the origin,
+  // because its /sw.js update check would get wizard HTML back. Serve a
+  // kill-switch worker instead: it purges Cache Storage, unregisters itself,
+  // and reloads any open tabs.
+  const KILL_SW = [
+    "self.addEventListener('install',function(){self.skipWaiting()});",
+    "self.addEventListener('activate',function(e){e.waitUntil((async function(){",
+    "try{var ks=await caches.keys();await Promise.all(ks.map(function(k){return caches.delete(k)}))}catch(_){}",
+    "try{await self.registration.unregister()}catch(_){}",
+    "try{var cs=await self.clients.matchAll({type:'window'});for(var i=0;i<cs.length;i++){try{await cs[i].navigate(cs[i].url)}catch(_){}}}catch(_){}",
+    "})())});",
+  ].join("\n");
+  app.get("/sw.js", async (_req, reply) => reply.type("text/javascript; charset=utf-8").send(KILL_SW));
+
   // ----------------------------------------------------------------- page ---
   app.setNotFoundHandler((req, reply) => {
     // Success-page readiness polling probes /api/me; make sure it gets a JSON

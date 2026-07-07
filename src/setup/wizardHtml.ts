@@ -168,6 +168,29 @@ const PAGE = `<!doctype html>
 (function(){
   'use strict';
 
+  // ---- evict stale service workers ----------------------------------------
+  // A previous install's panel may have registered its PWA service worker on
+  // this origin+port. It intercepts every fetch this page makes (replaying
+  // cached empty API responses) and serves the cached dashboard for bare "/"
+  // navigations. Unregister it, purge Cache Storage, and — if this page load
+  // is still controlled by it — reload once so fetches go to the network.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(rs){
+      if (!rs.length) return;
+      Promise.all(rs.map(function(r){ return r.unregister().catch(function(){}); })).then(function(){
+        var purge = (typeof caches !== 'undefined' && caches.keys)
+          ? caches.keys().then(function(ks){ return Promise.all(ks.map(function(k){ return caches.delete(k); })); }).catch(function(){})
+          : Promise.resolve();
+        purge.then(function(){
+          var GUARD = 'myagens.setup.swReloaded';
+          var done = false;
+          try { done = sessionStorage.getItem(GUARD) === '1'; sessionStorage.setItem(GUARD, '1'); } catch(e){ done = true; }
+          if (navigator.serviceWorker.controller && !done) location.reload();
+        });
+      });
+    }).catch(function(){});
+  }
+
   // ---- setup key ----------------------------------------------------------
   var KEY_STORE = 'myagens.setup.key';
   var url = new URL(location.href);

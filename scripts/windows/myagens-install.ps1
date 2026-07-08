@@ -167,6 +167,25 @@ function Get-NativeOutput {
     try { return (& $Cmd 2>$null) } finally { $ErrorActionPreference = $old }
 }
 
+function Get-GitBashPath {
+    # Resolve Git Bash's bash.exe for CLAUDE_CODE_GIT_BASH_PATH. $GitCmdDir is
+    # the dir containing git.exe (…\Git\cmd for a standard/winget install), so
+    # bash.exe sits one level up under \bin. Fall back to the well-known install
+    # locations if git isn't on PATH. Returns $null if none exist.
+    param([string]$GitCmdDir)
+    $candidates = @()
+    if ($GitCmdDir) {
+        $gitRoot = Split-Path $GitCmdDir -Parent   # …\Git
+        $candidates += (Join-Path $gitRoot "bin\bash.exe")
+        $candidates += (Join-Path $gitRoot "usr\bin\bash.exe")
+    }
+    $candidates += "C:\Program Files\Git\bin\bash.exe"
+    $candidates += "C:\Program Files (x86)\Git\bin\bash.exe"
+    $candidates += (Join-Path $env:LOCALAPPDATA "Programs\Git\bin\bash.exe")
+    foreach ($c in $candidates) { if ($c -and (Test-Path $c)) { return $c } }
+    return $null
+}
+
 # Verify a Windows account password before we hand it to a service registration.
 # Returns $true / $false when it can check, or $null when verification isn't
 # possible (e.g. a domain controller is unreachable) — the caller then relies on
@@ -667,6 +686,20 @@ function Install-Service {
         $gitDir  = if (Get-Command git -ErrorAction SilentlyContinue) { Split-Path (Get-Command git).Source -Parent } else { "" }
         $svcPath = (@($env:Path, $nodeDir, $npmBin, $gitDir) | Where-Object { $_ }) -join ";"
 
+        # Claude Code on Windows shells out through Git Bash and refuses to run
+        # unless CLAUDE_CODE_GIT_BASH_PATH points at bash.exe (a bare PATH entry
+        # isn't enough — it wants the explicit var). Resolve it from the Git we
+        # just installed ($gitDir is ...\Git\cmd) and export it both to the
+        # service (AppEnvironmentExtra below) and machine-wide (so the Task
+        # Scheduler fallback and any manual `node dist\index.js` see it too).
+        $gitBash = Get-GitBashPath $gitDir
+        if ($gitBash) {
+            [Environment]::SetEnvironmentVariable("CLAUDE_CODE_GIT_BASH_PATH", $gitBash, "Machine")
+            $env:CLAUDE_CODE_GIT_BASH_PATH = $gitBash
+        } else {
+            Warn "Could not locate Git Bash (bash.exe). If the agent reports 'requires git-bash', set CLAUDE_CODE_GIT_BASH_PATH to your bash.exe and restart the service."
+        }
+
         # The service runs as the installing user so it inherits their profile and
         # Claude login (the OAuth token lives in their %USERPROFILE%\.claude).
         # Windows requires the account password to register a service under a user —
@@ -680,7 +713,9 @@ function Install-Service {
         }
 
         Invoke-Quiet { & nssm set $svcName ObjectName $svcUser $plainPw }
-        Invoke-Quiet { & nssm set $svcName AppEnvironmentExtra "NODE_ENV=production" "PATH=$svcPath" }
+        $svcEnv = @("NODE_ENV=production", "PATH=$svcPath")
+        if ($gitBash) { $svcEnv += "CLAUDE_CODE_GIT_BASH_PATH=$gitBash" }
+        Invoke-Quiet { & nssm set $svcName AppEnvironmentExtra @svcEnv }
         $plainPw = $null
         Ok "Service will run as $svcUser."
 

@@ -155,6 +155,18 @@ function Invoke-Quiet {
     try { & $Cmd 2>&1 | Out-Null } finally { $ErrorActionPreference = $old }
 }
 
+function Get-NativeOutput {
+    # Like Invoke-Quiet, but returns the command's stdout as a string. Same
+    # reason for the "Continue" drop: a CLI that writes to stderr (e.g. `nssm
+    # status` printing "Can't open service!" for a missing service) would
+    # otherwise raise a terminating NativeCommandError under "Stop" — `2>$null`
+    # alone does NOT suppress that. $LASTEXITCODE still reflects the real exit.
+    param([scriptblock]$Cmd)
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { return (& $Cmd 2>$null) } finally { $ErrorActionPreference = $old }
+}
+
 # Verify a Windows account password before we hand it to a service registration.
 # Returns $true / $false when it can check, or $null when verification isn't
 # possible (e.g. a domain controller is unreachable) — the caller then relies on
@@ -622,11 +634,11 @@ function Install-Service {
     # existing $InstallDir): remove the old 'myhq' NSSM service / 'MyHQ Bot'
     # task first so it doesn't keep running alongside the new one.
     if ($nssm) {
-        $legacyStatus = "$(& nssm status myhq 2>$null)"
+        $legacyStatus = "$(Get-NativeOutput { & nssm status myhq })"
         if ($LASTEXITCODE -eq 0 -and $legacyStatus) {
             Say "Migrating from the old 'myhq' NSSM service…"
-            & nssm stop myhq 2>$null | Out-Null
-            & nssm remove myhq confirm 2>$null | Out-Null
+            Invoke-Quiet { & nssm stop myhq }
+            Invoke-Quiet { & nssm remove myhq confirm }
         }
     }
     $legacyTask = Get-ScheduledTask -TaskName "MyHQ Bot" -ErrorAction SilentlyContinue
@@ -639,8 +651,12 @@ function Install-Service {
     if ($nssm) {
         $svcName = "myagens"
         Say "Installing NSSM service '$svcName'…"
-        & nssm install $svcName $nodeBin $entryPoint
-        & nssm set $svcName AppDirectory $InstallDir
+        # NSSM writes even its success messages to stderr; under
+        # $ErrorActionPreference = "Stop" that would raise a terminating
+        # NativeCommandError. Run every nssm mutation through Invoke-Quiet so
+        # only a real non-zero exit matters.
+        Invoke-Quiet { & nssm install $svcName $nodeBin $entryPoint }
+        Invoke-Quiet { & nssm set $svcName AppDirectory $InstallDir }
 
         # PATH for the service session. Start from the installer's own working PATH
         # (which already has node, git and npm after the prerequisite steps) and
@@ -663,15 +679,15 @@ function Install-Service {
             Die "A valid Windows password for $svcUser is required to run the service. Re-run and enter it (or set MYAGENS_SVC_PASSWORD), or choose manual run mode."
         }
 
-        & nssm set $svcName ObjectName $svcUser $plainPw
-        & nssm set $svcName AppEnvironmentExtra "NODE_ENV=production" "PATH=$svcPath"
+        Invoke-Quiet { & nssm set $svcName ObjectName $svcUser $plainPw }
+        Invoke-Quiet { & nssm set $svcName AppEnvironmentExtra "NODE_ENV=production" "PATH=$svcPath" }
         $plainPw = $null
         Ok "Service will run as $svcUser."
 
-        & nssm set $svcName AppStdout (Join-Path $InstallDir "logs\myagens.log")
-        & nssm set $svcName AppStderr (Join-Path $InstallDir "logs\myagens-err.log")
-        & nssm set $svcName AppRotateFiles 1
-        & nssm set $svcName AppRotateOnline 1
+        Invoke-Quiet { & nssm set $svcName AppStdout (Join-Path $InstallDir "logs\myagens.log") }
+        Invoke-Quiet { & nssm set $svcName AppStderr (Join-Path $InstallDir "logs\myagens-err.log") }
+        Invoke-Quiet { & nssm set $svcName AppRotateFiles 1 }
+        Invoke-Quiet { & nssm set $svcName AppRotateOnline 1 }
         New-Item -ItemType Directory -Path (Join-Path $InstallDir "logs") -Force | Out-Null
 
         # --- Crash recovery: auto-restart the service if the process exits. ---
@@ -685,9 +701,9 @@ function Install-Service {
         # storm. Also mirror it onto the Windows SCM recovery actions so the
         # Services snap-in shows "Restart the Service" on first/second/subsequent
         # failures (reset the failure counter after a day of stability).
-        & nssm set $svcName AppExit Default Restart
-        & nssm set $svcName AppRestartDelay 5000
-        & nssm set $svcName AppThrottle 5000
+        Invoke-Quiet { & nssm set $svcName AppExit Default Restart }
+        Invoke-Quiet { & nssm set $svcName AppRestartDelay 5000 }
+        Invoke-Quiet { & nssm set $svcName AppThrottle 5000 }
         try {
             & sc.exe failure $svcName reset= 86400 actions= restart/5000/restart/5000/restart/30000 | Out-Null
             & sc.exe failureflag $svcName 1 | Out-Null
@@ -700,12 +716,12 @@ function Install-Service {
         # rights, so we don't fiddle with the service SDDL (which was fragile
         # and account-specific). See src/core/agentControl.ts restartService().
 
-        & nssm start $svcName
+        Invoke-Quiet { & nssm start $svcName }
 
         # Confirm it actually started (a bad 'log on as a service' right or an
         # unverifiable domain password would otherwise leave a stopped service).
         Start-Sleep -Seconds 2
-        $status = "$(& nssm status $svcName 2>$null)"
+        $status = "$(Get-NativeOutput { & nssm status $svcName })"
         if ($status -notmatch "RUNNING") {
             Die "Service '$svcName' failed to start ($status). Check the password and the account's 'Log on as a service' right, then re-run. Logs: $InstallDir\logs\myagens-err.log"
         }

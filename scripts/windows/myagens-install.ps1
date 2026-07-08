@@ -417,23 +417,23 @@ function Configure-Env {
 
     $token   = if ($env:MYAGENS_TOKEN)    { $env:MYAGENS_TOKEN }    else { Ask "Telegram bot token (from @BotFather)" }
     $userIds = if ($env:MYAGENS_USER_IDS) { $env:MYAGENS_USER_IDS } else { Ask "Your Telegram user ID(s), comma-separated" }
-    $apiKey  = if ($env:MYAGENS_API_KEY)  { $env:MYAGENS_API_KEY }  else { Ask "Anthropic API key (blank = log in with a Pro/Max plan instead)" "" }
+    $apiKey  = if ($env:MYAGENS_API_KEY)  { $env:MYAGENS_API_KEY }  else { Ask "Anthropic API key, pay-as-you-go, not your Pro/Max plan (blank = sign in with a subscription instead)" "" }
 
     if ($env:MYAGENS_MODEL) {
         $model = $env:MYAGENS_MODEL
     } else {
         Write-Host ""
         Write-Host "  Which Claude model should the bot use by default?" -ForegroundColor Cyan
-        Write-Host "  Don't overthink it — you can change this anytime later in the panel or with /model in Telegram." -ForegroundColor DarkGray
-        Write-Host "    1) Opus   - most capable           (claude-opus-4-8)   [recommended]"
-        Write-Host "    2) Sonnet - faster, well-balanced  (claude-sonnet-5)"
+        Write-Host "  Don't overthink it, you can change this anytime later in the panel or with /model in Telegram." -ForegroundColor DarkGray
+        Write-Host "    1) Sonnet - fast and capable       (claude-sonnet-5)   [recommended]"
+        Write-Host "    2) Opus   - most capable, pricier  (claude-opus-4-8)"
         Write-Host "    3) Haiku  - fastest and cheapest   (claude-haiku-4-5-20251001)"
         Write-Host "    4) Enter a custom model name"
         switch (Ask "Choose 1-4" "1") {
-            "2"     { $model = "claude-sonnet-5" }
+            "2"     { $model = "claude-opus-4-8" }
             "3"     { $model = "claude-haiku-4-5-20251001" }
-            "4"     { $model = Ask "Custom model name" "claude-opus-4-8" }
-            default { $model = "claude-opus-4-8" }
+            "4"     { $model = Ask "Custom model name" "claude-sonnet-5" }
+            default { $model = "claude-sonnet-5" }
         }
     }
     $workdir = Ask "Agent working directory (where files go)" (Join-Path $env:USERPROFILE "MyAgens-Workspace")

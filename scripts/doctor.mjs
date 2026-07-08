@@ -23,6 +23,7 @@ const C = { g: "\x1b[32m", r: "\x1b[31m", c: "\x1b[36m", y: "\x1b[33m", z: "\x1b
 const ok = (m) => console.log(`${C.g}+${C.z} ${m}`);
 const bad = (m) => console.log(`${C.r}x${C.z} ${m}`);
 const info = (m) => console.log(`${C.c}*${C.z} ${m}`);
+const warn = (m) => console.log(`${C.y}!${C.z} ${m}`);
 
 // Run the claude CLI, closing stdin immediately so `claude -p` doesn't wait ~3s
 // for piped input. Resolves on exit 0, rejects with {code,stdout,stderr} otherwise.
@@ -54,6 +55,7 @@ function runClaude(args, timeout = 90000) {
 // checks below run with the SAME variables the bot sees — e.g. a bad
 // ANTHROPIC_API_KEY in .env would break the bot but not a bare shell.
 function loadEnv() {
+  const keys = new Set();
   try {
     for (const line of readFileSync(join(process.cwd(), ".env"), "utf8").split(/\r?\n/)) {
       const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
@@ -62,18 +64,42 @@ function loadEnv() {
       if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
         v = v.slice(1, -1);
       }
+      keys.add(m[1]);
       if (process.env[m[1]] === undefined) process.env[m[1]] = v;
     }
   } catch {
     /* no .env */
   }
+  return keys;
 }
-loadEnv();
+const dotenvKeys = loadEnv();
 
 console.log(`\n${C.y}MyAgens doctor${C.z} — checking the Claude Code connection\n`);
 info(`platform: ${platform()}   node: ${process.version}`);
 if (process.env.ANTHROPIC_API_KEY) info("ANTHROPIC_API_KEY is set in the environment (overrides the CLI login).");
 if (process.env.ANTHROPIC_BASE_URL) info(`ANTHROPIC_BASE_URL=${process.env.ANTHROPIC_BASE_URL} (a provider/proxy, not Anthropic).`);
+
+// The #1 fresh-install footgun (esp. Windows): an ambient ANTHROPIC_BASE_URL /
+// ANTHROPIC_AUTH_TOKEN left over from pointing another Claude tool at a local LM
+// Studio / Ollama endpoint. Inherited by the spawned CLI, it overrides the real
+// Anthropic auth and the turn dies with "exited with code 1" and no output. Flag
+// it loudly and say whether it came from .env (deliberate) or the environment
+// (a leftover the running app now strips at boot, but the raw CLI still sees).
+for (const key of ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"]) {
+  if (!process.env[key]) continue;
+  const fromDotenv = dotenvKeys.has(key);
+  const shown = key === "ANTHROPIC_AUTH_TOKEN" ? "<redacted>" : process.env[key];
+  if (fromDotenv) {
+    info(`${key}=${shown} is set in .env — MyAgens will proxy through it deliberately.`);
+  } else {
+    warn(`${key}=${shown} is inherited from your OS/shell environment, NOT .env.`);
+    warn("  This routes the agent at a local/proxy endpoint and overrides your Anthropic login —");
+    warn("  the usual cause of 'exited with code 1' with no output on a fresh install.");
+    warn(`  Fix (bash/zsh):  unset ${key}      (also remove it from your shell profile)`);
+    warn(`  Fix (Windows):   [Environment]::SetEnvironmentVariable("${key}", $null, "User")`);
+    warn("                   then reopen the shell / restart the service.");
+  }
+}
 
 // 1) Is the CLI installed and runnable?
 let cliOk = false;

@@ -19,6 +19,7 @@ const PAGE = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>MyAgens setup</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2308131a'/%3E%3Cpath d='M32 16 50 26.5 32 37 14 26.5 Z' fill='%23a5ddef'/%3E%3Cpath d='M14 26.5 32 37 V53 L14 42.5 Z' fill='%233ec7e6'/%3E%3Cpath d='M50 26.5 32 37 V53 L50 42.5 Z' fill='%230a97b7'/%3E%3Ccircle cx='51' cy='11' r='4' fill='%236cd6ee'/%3E%3Ccircle cx='51' cy='11' r='7.5' stroke='%236cd6ee' stroke-width='1.8' fill='none'/%3E%3C/svg%3E">
 <style>
   :root{
     --ink:#0e141b; --panel:#161e27; --panel2:#1b2531; --line:#24303c;
@@ -125,9 +126,16 @@ const PAGE = `<!doctype html>
   .waiting .dot{width:8px;height:8px;border-radius:50%;background:var(--sky);animation:pulse 1.6s infinite}
 
   .choice{display:flex;flex-direction:column;gap:10px}
-  .choice button{width:100%;text-align:left;padding:14px 16px;background:var(--panel2);color:var(--paper);border:1px solid var(--line)}
+  .choice button{width:100%;text-align:left;padding:13px 15px;background:var(--panel2);color:var(--paper);border:1px solid var(--line);display:flex;gap:13px;align-items:center}
   .choice button:hover{border-color:var(--sky);background:var(--panel2)}
-  .choice small{display:block;color:var(--dim);font-weight:400;margin-top:3px}
+  .choice button:hover .ci{border-color:var(--sky)}
+  .choice .ci{
+    width:38px;height:38px;flex:none;display:flex;align-items:center;justify-content:center;
+    border-radius:10px;background:var(--ink);border:1px solid var(--line);color:var(--sky);transition:border-color .12s;
+  }
+  .choice .ci svg{width:19px;height:19px}
+  .choice .ct{flex:1;min-width:0;font-weight:600}
+  .choice small{display:block;color:var(--dim);font-weight:400;margin-top:2px}
 
   .models{display:flex;flex-direction:column;gap:8px;margin:6px 0 18px}
   .models label{all:unset;display:flex;gap:10px;align-items:center;padding:11px 14px;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-size:14px}
@@ -140,6 +148,29 @@ const PAGE = `<!doctype html>
     font-family:var(--mono);font-size:12.5px;word-break:break-all;color:var(--paper);background:var(--ink);
   }
   .copy{margin-left:8px;padding:4px 10px;font-size:12px;background:var(--panel2);color:var(--sky);border:1px solid var(--line)}
+
+  /* highlighted help callout (e.g. sign in from a terminal) */
+  .callout{
+    border:1px solid var(--line);border-left:3px solid var(--sky);border-radius:12px;
+    background:linear-gradient(180deg,var(--panel2),var(--panel));padding:16px 18px;margin-top:16px;
+  }
+  .callout-h{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14.5px;margin-bottom:5px}
+  .callout-i{
+    width:24px;height:24px;border-radius:7px;background:rgba(76,169,245,.16);color:var(--sky);
+    display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;
+  }
+  .callout .why{margin:0 0 14px}
+  .callout .how{margin-bottom:14px}
+  .callout .how li{padding-top:5px;padding-bottom:5px}
+  /* copyable command chip */
+  .cmd{
+    display:flex;align-items:center;gap:8px;margin-top:8px;padding:9px 12px;border:1px solid var(--line);
+    border-radius:9px;background:var(--ink);font-family:var(--mono);font-size:12.5px;color:var(--paper);word-break:break-all;
+  }
+  .cmd code{flex:1;font-family:var(--mono);color:var(--paper)}
+  .cmd .copy{margin-left:auto;flex:none}
+  .kbd{font-family:var(--mono);font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:var(--sky)}
+  .btn-wide{width:100%;margin-top:2px}
   details{margin-top:16px}
   summary{cursor:pointer;color:var(--dim);font-size:13px}
   .hidden{display:none!important}
@@ -265,6 +296,7 @@ const PAGE = `<!doctype html>
         '<li>Send <a href="https://t.me/BotFather" target="_blank" rel="noopener">/newbot</a> and follow the two questions (any name works)</li>' +
         '<li>Copy the token it gives you and paste it below</li>' +
       '</ol>' +
+      '<p class="linkline"><a href="https://myagens.com/help/create-telegram-bot-botfather" target="_blank" rel="noopener">New to this? Step-by-step guide with screenshots →</a></p>' +
       '<label for="botToken">Bot token</label>' +
       '<div class="row">' +
         '<input id="botToken" type="password" autocomplete="off" spellcheck="false" placeholder="123456789:AbCd…">' +
@@ -280,7 +312,7 @@ const PAGE = `<!doctype html>
       btn.disabled = true; btn.textContent = 'Checking…';
       api('telegram/token', { token: input.value }).then(function(r){
         state.bot = { username: r.username, name: r.name };
-        receipt('Bot verified — <b>@' + esc(r.username) + '</b>');
+        receipt('Bot verified: <b>@' + esc(r.username) + '</b>');
         showYouStep();
       }).catch(function(e){
         btn.disabled = false; btn.textContent = 'Verify';
@@ -297,7 +329,7 @@ const PAGE = `<!doctype html>
     voice('I’m listening on Telegram… open the chat and press START so I know it’s you.', true);
     stage(
       '<h2>Prove it’s you</h2>' +
-      '<p class="why">Only you will be allowed to command this agent. Press START in your bot’s chat and you’ll appear here — no IDs to look up.</p>' +
+      '<p class="why">Only you will be allowed to command this agent. Press START in your bot’s chat and you’ll appear here, no IDs to look up.</p>' +
       '<div class="row" style="margin-top:0">' +
         '<button id="openBot" style="flex:1">Open @' + esc(state.bot.username) + ' in Telegram</button>' +
       '</div>' +
@@ -305,7 +337,7 @@ const PAGE = `<!doctype html>
       '<div class="waiting" id="waiting"><span class="dot"></span> Waiting for you to say hi…</div>' +
       '<div class="people" id="people"></div>' +
       '<p class="warn hidden" id="pollWarn"></p>' +
-      '<p class="warn hidden" id="stuckHint">Messaged the bot but nothing shows up? Telegram hands each message to only one listener — if this token is already used by a running bot or an older install, stop that one (or make a fresh bot with @BotFather) and send another message. You can also enter your user ID manually below.</p>' +
+      '<p class="warn hidden" id="stuckHint">Messaged the bot but nothing shows up? Telegram hands each message to only one listener. If this token is already used by a running bot or an older install, stop that one (or make a fresh bot with @BotFather) and send another message. You can also enter your user ID manually below.</p>' +
       '<p class="err" id="youErr"></p>' +
       '<details><summary>Enter your Telegram user ID manually</summary>' +
         '<div class="row"><input id="manualId" type="text" inputmode="numeric" placeholder="e.g. 123456789"><button id="manualGo" class="ghost">Confirm</button></div>' +
@@ -319,7 +351,7 @@ const PAGE = `<!doctype html>
       api('telegram/confirm', { userId: id }).then(function(){
         stopPolling();
         state.user = { id: id, label: label };
-        receipt('That’s you — <b>' + esc(label) + '</b> <code>' + esc(String(id)) + '</code> (check Telegram for a ✅)');
+        receipt('That’s you: <b>' + esc(label) + '</b> <code>' + esc(String(id)) + '</code> (check Telegram for a ✅)');
         showClaudeStep();
       }).catch(function(e){ err('youErr', e.message); });
     }
@@ -335,7 +367,7 @@ const PAGE = `<!doctype html>
         return '<div class="person">' +
           '<div class="av">' + esc((name || '?').charAt(0).toUpperCase()) + '</div>' +
           '<div class="who"><b>' + esc(name || 'Unknown') + (c.username ? ' · @' + esc(c.username) : '') + '</b>' +
-          '<span>' + esc(String(c.id)) + (c.lastText ? ' — “' + esc(c.lastText) + '”' : '') + '</span></div>' +
+          '<span>' + esc(String(c.id)) + (c.lastText ? ': “' + esc(c.lastText) + '”' : '') + '</span></div>' +
           '<button data-id="' + c.id + '" data-name="' + esc(name || ('id ' + c.id)) + '">That’s me</button>' +
         '</div>';
       }).join('');
@@ -365,7 +397,7 @@ const PAGE = `<!doctype html>
         if (w){
           w.textContent = (e.status === 401 || e.status === 410)
             ? 'This tab belongs to an older setup run. Open the newest link shown in the terminal window.'
-            : 'Can\\'t reach the setup service — is the terminal window still open?';
+            : 'Can\\'t reach the setup service. Is the terminal window still open?';
           w.classList.remove('hidden');
         }
       });
@@ -376,21 +408,13 @@ const PAGE = `<!doctype html>
   function showClaudeStep(){
     markStep(2);
     stopPolling();
-    voice('Now connect my brain. A Claude subscription or an API key — either works.');
+    voice('Now connect my brain. A Claude subscription or an API key, either one works.');
     stage(
       '<h2>Connect Claude</h2>' +
       '<p class="why">This is the AI that does the thinking. Checking for an existing sign-in…</p>' +
       '<div id="claudeBody"></div>' +
-      '<p class="err" id="claudeErr"></p>' +
-      '<p class="linkline"><button id="claudeSkip" type="button">Skip for now — I’ll connect it later in the panel</button></p>'
+      '<p class="err" id="claudeErr"></p>'
     );
-    el('claudeSkip').addEventListener('click', function(){
-      api('claude/skip', {}).then(function(){
-        receipt('Claude connection <b>skipped</b> — add it in the panel before first chat');
-        state.claudeMethod = 'skipped';
-        showLaunchStep();
-      }).catch(function(e){ err('claudeErr', e.message); });
-    });
     api('claude/status').then(function(s){
       if (s.loggedIn) {
         state.claudeMethod = 'cli';
@@ -399,7 +423,7 @@ const PAGE = `<!doctype html>
           (s.email ? ' as <b>' + esc(s.email) + '</b>' : '') + (s.subscriptionType ? ' (' + esc(s.subscriptionType) + ')' : '') +
           '</span></div><button id="claudeNext">Continue</button>';
         el('claudeNext').addEventListener('click', function(){
-          receipt('Claude connected — <b>' + esc(s.email || 'existing sign-in') + '</b>');
+          receipt('Claude connected: <b>' + esc(s.email || 'existing sign-in') + '</b>');
           showLaunchStep();
         });
       } else {
@@ -408,15 +432,96 @@ const PAGE = `<!doctype html>
     }).catch(function(){ claudeChoices(false); });
   }
 
+  // Three sibling ways to connect, none escalating into another:
+  //  browser  — drives claude setup-token in-browser (needs the CLI present)
+  //  terminal — the user runs claude + /login themselves, then we recheck
+  //  api key  — pay-as-you-go console key (a different billing category)
+  // All three land the same credential the SDK reads; browser vs terminal are
+  // just two ways to create the same Pro/Max OAuth login.
+  var SVG = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  var CICON = {
+    browser: '<svg ' + SVG + '><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18"/></svg>',
+    terminal: '<svg ' + SVG + '><rect x="3" y="4" width="18" height="16" rx="2"/><polyline points="7 9 10 12 7 15"/><line x1="12.5" y1="15" x2="17" y2="15"/></svg>',
+    key: '<svg ' + SVG + '><circle cx="8" cy="8" r="4.5"/><line x1="11.2" y1="11.2" x2="20" y2="20"/><line x1="19.2" y1="14" x2="16.7" y2="16.5"/></svg>'
+  };
+  function choiceBtn(id, cls, icon, title, sub){
+    return '<button id="' + id + '"' + (cls ? ' class="' + cls + '"' : '') + '>' +
+      '<span class="ci">' + icon + '</span>' +
+      '<span class="ct">' + title + '<small>' + sub + '</small></span></button>';
+  }
   function claudeChoices(cliInstalled){
     el('claudeBody').innerHTML =
       '<div class="choice">' +
-        (cliInstalled ? '<button id="optPlan">Sign in with Claude<small>Use a Claude Pro or Max subscription — opens Anthropic’s sign-in page</small></button>' : '') +
-        '<button id="optKey" class="ghost" style="text-align:left">Use an API key<small>Pay-as-you-go key from console.anthropic.com — starts with sk-ant-</small></button>' +
+        choiceBtn('optBrowser', '', CICON.browser, 'Sign in in your browser', 'One-click with your Claude Pro or Max subscription. The easiest way.') +
+        choiceBtn('optTerminal', '', CICON.terminal, 'Sign in from a terminal', 'Prefer the command line? Use the Claude app’s /login') +
+        choiceBtn('optKey', '', CICON.key, 'Use an API key', 'Pay-as-you-go key from console.anthropic.com. Not your Pro or Max subscription.') +
       '</div><div id="claudeFlow"></div>';
-    var plan = el('optPlan');
-    if (plan) plan.addEventListener('click', startPlanLogin);
+    el('optBrowser').addEventListener('click', cliInstalled ? startPlanLogin : browserNeedsCli);
+    el('optTerminal').addEventListener('click', function(){ showTerminalLogin(cliInstalled); });
     el('optKey').addEventListener('click', showKeyEntry);
+  }
+
+  function cmdChip(cmd){
+    return '<div class="cmd"><code>' + esc(cmd) + '</code>' +
+      '<button class="copy" type="button" data-copy="' + esc(cmd) + '">copy</button></div>';
+  }
+  function wireCopies(){
+    Array.prototype.forEach.call(el('claudeFlow').querySelectorAll('.copy'), function(b){
+      b.addEventListener('click', function(){
+        try { navigator.clipboard && navigator.clipboard.writeText(b.getAttribute('data-copy')); } catch(e){}
+        var t = b.textContent; b.textContent = 'copied'; setTimeout(function(){ b.textContent = t; }, 1200);
+      });
+    });
+  }
+
+  // The in-browser sign-in drives the Claude CLI (claude setup-token); with no
+  // CLI present it cannot run, so point at the terminal option (which installs
+  // it) rather than dead-ending. This is guidance, not a silent hand-off.
+  function browserNeedsCli(){
+    stopPolling();
+    err('claudeErr', '');
+    el('claudeFlow').innerHTML =
+      '<div class="callout">' +
+        '<div class="callout-h"><span class="callout-i">!</span>Install the Claude app first</div>' +
+        '<p class="why">The one-click browser sign-in runs the Claude command-line app, which isn’t installed here yet. Choose <b>“Sign in from a terminal”</b> above. It installs the app and signs you in. Or install it and reload this page.</p>' +
+      '</div>';
+  }
+
+  // Explicit terminal path: the user signs in with claude + /login themselves.
+  // Recheck ONLY confirms the login landed — it never falls through to the
+  // browser flow, so the two methods stay cleanly separate.
+  function showTerminalLogin(cliInstalled){
+    stopPolling();
+    err('claudeErr', '');
+    var installStep = cliInstalled ? '' :
+      '<li>Install the Claude app:' + cmdChip('npm install -g @anthropic-ai/claude-code') + '</li>';
+    el('claudeFlow').innerHTML =
+      '<div class="callout">' +
+        '<div class="callout-h"><span class="callout-i">⌘</span>Sign in from a terminal</div>' +
+        '<p class="why">Signs in with your Pro or Max subscription using the Claude command-line app. It only takes a minute.</p>' +
+        '<ol class="how">' +
+          '<li>Open a terminal (Command Prompt, PowerShell, or Terminal)</li>' +
+          installStep +
+          '<li>Enter <span class="kbd">claude</span> to start it, then type <span class="kbd">/login</span> and follow the steps in your browser:' + cmdChip('claude') + '</li>' +
+          '<li>Come back here and press <b>Recheck</b> below</li>' +
+        '</ol>' +
+        '<button id="claudeRecheck" class="btn-wide">Recheck for sign-in</button>' +
+      '</div>';
+    wireCopies();
+    el('claudeRecheck').addEventListener('click', function(){
+      var b = el('claudeRecheck');
+      b.disabled = true; b.textContent = 'Checking…';
+      api('claude/status').then(function(s){
+        if (s.loggedIn) {
+          state.claudeMethod = 'cli';
+          receipt('Claude connected: <b>' + esc(s.email || 'subscription sign-in') + '</b>');
+          showLaunchStep();
+        } else {
+          b.disabled = false; b.textContent = 'Recheck for sign-in';
+          err('claudeErr', 'Not signed in yet. Finish the /login step above, then press Recheck.');
+        }
+      }).catch(function(e){ b.disabled = false; b.textContent = 'Recheck for sign-in'; err('claudeErr', e.message); });
+    });
   }
 
   function startPlanLogin(){
@@ -430,7 +535,7 @@ const PAGE = `<!doctype html>
           if (st.loggedIn) {
             stopPolling();
             state.claudeMethod = 'cli';
-            receipt('Claude connected — <b>subscription sign-in</b>');
+            receipt('Claude connected: <b>subscription sign-in</b>');
             showLaunchStep();
             return;
           }
@@ -470,7 +575,7 @@ const PAGE = `<!doctype html>
       btn.disabled = true; btn.textContent = 'Checking…';
       api('claude/apikey', { key: el('apiKey').value }).then(function(){
         state.claudeMethod = 'apikey';
-        receipt('Claude connected — <b>API key verified</b>');
+        receipt('Claude connected: <b>API key verified</b>');
         showLaunchStep();
       }).catch(function(e){
         btn.disabled = false; btn.textContent = 'Verify';
@@ -481,8 +586,8 @@ const PAGE = `<!doctype html>
 
   // ---- step 4: launch -----------------------------------------------------
   var MODEL_META = {
-    'claude-opus-4-8': ['Claude Opus 4.8', 'smartest — recommended'],
-    'claude-sonnet-5': ['Claude Sonnet 5', 'fast and capable'],
+    'claude-sonnet-5': ['Claude Sonnet 5', 'fast and capable, recommended'],
+    'claude-opus-4-8': ['Claude Opus 4.8', 'smartest, higher cost'],
     'claude-haiku-4-5-20251001': ['Claude Haiku 4.5', 'light and cheap']
   };
   function showLaunchStep(){
@@ -492,10 +597,10 @@ const PAGE = `<!doctype html>
     var models = state.models.length ? state.models : Object.keys(MODEL_META);
     stage(
       '<h2>Launch</h2>' +
-      '<p class="why">You can change the model any time later — this is just the starting point.</p>' +
+      '<p class="why">You can change the model any time later. This is just the starting point.</p>' +
       '<div class="models">' + models.map(function(m){
         var meta = MODEL_META[m] || [m, ''];
-        return '<label><input type="radio" name="model" value="' + esc(m) + '"' + (m === (state.defaultModel || 'claude-opus-4-8') ? ' checked' : '') + '>' +
+        return '<label><input type="radio" name="model" value="' + esc(m) + '"' + (m === (state.defaultModel || 'claude-sonnet-5') ? ' checked' : '') + '>' +
           '<span>' + esc(meta[0]) + ' <small>· ' + esc(meta[1]) + '</small></span></label>';
       }).join('') + '</div>' +
       '<button id="launch" style="width:100%">Launch my agent</button>' +
@@ -522,7 +627,7 @@ const PAGE = `<!doctype html>
       '<h2>Starting your agent</h2>' +
       '<p class="why">The background service is being installed and started. You’ll be signed in to the control panel automatically.</p>' +
       '<div class="waiting"><span class="dot"></span> <span id="bootMsg">Waiting for the agent to come online…</span></div>' +
-      '<label style="margin-top:18px">Your panel login link — save it</label>' +
+      '<label style="margin-top:18px">Your panel login link, save it</label>' +
       '<div class="keybox" id="panelLink">' + esc(panelUrl) + '<button class="copy" id="copyLink" type="button">copy</button></div>' +
       '<p class="why" style="margin-top:10px">Also sent to you on Telegram. It only works on this computer.</p>'
     );
@@ -535,14 +640,14 @@ const PAGE = `<!doctype html>
       fetch('/api/me', { headers: { Authorization: 'Bearer ' + token } }).then(function(res){
         if (res.ok) {
           clearInterval(t);
-          voice('I’m online. See you inside — and on Telegram.');
+          voice('I’m online. See you inside, and on Telegram.');
           el('bootMsg').textContent = 'Online! Redirecting…';
           setTimeout(function(){ location.href = panelPath; }, 900);
         }
       }).catch(function(){ /* still restarting */ });
       if (Date.now() - started > 5 * 60 * 1000) {
         clearInterval(t);
-        el('bootMsg').textContent = 'This is taking longer than expected. Keep this page open and try your panel link above in a minute — or check the terminal window.';
+        el('bootMsg').textContent = 'This is taking longer than expected. Keep this page open and try your panel link above in a minute, or check the terminal window.';
       }
     }, 2000);
   }
@@ -550,16 +655,16 @@ const PAGE = `<!doctype html>
   // ---- boot ---------------------------------------------------------------
   markStep(0);
   if (!setupKey) {
-    stage('<h2>Open the setup link</h2><p class="why">For your security this page only works with the private link shown in the terminal window — it looks like <code style="font-family:var(--mono)">http://127.0.0.1:…/?k=…</code>. Copy it into this browser.</p>');
-    voice('I can’t let just any page configure me — use the link from the terminal.');
+    stage('<h2>Open the setup link</h2><p class="why">For your security this page only works with the private link shown in the terminal window. It looks like <code style="font-family:var(--mono)">http://127.0.0.1:…/?k=…</code>. Copy it into this browser.</p>');
+    voice('I can’t let just any page configure me. Use the link from the terminal.');
   } else {
     api('state').then(function(s){
       state.models = s.models || [];
-      state.defaultModel = s.defaultModel || 'claude-opus-4-8';
-      if (s.bot) { state.bot = s.bot; receipt('Bot verified — <b>@' + esc(s.bot.username) + '</b>'); }
+      state.defaultModel = s.defaultModel || 'claude-sonnet-5';
+      if (s.bot) { state.bot = s.bot; receipt('Bot verified: <b>@' + esc(s.bot.username) + '</b>'); }
       if (s.confirmedUser) {
         state.user = s.confirmedUser;
-        receipt('That’s you — <b>' + esc(s.confirmedUser.firstName || 'you') + '</b> <code>' + esc(String(s.confirmedUser.id)) + '</code>');
+        receipt('That’s you: <b>' + esc(s.confirmedUser.firstName || 'you') + '</b> <code>' + esc(String(s.confirmedUser.id)) + '</code>');
       }
       state.claudeMethod = s.claudeMethod || 'none';
       if (!s.bot) showBotStep();
@@ -572,7 +677,7 @@ const PAGE = `<!doctype html>
         voice('I’m already set up. Head to the panel.');
       } else if (e.status === 401) {
         stage('<h2>Open the setup link</h2><p class="why">This page only works with the private link shown in the terminal window. Copy that link into this browser.</p>');
-        voice('That link isn’t mine — use the one from the terminal.');
+        voice('That link isn’t mine. Use the one from the terminal.');
       } else {
         stage('<h2>Connection problem</h2><p class="why">Couldn’t reach the setup service. Is the terminal window still open?</p>');
       }

@@ -28,15 +28,15 @@ import { wizardHtml } from "./wizardHtml.js";
 const BASE_PORT = Number(process.env.PANEL_PORT) || 8787;
 const PORT_ATTEMPTS = 10;
 
-const MODEL_CHOICES = new Set(["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5-20251001"]);
-const DEFAULT_MODEL = "claude-opus-4-8";
+const MODEL_CHOICES = new Set(["claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5-20251001"]);
+const DEFAULT_MODEL = "claude-sonnet-5";
 
 interface SetupSession {
   botToken?: string;
   botInfo?: BotInfo;
   poller?: CandidatePoller;
   confirmedUser?: Candidate;
-  claudeMethod: "none" | "cli" | "apikey" | "skipped";
+  claudeMethod: "none" | "cli" | "apikey";
   apiKey?: string;
   finished: boolean;
 }
@@ -238,15 +238,14 @@ export async function startSetupServer(): Promise<void> {
     return { ok: true };
   });
 
-  app.post("/setup/api/claude/skip", async () => {
-    session.claudeMethod = "skipped";
-    return { ok: true };
-  });
-
   // --------------------------------------------------------------- finish ---
   app.post("/setup/api/finish", async (req, reply) => {
     if (!session.botToken || !session.botInfo) return reply.code(400).send({ error: "bot token not verified" });
     if (!session.confirmedUser) return reply.code(400).send({ error: "owner not confirmed" });
+    // Claude must be connected here — there is no panel UI to add it later, so a
+    // skipped connection would ship a bot that fails every turn. The wizard has
+    // no Skip button; this guards a direct/stale POST from finishing brain-less.
+    if (session.claudeMethod === "none") return reply.code(400).send({ error: "connect Claude before finishing" });
     const rawModel = String((req.body as { model?: unknown })?.model ?? DEFAULT_MODEL).trim();
     const model = MODEL_CHOICES.has(rawModel) ? rawModel : DEFAULT_MODEL;
 

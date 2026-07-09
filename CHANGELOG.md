@@ -3,6 +3,22 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.6.5] - 2026-07-10
+
+### Added
+- **Browser-based first-run setup wizard**: `curl -fsSL https://myagens.com/install.sh | bash -s -- --browser` (and `MYAGENS_SETUP="browser"` on Windows) installs prerequisites, clones, and builds, then boots the app in a loopback-only, single-use setup mode that serves a guided browser wizard instead of asking terminal questions. The wizard proves the bot token against `getMe`, auto-detects your owner id by long-polling `getUpdates` for whoever presses START (confirmed by a DM), and detects/drives Claude auth (`claude setup-token`) or validates an API key — writing a `0600` `.env` and handing back to the installer to install and start the service, so the wizard's success page signs you in within seconds. Available on Linux, macOS, and Windows. ([e18854b](https://github.com/gyorgysh/myagens/commit/e18854b))
+- **Sonnet 5 is the default model in the installers**: the CLI and Windows first-run wizards now default the agent to `claude-sonnet-5`, and the Claude connect step more clearly distinguishes signing in with a Claude subscription from pasting an API key. ([f057e5c](https://github.com/gyorgysh/myagens/commit/f057e5c), [c65cc71](https://github.com/gyorgysh/myagens/commit/c65cc71), [a3006f5](https://github.com/gyorgysh/myagens/commit/a3006f5))
+
+### Changed
+- **Upgraded to TypeScript 7.** ([3b93212](https://github.com/gyorgysh/myagens/commit/3b93212))
+
+### Fixed
+- **Setup wizard ignores ambient `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN`** that would otherwise hijack the agent's auth during setup. ([c32ccfd](https://github.com/gyorgysh/myagens/commit/c32ccfd))
+- **Windows agent could not run without a bash path**: the installer now sets `CLAUDE_CODE_GIT_BASH_PATH` so the agent's shell tools work. ([5836bd9](https://github.com/gyorgysh/myagens/commit/5836bd9))
+- **Windows installer hardening**: `nssm` stderr no longer aborts the install under `ErrorActionPreference=Stop`. ([7fc11b3](https://github.com/gyorgysh/myagens/commit/7fc11b3))
+- **Wizard reliability**: a stale panel service worker that could wedge the wizard is evicted, and wizard responses send `no-store` so browsers stop replaying cached empty candidate polls. ([c97de4e](https://github.com/gyorgysh/myagens/commit/c97de4e), [90fd5bd](https://github.com/gyorgysh/myagens/commit/90fd5bd))
+- **Owner detection surfaces Telegram 409 conflicts** (a second poller on the same token) instead of silently starving, with parity between the CLI and browser paths. ([3424f08](https://github.com/gyorgysh/myagens/commit/3424f08))
+
 ## [0.6.4] - 2026-07-07
 
 ### Added

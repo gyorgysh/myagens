@@ -2,14 +2,14 @@
 
 <p align="center">
   <a href="https://github.com/gyorgysh/myagens/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/gyorgysh/myagens/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPLv3%20%2B%20Commercial-blue"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPLv3-blue"></a>
   <img alt="Node" src="https://img.shields.io/badge/node-%3E%3D20-brightgreen">
   <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey">
 </p>
 
 **Your personal AI that lives on your own machine.** Talk to it over Telegram from anywhere, or drive it from a private web dashboard. It reads your files, runs your code, checks your services, and reports back, asking for your approval before anything risky runs. Atlas is your central coordinator: he runs day-to-day operations, remembers everything, learns your workflows, and commands a team of specialized Leads. Each Lead owns a domain and can have its own Telegram bot.
 
-Source-available under AGPLv3, free forever for personal use. Built on real **Claude Code** agents (the same agent that runs in your terminal), so every agent can read files, run commands, edit code, check services, and ship things. Replies stream back live and risky actions are gated behind your approval. There is no MyAgens service in the loop. It runs as a process on your own hardware, and the only network calls it makes are the ones you configure: your model provider and any connector you explicitly turn on.
+Free and open-source under the GNU GPLv3. Built on real **Claude Code** agents (the same agent that runs in your terminal), so every agent can read files, run commands, edit code, check services, and ship things. Replies stream back live and risky actions are gated behind your approval. There is no MyAgens service in the loop. It runs as a process on your own hardware, and the only network calls it makes are the ones you configure: your model provider and any connector you explicitly turn on.
 
 ![MyAgens Panel dashboard: live system health, Claude usage, per-core load, and filesystems](images/dashboard.webp)
 
@@ -61,7 +61,7 @@ That is the short version. The full list (SSRF guards, DNS-rebinding protection,
 Not unless you tell it to. MyAgens runs as a process on hardware you control; there is no cloud service in the middle. The only outbound calls are the ones you configure: your model provider (Anthropic, or any OpenAI-compatible/local endpoint) and any connector you explicitly enable. Point it at a local model via Ollama or LM Studio and nothing ever touches the cloud.
 
 **Is it actually free?**
-Yes, for personal use: AGPLv3, with no seat limits and no telemetry. If you run it as part of a commercial product or inside a for-profit business, a separate commercial license applies (see [License](#license)). Most personal deployments qualify for the free license.
+Yes. It's free and open-source under the GNU GPLv3, with no seat limits, no telemetry, and no commercial tier. Use it, study it, fork it, and contribute back; the only condition is that any distributed version stays open under the same license (see [License](#license)).
 
 **What can it actually do without asking me first?**
 By default it can read files, search, and inspect; nothing that changes state. The moment it wants to write a file, run a command, or use a connector, it stops and shows you exactly what it is about to do, with Approve / Deny / Always-allow buttons. Loosen or tighten this per chat with `/mode`.
@@ -675,8 +675,8 @@ Created by **Gyorgy**. [gyorgy.sh](https://gyorgy.sh) · [github.com/gyorgysh](h
 
 ## License
 
-**AGPLv3 for personal and open-source use. Commercial License required for business use.**
+GNU GPL v3.0 © 2026 Gyorgy ([gyorgy.sh](https://gyorgy.sh)) and MyAgens contributors.
 
-Free to use, modify, and contribute for personal projects, research, and open-source work under the [GNU AGPLv3](LICENSE). If you use MyAgens commercially (as part of a product, service, or for-profit organisation), a separate Commercial License is required.
+MyAgens is free software: use it, study it, fork it, and contribute back. The copyleft terms mean any distributed version (including forks and modifications) must stay open-source under the same license, so nobody can take it closed and ship a proprietary product from it. See [LICENSE](LICENSE) for the full text.
 
-Contact [gyorgy@pueev.com](mailto:gyorgy@pueev.com) or [gyorgy.sh](https://gyorgy.sh) to discuss commercial licensing.
+If MyAgens is useful to you, you can [support its development](https://gyorgy.sh/donate).

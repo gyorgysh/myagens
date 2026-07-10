@@ -2,7 +2,7 @@
   "name": "myagens",
   "version": "0.6.5",
   "description": "Remote access to Claude Code over Telegram — stream a real Claude Code agent to your phone.",
-  "license": "AGPL-3.0-only",
+  "license": "GPL-3.0-only",
   "type": "module",
   "engines": {
     "node": ">=20"

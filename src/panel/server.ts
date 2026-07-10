@@ -606,6 +606,7 @@ function workerView(w: Worker) {
     fallbackBackendId: w.fallbackBackendId ?? "",
     fallbackProviderId: w.fallbackProviderId ?? "",
     fallbackModel: w.fallbackModel ?? "",
+    remoteControl: w.remoteControl === true,
     systemPrompt: w.systemPrompt ?? "",
     skillId: w.skillId ?? "",
     schedule: describeWorkerSchedule(w),
@@ -717,6 +718,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       autonomy,
       defaultLanguage,
       dryRun,
+      remoteControl,
       fallbackProviderId,
       fallbackBackendId,
       fallbackModel,
@@ -732,6 +734,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       autonomy?: string;
       defaultLanguage?: string;
       dryRun?: boolean;
+      remoteControl?: boolean;
       fallbackProviderId?: string;
       fallbackBackendId?: string;
       fallbackModel?: string;
@@ -748,6 +751,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       autonomy: autonomy as "supervised" | "standard" | "full" | "auto_until_error" | undefined,
       defaultLanguage,
       dryRun,
+      remoteControl,
       fallbackProviderId,
       fallbackBackendId,
       fallbackModel,

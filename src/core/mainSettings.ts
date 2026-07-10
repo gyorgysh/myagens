@@ -33,6 +33,13 @@ interface MainSettings {
    *  or the panel API, not surfaced as a headline UI choice. */
   backendId?: string;
   /**
+   * Claude Code Remote Control: when true, Atlas's turns run with
+   * `--remote-control <name>` so the live session can be watched and steered
+   * from claude.ai/code or the Claude mobile app. Off by default; Claude
+   * backend only (the flag means nothing to grok/codex/ollama).
+   */
+  remoteControl?: boolean;
+  /**
    * Character and tone override for Atlas. If set, injected into the system
    * prompt after the base personality block. Separate from systemPrompt (domain
    * knowledge). Example: "formal and precise, no jokes".
@@ -148,6 +155,7 @@ export function mainSettingsView() {
     autonomy: s.autonomy ?? "standard",
     defaultLanguage: s.defaultLanguage ?? config.DEFAULT_LANGUAGE,
     dryRun: s.dryRun === true,
+    remoteControl: s.remoteControl === true,
     fallbackProviderId: s.fallbackProviderId ?? "",
     fallbackBackendId: s.fallbackBackendId ?? "",
     fallbackModel: s.fallbackModel ?? "",
@@ -168,6 +176,7 @@ export function setMainSettings(patch: {
   autonomy?: Autonomy;
   defaultLanguage?: string;
   dryRun?: boolean;
+  remoteControl?: boolean;
   fallbackProviderId?: string;
   fallbackBackendId?: string;
   fallbackModel?: string;
@@ -185,6 +194,7 @@ export function setMainSettings(patch: {
   if (patch.autonomy !== undefined) s.autonomy = patch.autonomy || undefined;
   if (patch.defaultLanguage !== undefined) s.defaultLanguage = patch.defaultLanguage || undefined;
   if (patch.dryRun !== undefined) s.dryRun = patch.dryRun || undefined;
+  if (patch.remoteControl !== undefined) s.remoteControl = patch.remoteControl || undefined;
   if (patch.fallbackProviderId !== undefined)
     s.fallbackProviderId = patch.fallbackProviderId || undefined;
   if (patch.fallbackBackendId !== undefined)
@@ -230,6 +240,8 @@ export function resolveMainRun(): {
   model?: string;
   env?: Record<string, string | undefined>;
   backendId?: string;
+  /** Remote Control session name when the toggle is on (Claude backend only). */
+  remoteControl?: string;
   persona?: string;
   autonomy: Autonomy;
   defaultLanguage?: string;
@@ -254,6 +266,9 @@ export function resolveMainRun(): {
     model: s.model || undefined,
     env,
     backendId: s.backendId || undefined,
+    // Named after the agent so the session is recognisable in the claude.ai
+    // session list. Only the Claude backend understands the flag.
+    remoteControl: s.remoteControl && !s.backendId ? config.ATLAS_NAME : undefined,
     persona: s.persona || undefined,
     autonomy: s.autonomy ?? "standard",
     defaultLanguage: s.defaultLanguage || undefined,

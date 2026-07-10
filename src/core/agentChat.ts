@@ -246,6 +246,7 @@ export class AgentChatManager {
         persona: w.persona,
         language: w.language,
         promptExclude: w.promptExclude,
+        remoteControl: w.remoteControl && !w.backendId ? w.name : undefined,
         // The President is driving from the trusted panel, so allow tools.
         permissionMode: "bypassPermissions",
         settingSources: ["user"],

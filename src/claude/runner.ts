@@ -1,4 +1,5 @@
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { execFileSync } from "node:child_process";
 import { config, normalizeModelId } from "../config.js";
 import { systemPrompt } from "../prompt.js";
 import { memory, formatMemoriesForPrompt } from "../core/memory.js";
@@ -14,6 +15,29 @@ import {
   textDelta,
   type SdkMessage,
 } from "./events.js";
+
+/**
+ * Path of the *installed* `claude` CLI, resolved once per process. Remote
+ * Control needs it: the SDK's bundled cli.js (0.1.x) predates the
+ * `--remote-control` flag and rejects it with "unknown option", while the
+ * system CLI (2.x) accepts it in stream-json mode. null when not on PATH.
+ */
+let systemCliPath: string | null | undefined;
+function findSystemCli(): string | null {
+  if (systemCliPath !== undefined) return systemCliPath;
+  try {
+    const out = execFileSync(process.platform === "win32" ? "where" : "which", ["claude"], {
+      encoding: "utf8",
+    });
+    systemCliPath = out.split("\n")[0]?.trim() || null;
+  } catch {
+    systemCliPath = null;
+  }
+  if (!systemCliPath) {
+    log.warn("Remote Control unavailable: no installed `claude` CLI found on PATH");
+  }
+  return systemCliPath;
+}
 
 /** Tools that are read-only and safe to run without asking the user. */
 export const AUTO_ALLOWED_TOOLS = new Set([
@@ -102,6 +126,15 @@ export interface RunOptions {
    * (a large work.md especially) costs input tokens on every turn.
    */
   promptExclude?: string[];
+  /**
+   * When set, the turn runs with `--remote-control <name>` so its live session
+   * can be watched and steered from claude.ai/code or the Claude mobile app.
+   * The value is the session name shown there (the agent's display name). The
+   * session exists only while the turn's CLI process runs. Needs the installed
+   * `claude` CLI on PATH (the SDK's bundled cli.js predates the flag) and a
+   * Claude subscription (OAuth) login; ignored by the non-Claude backends.
+   */
+  remoteControl?: string;
   /** "default" = interactive approval; "bypassPermissions" = autonomous. */
   permissionMode: "default" | "bypassPermissions";
   /**
@@ -163,6 +196,11 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
   const MAX_ATTEMPTS = 3;
   let lastErr: unknown;
 
+  // Remote Control must run on the *installed* CLI — the SDK's bundled cli.js
+  // rejects the flag ("unknown option"). Silently run without RC when no system
+  // CLI is found, rather than failing the whole turn.
+  const rcCli = opts.remoteControl ? findSystemCli() : null;
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // Per-attempt: fresh stderr buffer, and a fresh image prompt (an image
     // generator is single-use; the text prompt is a reusable string).
@@ -195,6 +233,11 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
           opts.promptExclude,
         ),
         permissionMode: opts.permissionMode,
+        // Remote Control: the SDK has no first-class option, but the system CLI
+        // accepts --remote-control <name> in stream-json mode (verified 2.1.206),
+        // so pass it through extraArgs and spawn that CLI instead of the bundled one.
+        extraArgs: rcCli ? { "remote-control": opts.remoteControl! } : undefined,
+        pathToClaudeCodeExecutable: rcCli ?? undefined,
         includePartialMessages: true,
         abortController: opts.abortController,
         mcpServers: opts.mcpServers,

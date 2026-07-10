@@ -524,6 +524,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const [persona, setPersona] = useState("");
   const [autonomy, setAutonomy] = useState<Autonomy>("standard");
   const [dryRun, setDryRun] = useState(false);
+  const [remoteControl, setRemoteControl] = useState(false);
   const [updateNotifyOptOut, setUpdateNotifyOptOut] = useState(false);
   const [promptExclude, setPromptExclude] = useState<PromptExcludeKey[]>([]);
   const [fallbackProviderId, setFallbackProviderId] = useState("");
@@ -543,6 +544,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         setPersona(a.persona ?? "");
         setAutonomy(a.autonomy ?? "standard");
         setDryRun(a.dryRun === true);
+        setRemoteControl(a.remoteControl === true);
         setUpdateNotifyOptOut(a.updateNotifyOptOut === true);
         setPromptExclude(a.promptExclude ?? []);
         setFallbackProviderId(a.fallbackProviderId ?? "");
@@ -565,6 +567,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
       persona !== (agent.persona ?? "") ||
       autonomy !== (agent.autonomy ?? "standard") ||
       dryRun !== (agent.dryRun === true) ||
+      remoteControl !== (agent.remoteControl === true) ||
       updateNotifyOptOut !== (agent.updateNotifyOptOut === true) ||
       !sameExclude(promptExclude, agent.promptExclude ?? []) ||
       fallbackProviderId !== (agent.fallbackProviderId ?? "") ||
@@ -614,6 +617,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         persona,
         autonomy,
         dryRun,
+        remoteControl,
         updateNotifyOptOut,
         promptExclude,
         fallbackProviderId,
@@ -841,6 +845,24 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
               </p>
             )}
           </div>
+
+          {!backendId && (
+            // Claude backend only: --remote-control means nothing to the other CLIs.
+            <div className="mt-4 border-t border-line pt-4">
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={remoteControl}
+                  onChange={(e) => setRemoteControl(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                />
+                <span>
+                  <span className="text-sm font-medium text-fg">{t("settings_remote_control")}</span>
+                  <span className="block text-xs text-fg-dim">{t("settings_remote_control_desc")}</span>
+                </span>
+              </label>
+            </div>
+          )}
 
           <div className="mt-4 border-t border-line pt-4">
             <label className="flex cursor-pointer items-start gap-2.5">

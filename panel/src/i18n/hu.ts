@@ -565,6 +565,8 @@ export const hu: Translations = {
   settings_section_autonomy: "Autonómia",
   settings_dryrun: "Próbafutás mód",
   settings_dryrun_desc: "A módosító eszközök (Bash, Write, Edit) csak visszajeleznek, de nem futnak le. Az ügynök elmondja, mit tenne, anélkül hogy hozzányúlna a géphez.",
+  settings_remote_control: "Távirányítás (claude.ai)",
+  settings_remote_control_desc: "Az ügynök körei Claude Code Remote Control-lal futnak, így az élő munkamenet a claude.ai/code oldalról vagy a Claude mobilappból figyelhető és irányítható futás közben. Telepített claude CLI és Claude-előfizetéses bejelentkezés kell hozzá; a munkamenetek az ügynök nevén jelennek meg.",
   settings_dryrun_active: "A próbafutás BE van kapcsolva. Semmilyen fájl- vagy parancsmódosítás nem hajtódik végre, amíg ki nem kapcsolod.",
   settings_update_notify: "Új verzió értesítés",
   settings_update_notify_desc: "Ha új verzió jelenik meg a GitHubon, üzenek Telegramon egy Elfogad/Később választással. Az Elfogad ugyanazt a mentő útvonalat futtatja, mint a /reload.",

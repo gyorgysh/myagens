@@ -20,7 +20,7 @@ import { RunLogWriter } from "./runLog.js";
 import { log, preview } from "../logger.js";
 import { toolDiffMeta } from "../telegram/formatting.js";
 import { agentUsage } from "./agentUsage.js";
-import { isDryRun, dryRunDescription, DRY_RUN_TOOLS } from "./mainSettings.js";
+import { isDryRun, dryRunDescription, DRY_RUN_TOOLS, resolveMainRun } from "./mainSettings.js";
 
 const OUTPUT_HEAD = 3_000;
 const OUTPUT_TAIL = 5_000;
@@ -456,6 +456,13 @@ export class TaskDelegator {
         env,
         systemPromptAppend: append,
         persona: lead?.persona,
+        // Remote Control follows whoever runs the card: the delegated Lead's own
+        // toggle, or the main agent's when the card runs as Atlas.
+        remoteControl: lead
+          ? lead.remoteControl && !lead.backendId
+            ? lead.name
+            : undefined
+          : resolveMainRun().remoteControl,
         // Dry-run forces the gate on so mutating tools can be echoed instead of
         // run; otherwise delegated runs go full bypass.
         permissionMode: isDryRun() ? "default" : "bypassPermissions",

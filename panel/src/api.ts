@@ -342,6 +342,8 @@ export interface Worker {
   fallbackBackendId?: string;
   fallbackProviderId?: string;
   fallbackModel?: string;
+  /** Claude Code Remote Control: watch/steer live sessions from claude.ai/mobile. */
+  remoteControl?: boolean;
   systemPrompt: string;
   skillId: string;
   schedule: string;
@@ -946,6 +948,8 @@ export interface MainAgent {
   defaultLanguage: string;
   /** Global dry-run: mutating tools are echoed, not executed. */
   dryRun: boolean;
+  /** Claude Code Remote Control: watch/steer live sessions from claude.ai/mobile. */
+  remoteControl: boolean;
   /** Provider to fail over to when the plan is rate-limited ("" = off). */
   fallbackProviderId: string;
   /** Agent backend to fail over to ("" = keep the primary backend). */
@@ -1249,7 +1253,7 @@ export const api = {
   runProbe: () => req<{ ok: boolean; message: string }>("POST", "/api/usage-probe/run"),
 
   agent: () => get<MainAgent>("/api/agent"),
-  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; fallbackProviderId?: string; fallbackBackendId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean; promptExclude?: PromptExcludeKey[] }) =>
+  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; remoteControl?: boolean; fallbackProviderId?: string; fallbackBackendId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean; promptExclude?: PromptExcludeKey[] }) =>
     req<MainAgent>("PUT", "/api/agent", s),
   resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),

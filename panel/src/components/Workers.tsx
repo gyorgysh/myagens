@@ -49,6 +49,7 @@ const emptyForm = {
   fallbackBackendId: "",
   fallbackProviderId: "",
   fallbackModel: "",
+  remoteControl: false,
   systemPrompt: "",
   skillId: "",
   when: "",
@@ -516,6 +517,7 @@ function WorkerRow({
               fallbackBackendId: worker.fallbackBackendId ?? "",
               fallbackProviderId: worker.fallbackProviderId ?? "",
               fallbackModel: worker.fallbackModel ?? "",
+              remoteControl: worker.remoteControl === true,
               systemPrompt: worker.systemPrompt,
               skillId: worker.skillId,
               when: worker.when,
@@ -755,6 +757,7 @@ function WorkerWizard({
         fallbackBackendId: "",
         fallbackProviderId: "",
         fallbackModel: "",
+        remoteControl: false,
         systemPrompt: String(c.systemPrompt ?? ""),
         skillId: String(c.skillId ?? ""),
         when: String(c.when ?? answers.schedule ?? ""),
@@ -1605,6 +1608,23 @@ function WorkerForm({
               )}
             </div>
           </>
+        )}
+        {!form.backendId && (
+          // Claude backend only: --remote-control means nothing to the other CLIs.
+          <div className="sm:col-span-2">
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={form.remoteControl}
+                onChange={(e) => setForm({ ...form, remoteControl: e.target.checked })}
+                className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+              />
+              <span>
+                <span className="text-sm font-medium text-fg">{t("settings_remote_control")}</span>
+                <span className="block text-xs text-fg-dim">{t("settings_remote_control_desc")}</span>
+              </span>
+            </label>
+          </div>
         )}
         <div>
           <Label>{t("workers_skill")}</Label>

@@ -564,6 +564,8 @@ export const en = {
   settings_section_autonomy: "Autonomy",
   settings_dryrun: "Dry-run mode",
   settings_dryrun_desc: "Mutating tools (Bash, Write, Edit) are echoed but not executed. The agent narrates what it would do without touching the host.",
+  settings_remote_control: "Remote Control (claude.ai)",
+  settings_remote_control_desc: "Run this agent's turns with Claude Code Remote Control, so the live session can be watched and steered from claude.ai/code or the Claude mobile app while it runs. Needs the claude CLI installed and a Claude subscription sign-in; sessions appear under the agent's name.",
   settings_dryrun_active: "Dry-run is ON. No file or command changes will actually run until you turn it off.",
   settings_update_notify: "New-version notifications",
   settings_update_notify_desc: "When a new version is detected on GitHub, message me on Telegram with an Accept/Later choice. Accept runs the same rescue path as /reload.",

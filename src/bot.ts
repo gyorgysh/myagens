@@ -795,6 +795,7 @@ async function handleUserPrompt(
       knownPaths: mainRun.knownPaths,
       persona: mainRun.persona,
       promptExclude: mainRun.promptExclude,
+      remoteControl: mainRun.remoteControl,
       language: session.language ?? mainRun.defaultLanguage,
       // Dry-run forces the gate on (default mode) even in full autonomy, so the
       // canUseTool interception above can catch and echo mutating tools.

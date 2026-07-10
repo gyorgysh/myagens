@@ -342,6 +342,7 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
     "fallbackModel": "",
     "fallbackThreshold": 95,
     "dryRun": false,
+    "remoteControl": false,
     "knownPaths": [
       { "label": "Projects", "path": "/Users/you/dev" },
       { "label": "Data", "path": "/Users/you/data" }
@@ -357,6 +358,11 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
 #   (a resume token doesn't cross backends). "" = keep the primary backend.
 # fallbackModel: model id on the fallback target ("" = the target's default; not
 #   inherited from the primary Claude model when the backend switches).
+# remoteControl: run this agent's turns with Claude Code Remote Control, so the
+#   live session can be watched/steered from claude.ai/code or the Claude mobile
+#   app while it runs. Needs the installed `claude` CLI on PATH and a Claude
+#   subscription (OAuth) sign-in; Claude backend only. Workers/Leads carry the
+#   same per-agent field on POST|PUT /api/workers.
 # fallbackThreshold: usage percent (50–100, default 95) at which the probe-driven
 #   fallback engages for autonomous turns.
 # dryRun: when true, mutating tools (Bash, Write, Edit, MultiEdit, NotebookEdit)

@@ -201,6 +201,7 @@ export class LeadBot {
         env,
         systemPromptAppend: append,
         promptExclude: lead.promptExclude,
+        remoteControl: lead.remoteControl && !lead.backendId ? lead.name : undefined,
         permissionMode: s.autonomy === "full" ? "bypassPermissions" : "default",
         abortController: s.abort,
         mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead.id }), skills: skillsMcp, crew: crewMcp, ...buildConnectorMcps(), ...buildImageGenMcps(), ...webhookMcps() },

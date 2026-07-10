@@ -58,6 +58,13 @@ export interface Worker {
   fallbackBackendId?: string;
   fallbackProviderId?: string;
   fallbackModel?: string;
+  /**
+   * Claude Code Remote Control: when true, this agent's turns run with
+   * `--remote-control <name>` so the live session can be watched and steered
+   * from claude.ai/code or the Claude mobile app. Off by default; Claude
+   * backend only.
+   */
+  remoteControl?: boolean;
   /** Extra persona instructions appended to the system prompt. */
   systemPrompt?: string;
   /** Optional skill whose body augments the system prompt. */
@@ -247,6 +254,7 @@ export class WorkerManager {
       fallbackBackendId: input.fallbackBackendId || undefined,
       fallbackProviderId: input.fallbackProviderId || undefined,
       fallbackModel: input.fallbackModel?.trim() || undefined,
+      remoteControl: input.remoteControl || undefined,
       systemPrompt: input.systemPrompt?.trim() || undefined,
       skillId: input.skillId || undefined,
       schedule: parseSchedule(input.when),
@@ -283,6 +291,7 @@ export class WorkerManager {
     if (input.fallbackBackendId !== undefined) w.fallbackBackendId = input.fallbackBackendId || undefined;
     if (input.fallbackProviderId !== undefined) w.fallbackProviderId = input.fallbackProviderId || undefined;
     if (input.fallbackModel !== undefined) w.fallbackModel = input.fallbackModel.trim() || undefined;
+    if (input.remoteControl !== undefined) w.remoteControl = input.remoteControl || undefined;
     if (input.systemPrompt !== undefined) w.systemPrompt = input.systemPrompt.trim() || undefined;
     if (input.skillId !== undefined) w.skillId = input.skillId || undefined;
     if (input.enabled !== undefined) w.enabled = input.enabled;
@@ -458,6 +467,7 @@ export class WorkerManager {
         persona: w.persona,
         language: w.language,
         promptExclude: w.promptExclude,
+        remoteControl: w.remoteControl && !w.backendId ? w.name : undefined,
         permissionMode,
         // Load full project context (CLAUDE.md, settings) in the worker's cwd, so
         // it operates like a real Claude Code session. (The earlier "exit 1" this
@@ -585,6 +595,7 @@ export interface WorkerInput {
   fallbackBackendId?: string;
   fallbackProviderId?: string;
   fallbackModel?: string;
+  remoteControl?: boolean;
   systemPrompt?: string;
   skillId?: string;
   /** Schedule token: "30m", "2h", "HH:MM", or "" / undefined for manual-only. */

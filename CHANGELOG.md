@@ -3,6 +3,19 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.6.6] - 2026-07-10
+
+### Added
+- **Run any agent entirely on a local Ollama model**: a fourth agent backend, **Ollama (local chat)**, talks straight to a local Ollama server's chat API instead of driving the Claude CLI, so a small local model (14-24B) that could never prefill the CLI's ~30k-token system prompt stays fast and fully Anthropic-independent. It hands the model a tiny hand-built prompt (under 2k tokens) plus a single `Bash` tool gated through the normal approval flow (up to eight tool rounds, auto-degrading to plain chat for models without function calling), and keeps its own per-session history on disk. Pick it per agent from the panel's "AI backend" selector and set that agent's model to an installed model name (`ollama list`); tune it with `OLLAMA_BASE_URL` / `OLLAMA_MODEL` / `OLLAMA_NUM_CTX` / `OLLAMA_KEEP_ALIVE`, which it reads directly and never lets a configured cloud provider redirect off-host. ([3340556](https://github.com/gyorgysh/myagens/commit/3340556))
+- **Per-agent model fallback across backends**: fallback is no longer limited to repointing Claude at a second provider — an agent's fallback target can now be a whole different backend (`fallbackBackendId` = Ollama, Grok CLI, or Codex CLI). Every worker and Lead carries its own `fallbackBackendId`/`fallbackProviderId`/`fallbackModel`, so each fails over independently of Atlas. On top of the existing proactive switch (background turns move to the fallback once the cached usage probe crosses the threshold), a new error-driven one-shot failover retries a single turn on the fallback the moment it hits a usage or rate-limit error mid-flight — interactive turns included — and notifies the chat. A cross-backend failover starts a fresh conversation, since a Claude resume token means nothing to another backend. ([3340556](https://github.com/gyorgysh/myagens/commit/3340556))
+- **Per-agent system-prompt slimming**: each agent (Atlas and every worker/Lead) gets a four-checkbox "System prompt" control to drop sections from the prompt append — `work.md`, the persona block, known paths, and memory recall (excluding memory skips recall entirely). It trims only our append, never the Claude Code preset itself, so the main win is smaller or local models where a large `work.md` costs input tokens on every turn. Surfaced in the panel Settings → Agent Identity and the Worker edit form. ([3340556](https://github.com/gyorgysh/myagens/commit/3340556), [9ee46ec](https://github.com/gyorgysh/myagens/commit/9ee46ec))
+
+### Changed
+- **Relicensed to GNU GPLv3**: MyAgens moves from AGPLv3-plus-commercial to a single **GPL-3.0** license — free and open-source with no seat limits, no telemetry, and no commercial tier. The copyleft terms keep any distributed fork open under the same license. ([8c6de11](https://github.com/gyorgysh/myagens/commit/8c6de11))
+
+### Fixed
+- **A hung agent backend could leave a chat stuck "busy" forever**: the SDK stream had no inactivity guard, so a wedged CLI subprocess never released the session's busy flag and the chat could not start another turn. A new turn stall watchdog, wired centrally into the backend registry, aborts a turn after `TURN_STALL_TIMEOUT_MS` (default 30 minutes; `0` disables) of complete backend silence — no streamed text, tool calls, or permission activity — and returns a friendly error; while a tool call is in flight the allowance extends by the task-run timeout. The heartbeat also gains a long-busy-chat signal that nudges you to `/stop` the stuck chat. ([3340556](https://github.com/gyorgysh/myagens/commit/3340556))
+
 ## [0.6.5] - 2026-07-10
 
 ### Added

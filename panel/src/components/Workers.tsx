@@ -1436,6 +1436,30 @@ function WorkerForm({
         />
       </div>
       <div>
+        <Label>{t("workers_prompt_exclude")}</Label>
+        <p className="-mt-0.5 mb-1.5 text-xs text-fg-faint">{t("workers_prompt_exclude_desc")}</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {WORKER_PROMPT_EXCLUDE_OPTIONS.map((opt) => (
+            <label key={opt.key} className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={form.promptExclude.includes(opt.key)}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    promptExclude: e.target.checked
+                      ? [...form.promptExclude, opt.key]
+                      : form.promptExclude.filter((k) => k !== opt.key),
+                  })
+                }
+                className="h-4 w-4 accent-[var(--accent)]"
+              />
+              <span className="text-sm text-fg">{t(opt.labelKey)}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+      <div>
         <Label>{t("workers_domain")}</Label>
         <p className="-mt-0.5 mb-1.5 text-xs text-fg-faint">{t("workers_domain_sub")}</p>
         <TextArea

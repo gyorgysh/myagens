@@ -721,6 +721,30 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
             onChange={(e) => setPersona(e.target.value)}
             placeholder={t("settings_persona_placeholder")}
           />
+
+          <div className="mt-4 border-t border-line pt-4">
+            <span className="text-sm font-medium text-fg">{t("settings_prompt_exclude")}</span>
+            <p className="mt-0.5 mb-2 text-xs text-fg-dim">{t("settings_prompt_exclude_desc")}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {PROMPT_EXCLUDE_OPTIONS.map((opt) => (
+                <label key={opt.key} className="flex cursor-pointer items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={promptExclude.includes(opt.key)}
+                    onChange={(e) =>
+                      setPromptExclude((prev) =>
+                        e.target.checked
+                          ? [...prev, opt.key]
+                          : prev.filter((k) => k !== opt.key),
+                      )
+                    }
+                    className="h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <span className="text-sm text-fg">{t(opt.labelKey)}</span>
+                </label>
+              ))}
+            </div>
+          </div>
         </Accordion>
 
         <Accordion id="agent-autonomy" title={t("settings_section_autonomy")}>
@@ -775,30 +799,6 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
                 <span className="block text-xs text-fg-dim">{t("settings_update_notify_desc")}</span>
               </span>
             </label>
-          </div>
-
-          <div className="mt-4 border-t border-line pt-4">
-            <span className="text-sm font-medium text-fg">{t("settings_prompt_exclude")}</span>
-            <p className="mt-0.5 mb-2 text-xs text-fg-dim">{t("settings_prompt_exclude_desc")}</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {PROMPT_EXCLUDE_OPTIONS.map((opt) => (
-                <label key={opt.key} className="flex cursor-pointer items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={promptExclude.includes(opt.key)}
-                    onChange={(e) =>
-                      setPromptExclude((prev) =>
-                        e.target.checked
-                          ? [...prev, opt.key]
-                          : prev.filter((k) => k !== opt.key),
-                      )
-                    }
-                    className="h-4 w-4 accent-[var(--accent)]"
-                  />
-                  <span className="text-sm text-fg">{t(opt.labelKey)}</span>
-                </label>
-              ))}
-            </div>
           </div>
 
           <div className="mt-4 border-t border-line pt-4">

@@ -23,9 +23,9 @@ import { loadJson, saveJson } from "./jsonStore.js";
 import { PLANNING_PREAMBLE, isPlanningPrompt, stripPlanningPreamble } from "./planningMode.js";
 
 import { isStaleSession, type ImageInput } from "../claude/runner.js";
-import { getBackend } from "./backends.js";
+import { runTurnWithFallback } from "./fallback.js";
 import { agentUsage } from "./agentUsage.js";
-import { workers, type Worker } from "./workers.js";
+import { workers, workerFallbackSpec, type Worker } from "./workers.js";
 import { resolveAvatarSlug } from "./avatar.js";
 import { getSkill, recordSkillUse } from "./skills.js";
 import { getProvider } from "./providers.js";
@@ -224,8 +224,17 @@ export class AgentChatManager {
     const abort = new AbortController();
     s.abort = abort;
     let output = "";
+    // Surface an error-driven failover to the panel stream as a notice line (the
+    // same "notice" frame the stale-session recovery below uses).
+    const onFallback = (name: string) =>
+      this.broadcast({
+        type: "agentchat",
+        event: "notice",
+        agentId,
+        text: `Usage limit on the primary model — retrying via ${name}…`,
+      });
     try {
-      const res = await getBackend(w.backendId).runTurn({
+      const res = await runTurnWithFallback(w.backendId, {
         prompt: text,
         images,
         cwd: s.cwd || w.cwd || config.WORKDIR,
@@ -236,6 +245,7 @@ export class AgentChatManager {
         workerIdentity: protocol,
         persona: w.persona,
         language: w.language,
+        promptExclude: w.promptExclude,
         // The President is driving from the trusted panel, so allow tools.
         permissionMode: "bypassPermissions",
         settingSources: ["user"],
@@ -269,7 +279,7 @@ export class AgentChatManager {
             this.saveResume();
           }
         },
-      });
+      }, workerFallbackSpec(w), onFallback);
       const turnUsage = {
         costUsd: res.costUsd ?? 0,
         durationMs: res.durationMs ?? 0,

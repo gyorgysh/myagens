@@ -8,6 +8,7 @@ import {
   type NamedProvider,
   type NamedBackend,
   type ProviderKind,
+  type PromptExcludeKey,
 } from "../api.ts";
 import { useWorkerEvents, type LiveRun } from "../lib/useWorkerEvents.ts";
 import { roleLabel } from "../lib/agentRole.ts";
@@ -45,6 +46,9 @@ const emptyForm = {
   model: "",
   providerId: "",
   backendId: "",
+  fallbackBackendId: "",
+  fallbackProviderId: "",
+  fallbackModel: "",
   systemPrompt: "",
   skillId: "",
   when: "",
@@ -55,11 +59,20 @@ const emptyForm = {
   persona: "",
   autonomy: "standard" as Autonomy,
   language: "",
+  promptExclude: [] as PromptExcludeKey[],
   streamMode: "" as "" | "rich" | "draft" | "edit",
   webhookUrl: "",
   avatar: "",
 };
 type Form = typeof emptyForm;
+
+/** The four prompt-slimming keys with their i18n label keys, in display order. */
+const WORKER_PROMPT_EXCLUDE_OPTIONS: Array<{ key: PromptExcludeKey; labelKey: TranslationKey }> = [
+  { key: "workMd", labelKey: "workers_prompt_exclude_workmd" },
+  { key: "persona", labelKey: "workers_prompt_exclude_persona" },
+  { key: "knownPaths", labelKey: "workers_prompt_exclude_knownpaths" },
+  { key: "memory", labelKey: "workers_prompt_exclude_memory" },
+];
 
 type Named = { id: string; name: string };
 
@@ -496,6 +509,9 @@ function WorkerRow({
               model: worker.model,
               providerId: worker.providerId,
               backendId: worker.backendId ?? "",
+              fallbackBackendId: worker.fallbackBackendId ?? "",
+              fallbackProviderId: worker.fallbackProviderId ?? "",
+              fallbackModel: worker.fallbackModel ?? "",
               systemPrompt: worker.systemPrompt,
               skillId: worker.skillId,
               when: worker.when,
@@ -506,6 +522,7 @@ function WorkerRow({
               persona: worker.persona ?? "",
               autonomy: worker.autonomy ?? "full",
               language: worker.language ?? "",
+              promptExclude: worker.promptExclude ?? [],
               streamMode: (worker.streamMode ?? "") as "" | "rich" | "draft" | "edit",
               webhookUrl: worker.webhookUrl ?? "",
               avatar: worker.avatar ?? "",
@@ -726,8 +743,11 @@ function WorkerWizard({
         model: String(c.model ?? ""),
         providerId: String(c.providerId ?? ""),
         // The wizard doesn't draft a backend choice — new workers it creates
-        // always start on the default Claude backend.
+        // always start on the default Claude backend, with no fallback set.
         backendId: "",
+        fallbackBackendId: "",
+        fallbackProviderId: "",
+        fallbackModel: "",
         systemPrompt: String(c.systemPrompt ?? ""),
         skillId: String(c.skillId ?? ""),
         when: String(c.when ?? answers.schedule ?? ""),
@@ -738,6 +758,7 @@ function WorkerWizard({
         persona: String(c.persona ?? ""),
         autonomy: (c.autonomy ?? "full") as Autonomy,
         language: String(c.language ?? ""),
+        promptExclude: [] as PromptExcludeKey[],
         streamMode: "" as "" | "rich" | "draft" | "edit",
         webhookUrl: "",
         avatar: String(c.avatar ?? ""),
@@ -1069,6 +1090,29 @@ function WizardConfigEditor({
           value={form.persona}
           onChange={(e) => onChange({ persona: e.target.value })}
         />
+      </div>
+      <div>
+        <Label>{t("workers_prompt_exclude")}</Label>
+        <p className="mb-1.5 text-xs text-fg-faint">{t("workers_prompt_exclude_desc")}</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {WORKER_PROMPT_EXCLUDE_OPTIONS.map((opt) => (
+            <label key={opt.key} className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={form.promptExclude.includes(opt.key)}
+                onChange={(e) =>
+                  onChange({
+                    promptExclude: e.target.checked
+                      ? [...form.promptExclude, opt.key]
+                      : form.promptExclude.filter((k) => k !== opt.key),
+                  })
+                }
+                className="h-4 w-4 accent-[var(--accent)]"
+              />
+              <span className="text-sm text-fg">{t(opt.labelKey)}</span>
+            </label>
+          ))}
+        </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
@@ -1424,7 +1468,21 @@ function WorkerForm({
           </Select>
           <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_hint")}</p>
         </div>
-        {form.backendId && (
+        {form.backendId === "ollama" && (
+          // Ollama runs plain local chat: keep the Model field (the installed
+          // Ollama model name, free text) but drop Provider, which never applies.
+          <div>
+            <Label>{t("workers_model")}</Label>
+            <ModelSelect
+              value={form.model}
+              onChange={(model) => setForm({ ...form, model })}
+              suggestions={[]}
+              placeholder={t("workers_model_local")}
+            />
+            <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_ollama_hint")}</p>
+          </div>
+        )}
+        {form.backendId && form.backendId !== "ollama" && (
           <div>
             <Label>{t("workers_model")}</Label>
             <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_no_model")}</p>
@@ -1606,6 +1664,68 @@ function WorkerForm({
           </div>
         )}
       </div>
+      <details className="rounded-lg border border-line px-3 py-2">
+        <summary className="cursor-pointer text-sm font-medium text-fg-muted">
+          {t("workers_fallback")}
+        </summary>
+        <p className="mt-1 mb-2 text-xs text-fg-faint">{t("workers_fallback_hint")}</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <Label>{t("workers_ai_backend")}</Label>
+            <Select
+              value={form.fallbackBackendId}
+              onChange={(e) => {
+                const v = e.target.value;
+                // Providers only apply to the Claude backend — clear a stale one
+                // when a non-Claude fallback backend is picked.
+                setForm(
+                  v
+                    ? { ...form, fallbackBackendId: v, fallbackProviderId: "" }
+                    : { ...form, fallbackBackendId: v },
+                );
+              }}
+            >
+              <option value="">{t("workers_ai_backend_default")}</option>
+              {backends
+                .filter((b) => b.id !== "claude-agent-sdk")
+                .map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.displayName}
+                  </option>
+                ))}
+            </Select>
+          </div>
+          {!form.fallbackBackendId && (
+            <div>
+              <Label>{t("workers_provider")}</Label>
+              <Select
+                value={form.fallbackProviderId}
+                onChange={(e) => setForm({ ...form, fallbackProviderId: e.target.value })}
+              >
+                <option value="">{t("workers_anthropic_default")}</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+          <div>
+            <Label>{t("workers_model")}</Label>
+            <ModelSelect
+              value={form.fallbackModel}
+              onChange={(fallbackModel) => setForm({ ...form, fallbackModel })}
+              suggestions={form.fallbackBackendId || form.fallbackProviderId ? [] : MODEL_SUGGESTIONS}
+              placeholder={
+                form.fallbackBackendId || form.fallbackProviderId
+                  ? t("workers_model_local")
+                  : t("workers_model_default")
+              }
+            />
+          </div>
+        </div>
+      </details>
       <div>
         <Label>{t("workers_webhook")}</Label>
         <Input

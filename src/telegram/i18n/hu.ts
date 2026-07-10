@@ -38,11 +38,14 @@ export const hu: Record<keyof typeof en, string> = {
   bot_usage_exhausted: "📊 Használati limit kimerült. Várd meg a visszaállást, majd próbáld újra.",
   bot_err_rate_limited: "⏳ Az API korlátozott. Várj egy pillanatot, és próbáld újra.",
   bot_err_overloaded: "🌀 Az API jelenleg túlterhelt. Próbáld újra hamarosan.",
+  bot_err_stalled:
+    "⏱ A kör elnémult, ezért a beragadás-figyelő leállította (az agent folyamat valószínűleg lefagyott). A chat újra szabad; küldd el újra az üzenetet.",
   bot_err_auth:
     "🔑 A hitelesítés sikertelen. Ellenőrizd az ANTHROPIC_API_KEY értékét, vagy futtasd újra a `claude` CLI bejelentkezést, majd indítsd újra.",
   bot_stopping: "⏹ Leállítás…",
   bot_nothing_running: "Semmi nem fut.",
   bot_session_expired_retrying: "⚠️ Az előző munkamenet már nem létezik — friss beszélgetést indítok.",
+  bot_fallback_engaged: "⚠️ Használati limit az elsődleges modellen, újrapróbálom ezen keresztül: {name}…",
 
   // --- ping / crew status ---
   bot_ping_idle: "🟢 <b>Online</b> · tétlen, készen állok · fut {uptime} óta",

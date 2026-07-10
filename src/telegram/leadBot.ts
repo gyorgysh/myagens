@@ -3,9 +3,9 @@ import { isAbsolute, resolve } from "node:path";
 import { Telegraf } from "telegraf";
 import type { Telegram } from "telegraf";
 import type { Worker } from "../core/workers.js";
-import { workers } from "../core/workers.js";
+import { workers, workerFallbackSpec } from "../core/workers.js";
 import { isStaleSession, AUTO_ALLOWED_TOOLS } from "../claude/runner.js";
-import { getBackend } from "../core/backends.js";
+import { runTurnWithFallback } from "../core/fallback.js";
 import type { ImageInput } from "../claude/runner.js";
 import { memoryMcp } from "../mcp/memory.js";
 import { createTasksMcp } from "../mcp/tasks.js";
@@ -184,8 +184,15 @@ export class LeadBot {
         fromAgentId: lead.id,
       });
 
+      // Notify the chat when a usage-limit error mid-turn fails this Lead over to
+      // its configured fallback model/backend (core/fallback.ts).
+      const onFallback = (name: string) =>
+        void tg
+          .sendMessage(chatId, t("bot_fallback_engaged", langForChat(chatId), { name }), { parse_mode: "HTML" })
+          .catch(() => {});
+
       log.info("Lead turn starting", { lead: lead.name, leadId: lead.id, chatId, model: lead.model ?? config.CLAUDE_MODEL });
-      const res = await getBackend(lead.backendId).runTurn({
+      const res = await runTurnWithFallback(lead.backendId, {
         prompt,
         images,
         cwd: s.cwd,
@@ -193,6 +200,7 @@ export class LeadBot {
         model: lead.model,
         env,
         systemPromptAppend: append,
+        promptExclude: lead.promptExclude,
         permissionMode: s.autonomy === "full" ? "bypassPermissions" : "default",
         abortController: s.abort,
         mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead.id }), skills: skillsMcp, crew: crewMcp, ...buildConnectorMcps(), ...buildImageGenMcps(), ...webhookMcps() },
@@ -269,7 +277,7 @@ export class LeadBot {
           s.sessionId = id;
           sessions.save();
         },
-      });
+      }, workerFallbackSpec(lead), onFallback);
 
       await streamer.finalize();
 

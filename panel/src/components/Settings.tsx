@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, AuthError, type MainAgent, type Autonomy, type Provider, type PlanView, type PlanType, type ProbeResult, type EmbeddingConfig, type OllamaStatus, type LmStudioStatus, type PreferredBackend, type PushView, type Branding } from "../api.ts";
+import { api, AuthError, type MainAgent, type Autonomy, type Provider, type PlanView, type PlanType, type ProbeResult, type EmbeddingConfig, type OllamaStatus, type LmStudioStatus, type PreferredBackend, type PushView, type Branding, type PromptExcludeKey } from "../api.ts";
 import { Accordion, Badge, Button, Card, Input, Label, ModelSelect, Select, Skeleton, TextArea } from "./ui.tsx";
 import { MODEL_SUGGESTIONS } from "../lib/models.ts";
 import { useI18n, INTERFACE_LANGUAGES } from "../lib/useI18n.ts";
@@ -447,6 +447,21 @@ function WhitelabelSettings({ onAuthError }: { onAuthError: () => void }) {
 // Main Agent
 // ---------------------------------------------------------------------------
 
+/** The four prompt-slimming keys with their i18n label keys, in display order. */
+const PROMPT_EXCLUDE_OPTIONS: Array<{ key: PromptExcludeKey; labelKey: TranslationKey }> = [
+  { key: "workMd", labelKey: "settings_prompt_exclude_workmd" },
+  { key: "persona", labelKey: "settings_prompt_exclude_persona" },
+  { key: "knownPaths", labelKey: "settings_prompt_exclude_knownpaths" },
+  { key: "memory", labelKey: "settings_prompt_exclude_memory" },
+];
+
+/** Order-independent equality of two prompt-exclude selections. */
+function sameExclude(a: PromptExcludeKey[], b: PromptExcludeKey[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((k) => set.has(k));
+}
+
 function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
   const [agent, setAgent] = useState<MainAgent | null>(null);
@@ -457,7 +472,9 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const [autonomy, setAutonomy] = useState<Autonomy>("standard");
   const [dryRun, setDryRun] = useState(false);
   const [updateNotifyOptOut, setUpdateNotifyOptOut] = useState(false);
+  const [promptExclude, setPromptExclude] = useState<PromptExcludeKey[]>([]);
   const [fallbackProviderId, setFallbackProviderId] = useState("");
+  const [fallbackBackendId, setFallbackBackendId] = useState("");
   const [fallbackModel, setFallbackModel] = useState("");
   const [fallbackThreshold, setFallbackThreshold] = useState(95);
   const [busy, setBusy] = useState<string | null>(null);
@@ -474,7 +491,9 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         setAutonomy(a.autonomy ?? "standard");
         setDryRun(a.dryRun === true);
         setUpdateNotifyOptOut(a.updateNotifyOptOut === true);
+        setPromptExclude(a.promptExclude ?? []);
         setFallbackProviderId(a.fallbackProviderId ?? "");
+        setFallbackBackendId(a.fallbackBackendId ?? "");
         setFallbackModel(a.fallbackModel ?? "");
         setFallbackThreshold(a.fallbackThreshold ?? 95);
       })
@@ -494,7 +513,9 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
       autonomy !== (agent.autonomy ?? "standard") ||
       dryRun !== (agent.dryRun === true) ||
       updateNotifyOptOut !== (agent.updateNotifyOptOut === true) ||
+      !sameExclude(promptExclude, agent.promptExclude ?? []) ||
       fallbackProviderId !== (agent.fallbackProviderId ?? "") ||
+      fallbackBackendId !== (agent.fallbackBackendId ?? "") ||
       fallbackModel !== (agent.fallbackModel ?? "") ||
       fallbackThreshold !== (agent.fallbackThreshold ?? 95));
 
@@ -541,7 +562,9 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         autonomy,
         dryRun,
         updateNotifyOptOut,
+        promptExclude,
         fallbackProviderId,
+        fallbackBackendId,
         fallbackModel,
         fallbackThreshold,
       });
@@ -618,7 +641,21 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
             </Select>
             <p className="mt-1 text-xs text-fg-dim">{t("settings_ai_backend_hint")}</p>
           </div>
-          {backendId ? (
+          {backendId === "ollama" ? (
+            // Ollama runs plain local chat: keep the Model field (it's the
+            // installed Ollama model name, free text) but drop Provider, which
+            // never applies to this backend's own auth.
+            <div>
+              <Label>{t("model")}</Label>
+              <ModelSelect
+                value={model}
+                onChange={setModel}
+                suggestions={[]}
+                placeholder={t("settings_model_local")}
+              />
+              <p className="mt-1 text-xs text-fg-dim">{t("settings_ai_backend_ollama_hint")}</p>
+            </div>
+          ) : backendId ? (
             <p className="text-xs text-fg-dim">{t("settings_ai_backend_no_model")}</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -741,6 +778,30 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
           </div>
 
           <div className="mt-4 border-t border-line pt-4">
+            <span className="text-sm font-medium text-fg">{t("settings_prompt_exclude")}</span>
+            <p className="mt-0.5 mb-2 text-xs text-fg-dim">{t("settings_prompt_exclude_desc")}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {PROMPT_EXCLUDE_OPTIONS.map((opt) => (
+                <label key={opt.key} className="flex cursor-pointer items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={promptExclude.includes(opt.key)}
+                    onChange={(e) =>
+                      setPromptExclude((prev) =>
+                        e.target.checked
+                          ? [...prev, opt.key]
+                          : prev.filter((k) => k !== opt.key),
+                      )
+                    }
+                    className="h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <span className="text-sm text-fg">{t(opt.labelKey)}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-line pt-4">
             <span className="text-sm font-medium text-fg">{t("settings_fallback")}</span>
             <p className="mt-0.5 mb-2 text-xs text-fg-dim">{t("settings_fallback_desc")}</p>
             {agent.degraded?.active && (
@@ -750,37 +811,73 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
                   .replace("{reason}", agent.degraded.reason ?? "")}
               </p>
             )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Label>{t("settings_fallback_provider")}</Label>
-                <Select
-                  value={fallbackProviderId}
-                  onChange={(e) => setFallbackProviderId(e.target.value)}
-                >
-                  <option value="">{t("settings_fallback_none")}</option>
-                  {agent.providers.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
+            <div className="mb-3">
+              <Label>{t("settings_fallback_backend")}</Label>
+              <Select
+                value={fallbackBackendId}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setFallbackBackendId(v);
+                  // Providers only apply to the Claude backend — clear a stale
+                  // one so it isn't sent alongside a non-Claude fallback backend.
+                  if (v) setFallbackProviderId("");
+                }}
+              >
+                <option value="">{t("settings_ai_backend_default")}</option>
+                {agent.backends
+                  .filter((b) => b.id !== "claude-agent-sdk")
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>{b.displayName}</option>
                   ))}
-                </Select>
-              </div>
+              </Select>
+              <p className="mt-1 text-xs text-fg-dim">{t("settings_fallback_backend_hint")}</p>
+            </div>
+            {fallbackBackendId ? (
+              // A non-Claude fallback backend manages its own auth, so the
+              // provider input doesn't apply — keep only a free-text model name
+              // (e.g. the installed Ollama model).
               <div>
                 <Label>{t("model")}</Label>
                 <ModelSelect
                   value={fallbackModel}
                   onChange={setFallbackModel}
-                  suggestions={fallbackProviderId ? [] : MODEL_SUGGESTIONS}
-                  onFetch={
-                    fallbackProviderId
-                      ? () => api.providerModels(fallbackProviderId).then((r) => r.models).catch(() => [])
-                      : undefined
-                  }
-                  fetchLabel={t("fetch")}
+                  suggestions={[]}
                   placeholder={t("settings_fallback_model_ph")}
-                  disabled={!fallbackProviderId}
                 />
               </div>
-            </div>
-            {fallbackProviderId && (
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label>{t("settings_fallback_provider")}</Label>
+                  <Select
+                    value={fallbackProviderId}
+                    onChange={(e) => setFallbackProviderId(e.target.value)}
+                  >
+                    <option value="">{t("settings_fallback_none")}</option>
+                    {agent.providers.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label>{t("model")}</Label>
+                  <ModelSelect
+                    value={fallbackModel}
+                    onChange={setFallbackModel}
+                    suggestions={fallbackProviderId ? [] : MODEL_SUGGESTIONS}
+                    onFetch={
+                      fallbackProviderId
+                        ? () => api.providerModels(fallbackProviderId).then((r) => r.models).catch(() => [])
+                        : undefined
+                    }
+                    fetchLabel={t("fetch")}
+                    placeholder={t("settings_fallback_model_ph")}
+                    disabled={!fallbackProviderId}
+                  />
+                </div>
+              </div>
+            )}
+            {(fallbackProviderId || fallbackBackendId) && (
               <div className="mt-3">
                 <Label>{t("settings_fallback_threshold")}</Label>
                 <Input

@@ -5,7 +5,6 @@ import { authMiddleware } from "./auth.js";
 import { registerCommands } from "./commands.js";
 import { handleInlineQuery } from "./telegram/inlineSearch.js";
 import { AUTO_ALLOWED_TOOLS, isStaleSession, type PermissionResult } from "./claude/runner.js";
-import { getBackend } from "./core/backends.js";
 import { createTelegramMcp } from "./mcp/sendFile.js";
 import { memoryMcp } from "./mcp/memory.js";
 import { createTasksMcp } from "./mcp/tasks.js";
@@ -45,7 +44,8 @@ import { taskDelegator } from "./core/taskRunner.js";
 import { createTask, startRecurrenceTicker } from "./core/tasks.js";
 import { push } from "./core/push.js";
 import { fireWebhook, type WebhookSource } from "./core/webhook.js";
-import { resolveMainRunFor, isDryRun, dryRunDescription, DRY_RUN_TOOLS } from "./core/mainSettings.js";
+import { resolveMainRunFor, mainFallbackSpec, isDryRun, dryRunDescription, DRY_RUN_TOOLS } from "./core/mainSettings.js";
+import { runTurnWithFallback } from "./core/fallback.js";
 import { TokenBucketLimiter } from "./core/rateLimiter.js";
 import { workers } from "./core/workers.js";
 import { suggestions } from "./core/suggestions.js";
@@ -751,18 +751,29 @@ async function handleUserPrompt(
   // Set once an autonomous loop has triggered an abort, so we only notify once.
   let loopAborted = false;
 
+  // Notify the chat when a usage-limit error mid-turn triggers the error-driven
+  // failover to the configured fallback model/backend (core/fallback.ts).
+  const onFallback = (name: string) =>
+    void tg
+      .sendMessage(chatId, t("bot_fallback_engaged", langForChat(chatId), { name }), { parse_mode: "HTML" })
+      .catch(() => {});
+
   try {
-    const res = await getBackend(mainRun.backendId).runTurn({
+    const res = await runTurnWithFallback(mainRun.backendId, {
       prompt,
       images,
       cwd,
-      resume: session.sessionId,
+      // Drop the resume token when the threshold fallback switched to another
+      // backend (a Claude resume UUID means nothing to Grok/Codex/Ollama). The
+      // error-driven helper handles the same drop for its own backend switch.
+      resume: mainRun.fallbackBackendActive ? undefined : session.sessionId,
       model: mainRun.model,
       env: mainRun.env,
       crew,
       pendingSuggestions,
       knownPaths: mainRun.knownPaths,
       persona: mainRun.persona,
+      promptExclude: mainRun.promptExclude,
       language: session.language ?? mainRun.defaultLanguage,
       // Dry-run forces the gate on (default mode) even in full autonomy, so the
       // canUseTool interception above can catch and echo mutating tools.
@@ -829,7 +840,7 @@ async function handleUserPrompt(
           log.info("auto_until_error: tool error — escalating to supervised", { chatId });
         }
       },
-    });
+    }, mainFallbackSpec(), onFallback);
     if (mirror) {
       // Prefer the model's final text; fall back to the streamed accumulation.
       const finalText = res.text?.trim() || mirrorText;

@@ -49,11 +49,14 @@ export const en = {
   bot_usage_exhausted: "📊 Usage limit exhausted. Wait for the limit to reset, then retry.",
   bot_err_rate_limited: "⏳ Rate limited by the API. Give it a moment and try again.",
   bot_err_overloaded: "🌀 The API is overloaded right now. Try again shortly.",
+  bot_err_stalled:
+    "⏱ The turn went silent and was aborted by the stall watchdog (the agent process likely hung). The chat is free again; resend your message to retry.",
   bot_err_auth:
     "🔑 Authentication failed. Check ANTHROPIC_API_KEY or re-run the `claude` CLI login, then restart.",
   bot_stopping: "⏹ Stopping…",
   bot_nothing_running: "Nothing is running.",
   bot_session_expired_retrying: "⚠️ Previous session no longer exists — starting a fresh conversation now.",
+  bot_fallback_engaged: "⚠️ Usage limit on the primary model, retrying via {name}…",
 
   // --- ping / crew status ---
   bot_ping_idle: "🟢 <b>Online</b> · idle and ready · up {uptime}",

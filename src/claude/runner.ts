@@ -93,6 +93,15 @@ export interface RunOptions {
   persona?: string;
   /** BCP 47 language tag the agent responds in (e.g. "en", "hu"). */
   language?: string;
+  /**
+   * Per-agent prompt-slimming keys. Any of "workMd" | "persona" | "knownPaths" |
+   * "memory" drops that section from our system-prompt append (never the Claude
+   * Code preset itself). "memory" skips the recall entirely and "persona" zeroes
+   * the persona here in runTurn; "workMd"/"knownPaths" are honoured by
+   * systemPrompt(). Mainly a win for smaller/local models where a big append
+   * (a large work.md especially) costs input tokens on every turn.
+   */
+  promptExclude?: string[];
   /** "default" = interactive approval; "bypassPermissions" = autonomous. */
   permissionMode: "default" | "bypassPermissions";
   /**
@@ -139,7 +148,11 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
   // prompt. Hybrid semantic + keyword match when embeddings are on (Phase 2),
   // keyword-only fallback otherwise; empty store = no-op. Done once, outside the
   // retry loop below.
-  const recalled = await memory.recallForPromptAsync(opts.prompt);
+  // Honour a per-agent "memory" exclusion: skip recall entirely so the store is
+  // never touched and no memory block is injected (a prompt-slimming choice).
+  const recalled = opts.promptExclude?.includes("memory")
+    ? []
+    : await memory.recallForPromptAsync(opts.prompt);
   const memoryBlock = recalled.length ? formatMemoriesForPrompt(recalled) : undefined;
 
   // The headless `claude` CLI intermittently crashes on startup/teardown with a
@@ -173,11 +186,13 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
           opts.systemPromptAppend,
           memoryBlock,
           opts.crew,
-          opts.persona,
+          // Zero out the persona when excluded, so it never enters the append.
+          opts.promptExclude?.includes("persona") ? undefined : opts.persona,
           opts.language,
           opts.pendingSuggestions,
           opts.knownPaths,
           opts.workerIdentity,
+          opts.promptExclude,
         ),
         permissionMode: opts.permissionMode,
         includePartialMessages: true,

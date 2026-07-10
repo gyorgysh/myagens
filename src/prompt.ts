@@ -8,6 +8,36 @@ import { log } from "./logger.js";
 /** Path to the operator playbook; override with WORK_FILE. */
 export const WORK_FILE = resolve(process.env.WORK_FILE || "work.md");
 
+/**
+ * Sections of the per-turn system-prompt append an agent can opt out of, to slim
+ * the prompt for smaller/local models. This trims only our append, never the
+ * underlying Claude Code preset. "memory" and "persona" are enforced at the
+ * runner level (src/claude/runner.ts); "workMd" and "knownPaths" are enforced by
+ * systemPrompt() below.
+ */
+export type PromptExcludeKey = "workMd" | "persona" | "knownPaths" | "memory";
+
+/** The four recognised exclusion keys, for validation. */
+export const PROMPT_EXCLUDE_KEYS: readonly PromptExcludeKey[] = [
+  "workMd",
+  "persona",
+  "knownPaths",
+  "memory",
+];
+
+/** Keep only the known keys; return undefined for an empty/invalid result so an
+ *  empty array is treated as "unset" (nothing excluded). */
+export function sanitizePromptExclude(input: unknown): PromptExcludeKey[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out = new Set<PromptExcludeKey>();
+  for (const v of input) {
+    if (typeof v === "string" && (PROMPT_EXCLUDE_KEYS as readonly string[]).includes(v)) {
+      out.add(v as PromptExcludeKey);
+    }
+  }
+  return out.size ? [...out] : undefined;
+}
+
 /** Build the base personality string, using branding from config. Evaluated each
  *  call so ATLAS_NAME / BRAND_NAME changes take effect without a restart. */
 export function getPersonality(): string {
@@ -141,6 +171,10 @@ At the end of every turn where you did real work:
  * @param workerIdentity - When set, replaces the Atlas personality block so a
  *   Lead or worker agent identifies as itself rather than as Atlas. Pass the
  *   result of getLeadProtocol() or a custom identity string here.
+ * @param exclude - Per-agent prompt-slimming keys. "workMd" drops the operator
+ *   playbook section, "knownPaths" drops the known-directories section. ("memory"
+ *   and "persona" are handled by the caller before this point, so they have no
+ *   effect here.)
  */
 export function systemPrompt(
   extraAppend?: string,
@@ -151,6 +185,7 @@ export function systemPrompt(
   pendingSuggestions?: string,
   knownPaths?: Array<{ label: string; path: string }>,
   workerIdentity?: string,
+  exclude?: string[],
 ): { type: "preset"; preset: "claude_code"; append: string } {
   // Use the worker's own identity when provided; otherwise fall back to Atlas.
   let append = workerIdentity?.trim() ? workerIdentity.trim() : getPersonality();
@@ -166,7 +201,7 @@ export function systemPrompt(
     append += `\n\n# Language\nRespond in ${name}. If the user writes in a different language, still default to ${name} unless they explicitly ask you to switch.`;
   }
 
-  if (existsSync(WORK_FILE)) {
+  if (existsSync(WORK_FILE) && !exclude?.includes("workMd")) {
     try {
       const playbook = readFileSync(WORK_FILE, "utf8").trim();
       if (playbook) {
@@ -180,7 +215,7 @@ export function systemPrompt(
     }
   }
 
-  if (knownPaths?.length) {
+  if (knownPaths?.length && !exclude?.includes("knownPaths")) {
     const lines = knownPaths.map((p) => `- **${p.label}**: \`${p.path}\``).join("\n");
     append += `\n\n# Known directories\nThese are the key folders on this machine. Use them as starting points when working with files or projects.\n\n${lines}`;
   }

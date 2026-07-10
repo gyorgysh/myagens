@@ -70,6 +70,9 @@ export function friendlyError(err: unknown, lang?: string): string {
   if (/\b401\b|unauthorized|authentication|invalid.{0,12}api.?key|oauth|not logged in|login/.test(low)) {
     return t("bot_err_auth", lang);
   }
+  // Must precede the generic /abort/ check: a stall-watchdog abort should say
+  // the turn hung and was recovered, not read like a user-requested stop.
+  if (/stall watchdog/.test(low)) return t("bot_err_stalled", lang);
   if (/abort/.test(low)) return t("bot_stopped", lang);
   // A non-zero CLI exit ("process exited with code 1") is often an opaque proxy
   // for a usage limit the SDK didn't spell out. If the live probe shows a limit

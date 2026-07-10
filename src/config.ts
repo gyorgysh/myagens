@@ -42,6 +42,13 @@ const schema = z.object({
   CLAUDE_MODEL: z.string().min(1).default("claude-opus-4-8"),
   ANTHROPIC_API_KEY: z.string().optional(),
   APPROVAL_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
+  // Turn stall watchdog (core/stallGuard.ts): abort a turn when the agent
+  // backend has produced no stream events, tool calls, or permission-gate
+  // activity for this long, so a wedged CLI subprocess can't leave the chat
+  // stuck busy forever. While a tool call is in flight the allowance is
+  // extended by the task-run timeout (delegated child runs legitimately keep
+  // the parent stream silent that long). Set to 0 to disable.
+  TURN_STALL_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(1_800_000),
   // Agentic loop detection: when the same tool call (name + input) repeats this
   // many times in one turn, pause and ask Skip / Approve once / Continue, so a
   // runaway retry can't burn tokens unattended. Set to 0 to disable.

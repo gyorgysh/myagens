@@ -324,6 +324,11 @@ export interface NamedBackend {
   displayName: string;
 }
 
+/** Sections of the per-turn system-prompt append an agent can opt out of, to
+ *  slim the prompt for smaller/local models. Trims only our append, not the
+ *  Claude Code preset. */
+export type PromptExcludeKey = "workMd" | "persona" | "knownPaths" | "memory";
+
 export interface Worker {
   id: string;
   name: string;
@@ -333,6 +338,10 @@ export interface Worker {
   providerId: string;
   /** Agent backend id (see NamedBackend); "" = the default Claude backend. */
   backendId?: string;
+  /** Error-driven failover target for this worker's turns ("" = off). */
+  fallbackBackendId?: string;
+  fallbackProviderId?: string;
+  fallbackModel?: string;
   systemPrompt: string;
   skillId: string;
   schedule: string;
@@ -351,6 +360,8 @@ export interface Worker {
   persona?: string;
   autonomy?: Autonomy;
   language?: string;
+  /** Per-agent prompt-slimming keys to drop from the system-prompt append. */
+  promptExclude?: PromptExcludeKey[];
   webhookUrl?: string;
   /** Avatar slug from the curated set; empty/undefined means derive from id. */
   avatar?: string;
@@ -937,6 +948,8 @@ export interface MainAgent {
   dryRun: boolean;
   /** Provider to fail over to when the plan is rate-limited ("" = off). */
   fallbackProviderId: string;
+  /** Agent backend to fail over to ("" = keep the primary backend). */
+  fallbackBackendId: string;
   /** Model id to use on the fallback provider ("" = provider default). */
   fallbackModel: string;
   /** Usage percent at/above which fallback engages. */
@@ -958,6 +971,8 @@ export interface MainAgent {
   knownPaths: Array<{ label: string; path: string }>;
   /** Opt out of the proactive "new version detected" Telegram notification. */
   updateNotifyOptOut: boolean;
+  /** Per-agent prompt-slimming keys to drop from the system-prompt append. */
+  promptExclude: PromptExcludeKey[];
 }
 
 export interface Provider {
@@ -1234,7 +1249,7 @@ export const api = {
   runProbe: () => req<{ ok: boolean; message: string }>("POST", "/api/usage-probe/run"),
 
   agent: () => get<MainAgent>("/api/agent"),
-  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; fallbackProviderId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean }) =>
+  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; fallbackProviderId?: string; fallbackBackendId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean; promptExclude?: PromptExcludeKey[] }) =>
     req<MainAgent>("PUT", "/api/agent", s),
   resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),

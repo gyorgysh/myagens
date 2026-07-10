@@ -4,10 +4,12 @@ import { getProvider, listProviders } from "./providers.js";
 import { resolveSecret } from "./vault.js";
 import { audit } from "./audit.js";
 import { loadProbeResult } from "./usageProbe.js";
-import { listBackends } from "./backends.js";
+import { listBackends, getBackend } from "./backends.js";
+import type { FallbackSpec } from "./fallback.js";
 import { log } from "../logger.js";
 import type { Autonomy } from "../session/manager.js";
 import { sessions } from "../session/manager.js";
+import { sanitizePromptExclude } from "../prompt.js";
 
 const FILE = "mainAgent.json";
 
@@ -62,6 +64,13 @@ interface MainSettings {
    * the limit resets. "" / undefined = no fallback. Typically a local model.
    */
   fallbackProviderId?: string;
+  /**
+   * Optional agent backend to fail over to (see core/backends.ts). When set, the
+   * fallback switches the whole runtime (e.g. to Grok/Codex/Ollama) rather than
+   * just repointing the Claude backend at another endpoint. Engages on the same
+   * threshold as `fallbackProviderId`; either or both can be set.
+   */
+  fallbackBackendId?: string;
   /** Optional model id to use on the fallback provider ("" = the provider default). */
   fallbackModel?: string;
   /** Usage percent (any window) at/above which fallback engages (default 95). */
@@ -79,6 +88,12 @@ interface MainSettings {
    * version.
    */
   updateNotifyOptOut?: boolean;
+  /**
+   * Per-agent prompt-slimming: sections of our system-prompt append to drop for
+   * Atlas (any of "workMd" | "persona" | "knownPaths" | "memory"). Slims the
+   * per-turn prompt for smaller/local models. Empty/unset = nothing excluded.
+   */
+  promptExclude?: string[];
 }
 
 /** Mutating tools intercepted by dry-run (echoed, not executed). */
@@ -134,12 +149,14 @@ export function mainSettingsView() {
     defaultLanguage: s.defaultLanguage ?? config.DEFAULT_LANGUAGE,
     dryRun: s.dryRun === true,
     fallbackProviderId: s.fallbackProviderId ?? "",
+    fallbackBackendId: s.fallbackBackendId ?? "",
     fallbackModel: s.fallbackModel ?? "",
     fallbackThreshold: s.fallbackThreshold ?? DEFAULT_FALLBACK_THRESHOLD,
     degraded: degradedState(),
     botUsername: botUsername ?? "",
     knownPaths: s.knownPaths ?? [],
     updateNotifyOptOut: s.updateNotifyOptOut === true,
+    promptExclude: s.promptExclude ?? [],
   };
 }
 
@@ -152,10 +169,12 @@ export function setMainSettings(patch: {
   defaultLanguage?: string;
   dryRun?: boolean;
   fallbackProviderId?: string;
+  fallbackBackendId?: string;
   fallbackModel?: string;
   fallbackThreshold?: number;
   knownPaths?: Array<{ label: string; path: string }>;
   updateNotifyOptOut?: boolean;
+  promptExclude?: string[];
 }): void {
   const s = load();
   const prevBackend = s.backendId;
@@ -168,6 +187,8 @@ export function setMainSettings(patch: {
   if (patch.dryRun !== undefined) s.dryRun = patch.dryRun || undefined;
   if (patch.fallbackProviderId !== undefined)
     s.fallbackProviderId = patch.fallbackProviderId || undefined;
+  if (patch.fallbackBackendId !== undefined)
+    s.fallbackBackendId = patch.fallbackBackendId || undefined;
   if (patch.fallbackModel !== undefined) s.fallbackModel = patch.fallbackModel.trim() || undefined;
   if (patch.fallbackThreshold !== undefined) {
     const n = Math.round(patch.fallbackThreshold);
@@ -181,6 +202,7 @@ export function setMainSettings(patch: {
     s.knownPaths = clean.length ? clean : undefined;
   }
   if (patch.updateNotifyOptOut !== undefined) s.updateNotifyOptOut = patch.updateNotifyOptOut || undefined;
+  if (patch.promptExclude !== undefined) s.promptExclude = sanitizePromptExclude(patch.promptExclude);
   saveJson<MainFile>(FILE, { version: 1, settings: s });
   audit("mainAgent.update", {
     model: s.model,
@@ -188,6 +210,7 @@ export function setMainSettings(patch: {
     backendId: s.backendId,
     dryRun: s.dryRun,
     fallbackProviderId: s.fallbackProviderId,
+    fallbackBackendId: s.fallbackBackendId,
   });
   // A backend switch invalidates every persisted sessionId: they're resume tokens
   // for the OLD backend's CLI, so codex/grok would fail to resume a Claude UUID on
@@ -211,6 +234,12 @@ export function resolveMainRun(): {
   autonomy: Autonomy;
   defaultLanguage?: string;
   knownPaths?: Array<{ label: string; path: string }>;
+  /** Per-agent prompt-slimming keys (see MainSettings.promptExclude). */
+  promptExclude?: string[];
+  /** True when the resolved run switched to a *different* backend than the
+   *  primary via the threshold fallback below — the caller must then drop the
+   *  session resume token (a resume handle is meaningless on the other backend). */
+  fallbackBackendActive?: boolean;
 } {
   const s = load();
   const provider = s.providerId ? getProvider(s.providerId) : undefined;
@@ -229,6 +258,7 @@ export function resolveMainRun(): {
     autonomy: s.autonomy ?? "standard",
     defaultLanguage: s.defaultLanguage || undefined,
     knownPaths: s.knownPaths?.length ? s.knownPaths : undefined,
+    promptExclude: s.promptExclude?.length ? s.promptExclude : undefined,
   };
 }
 
@@ -273,9 +303,11 @@ function overUsageLimit(threshold: number): { over: boolean; label?: string; per
 export function resolveMainRunFor(opts: { autonomous: boolean }): ReturnType<typeof resolveMainRun> {
   const base = resolveMainRun();
   const s = load();
-  // Only autonomous turns fail over, and only when a fallback provider is set.
-  // Interactive turns never change degraded state (it tracks background work).
-  if (!opts.autonomous || !s.fallbackProviderId) return base;
+  // Only autonomous turns fail over via the usage probe, and only when a fallback
+  // target (a provider and/or a backend switch) is configured. Interactive turns
+  // never change degraded state (it tracks background work); their usage-limit
+  // failover is error-driven instead (see core/fallback.ts).
+  if (!opts.autonomous || (!s.fallbackProviderId && !s.fallbackBackendId)) return base;
   const threshold = s.fallbackThreshold ?? DEFAULT_FALLBACK_THRESHOLD;
   const { over, label, percent } = overUsageLimit(threshold);
   if (!over) {
@@ -285,14 +317,29 @@ export function resolveMainRunFor(opts: { autonomous: boolean }): ReturnType<typ
     }
     return base;
   }
-  const provider = getProvider(s.fallbackProviderId);
-  if (!provider) {
+  // Providers only apply to the Claude Agent SDK backend, so the fallback
+  // provider env is used only when the fallback backend is Claude (unset, or the
+  // switch target is itself claude-agent-sdk).
+  const fallbackIsClaude = !s.fallbackBackendId || s.fallbackBackendId === "claude-agent-sdk";
+  const provider = s.fallbackProviderId && fallbackIsClaude ? getProvider(s.fallbackProviderId) : undefined;
+  // Nothing usable to switch to: a configured provider that's since been deleted
+  // and no backend switch either. Stay on primary rather than run with no change.
+  if (!provider && !s.fallbackBackendId) {
     log.warn("Fallback provider configured but not found", { id: s.fallbackProviderId });
     return base;
   }
+  const engagedBackendId = s.fallbackBackendId || base.backendId;
+  const backendChanged = (engagedBackendId ?? undefined) !== (base.backendId ?? undefined);
+  const backendName = s.fallbackBackendId ? getBackend(s.fallbackBackendId).displayName : undefined;
+  // Banner label: the switched-backend display name (plus model) when a backend
+  // fallback is engaged, else the provider name.
+  const providerLabel = backendName
+    ? backendName + (s.fallbackModel ? ` (${s.fallbackModel})` : "")
+    : provider?.name;
   if (!degraded.active) {
-    log.warn("Rate-limit fallback engaged — switching to fallback provider", {
-      provider: provider.name,
+    log.warn("Rate-limit fallback engaged — switching to fallback target", {
+      backend: backendName,
+      provider: provider?.name,
       limit: label,
       percent,
     });
@@ -301,20 +348,42 @@ export function resolveMainRunFor(opts: { autonomous: boolean }): ReturnType<typ
     active: true,
     since: degraded.since ?? new Date().toISOString(),
     reason: label ? `${label} at ${percent}%` : "rate limit",
-    provider: provider.name,
+    provider: providerLabel,
   };
+  const env = provider
+    ? {
+        ANTHROPIC_BASE_URL: provider.baseUrl,
+        ANTHROPIC_AUTH_TOKEN: resolveSecret(provider.authToken),
+        ANTHROPIC_API_KEY: undefined,
+      }
+    : undefined;
   return {
-    model: s.fallbackModel || base.model,
-    env: {
-      ANTHROPIC_BASE_URL: provider.baseUrl,
-      ANTHROPIC_AUTH_TOKEN: resolveSecret(provider.authToken),
-      ANTHROPIC_API_KEY: undefined,
-    },
-    // Rate-limit fallback only ever repoints the Claude Agent SDK at a
-    // different Anthropic-shaped endpoint — it doesn't switch backend.
-    backendId: base.backendId,
+    // On a backend switch, never inherit the primary (Claude) model id onto the
+    // other backend — use the explicit fallbackModel or leave it unset. When the
+    // backend is unchanged, fall back to the primary model as before.
+    model: s.fallbackBackendId ? s.fallbackModel || undefined : s.fallbackModel || base.model,
+    env,
+    backendId: engagedBackendId,
     persona: base.persona,
     autonomy: base.autonomy,
     defaultLanguage: base.defaultLanguage,
+    knownPaths: base.knownPaths,
+    promptExclude: base.promptExclude,
+    fallbackBackendActive: backendChanged,
+  };
+}
+
+/**
+ * The main agent's configured error-driven failover target, or undefined when
+ * neither a fallback backend nor provider is set. Consumed by the interactive
+ * main turn (bot.ts) to wrap its run in runTurnWithFallback (core/fallback.ts).
+ */
+export function mainFallbackSpec(): FallbackSpec | undefined {
+  const s = load();
+  if (!s.fallbackBackendId && !s.fallbackProviderId) return undefined;
+  return {
+    backendId: s.fallbackBackendId || undefined,
+    providerId: s.fallbackProviderId || undefined,
+    model: s.fallbackModel || undefined,
   };
 }

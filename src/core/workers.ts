@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { config } from "../config.js";
 import { AUTO_ALLOWED_TOOLS } from "../claude/runner.js";
 import { getBackend } from "./backends.js";
+import type { FallbackSpec } from "./fallback.js";
 import { memoryMcp } from "../mcp/memory.js";
 import { createTasksMcp } from "../mcp/tasks.js";
 import { skillsMcp } from "../mcp/skills.js";
@@ -19,7 +20,7 @@ import { RunLogWriter } from "./runLog.js";
 import { log, preview } from "../logger.js";
 import { toolDiffMeta } from "../telegram/formatting.js";
 import type { Autonomy } from "../session/manager.js";
-import { getLeadProtocol } from "../prompt.js";
+import { getLeadProtocol, sanitizePromptExclude } from "../prompt.js";
 import { agentUsage } from "./agentUsage.js";
 import { guardCwd, cwdFallbackNotice } from "./cwdGuard.js";
 
@@ -51,6 +52,12 @@ export interface Worker {
    *  Agent SDK backend. Lets one worker run on Grok/Codex while others stay
    *  on Claude. */
   backendId?: string;
+  /** Error-driven failover target for this worker's turns: a fallback backend
+   *  and/or provider/model retried once when a turn hits a usage-limit error
+   *  (see core/fallback.ts). Independent of the global main-agent fallback. */
+  fallbackBackendId?: string;
+  fallbackProviderId?: string;
+  fallbackModel?: string;
   /** Extra persona instructions appended to the system prompt. */
   systemPrompt?: string;
   /** Optional skill whose body augments the system prompt. */
@@ -85,6 +92,13 @@ export interface Worker {
   autonomy?: Autonomy;
   /** BCP 47 language tag for this worker's preferred response language. */
   language?: string;
+  /**
+   * Per-agent prompt-slimming: sections of the system-prompt append to drop for
+   * this worker/Lead (any of "workMd" | "persona" | "knownPaths" | "memory").
+   * Slims the per-turn prompt for smaller/local models. Empty/unset = nothing
+   * excluded.
+   */
+  promptExclude?: string[];
   /** Optional URL POSTed a JSON outcome payload when a run completes. */
   webhookUrl?: string;
   /**
@@ -230,6 +244,9 @@ export class WorkerManager {
       model: input.model?.trim() || undefined,
       providerId: input.providerId || undefined,
       backendId: input.backendId || undefined,
+      fallbackBackendId: input.fallbackBackendId || undefined,
+      fallbackProviderId: input.fallbackProviderId || undefined,
+      fallbackModel: input.fallbackModel?.trim() || undefined,
       systemPrompt: input.systemPrompt?.trim() || undefined,
       skillId: input.skillId || undefined,
       schedule: parseSchedule(input.when),
@@ -241,6 +258,7 @@ export class WorkerManager {
       persona: input.persona?.trim() || undefined,
       autonomy: input.autonomy || undefined,
       language: input.language?.trim() || undefined,
+      promptExclude: sanitizePromptExclude(input.promptExclude),
       webhookUrl: input.webhookUrl?.trim() || undefined,
       avatar: input.avatar?.trim() || undefined,
       createdAt: now,
@@ -262,6 +280,9 @@ export class WorkerManager {
     if (input.model !== undefined) w.model = input.model.trim() || undefined;
     if (input.providerId !== undefined) w.providerId = input.providerId || undefined;
     if (input.backendId !== undefined) w.backendId = input.backendId || undefined;
+    if (input.fallbackBackendId !== undefined) w.fallbackBackendId = input.fallbackBackendId || undefined;
+    if (input.fallbackProviderId !== undefined) w.fallbackProviderId = input.fallbackProviderId || undefined;
+    if (input.fallbackModel !== undefined) w.fallbackModel = input.fallbackModel.trim() || undefined;
     if (input.systemPrompt !== undefined) w.systemPrompt = input.systemPrompt.trim() || undefined;
     if (input.skillId !== undefined) w.skillId = input.skillId || undefined;
     if (input.enabled !== undefined) w.enabled = input.enabled;
@@ -273,6 +294,7 @@ export class WorkerManager {
     if (input.persona !== undefined) w.persona = input.persona.trim() || undefined;
     if (input.autonomy !== undefined) w.autonomy = input.autonomy || undefined;
     if (input.language !== undefined) w.language = input.language.trim() || undefined;
+    if (input.promptExclude !== undefined) w.promptExclude = sanitizePromptExclude(input.promptExclude);
     if (input.webhookUrl !== undefined) w.webhookUrl = input.webhookUrl.trim() || undefined;
     if (input.avatar !== undefined) w.avatar = input.avatar.trim() || undefined;
     w.updatedAt = Date.now();
@@ -435,6 +457,7 @@ export class WorkerManager {
         workerIdentity: protocol,
         persona: w.persona,
         language: w.language,
+        promptExclude: w.promptExclude,
         permissionMode,
         // Load full project context (CLAUDE.md, settings) in the worker's cwd, so
         // it operates like a real Claude Code session. (The earlier "exit 1" this
@@ -559,6 +582,9 @@ export interface WorkerInput {
   model?: string;
   providerId?: string;
   backendId?: string;
+  fallbackBackendId?: string;
+  fallbackProviderId?: string;
+  fallbackModel?: string;
   systemPrompt?: string;
   skillId?: string;
   /** Schedule token: "30m", "2h", "HH:MM", or "" / undefined for manual-only. */
@@ -571,6 +597,7 @@ export interface WorkerInput {
   persona?: string;
   autonomy?: Autonomy;
   language?: string;
+  promptExclude?: string[];
   webhookUrl?: string;
   avatar?: string;
 }
@@ -585,6 +612,21 @@ function parseSchedule(when?: string): WorkerSchedule | undefined {
 /** Human label for a worker's schedule, or "manual". */
 export function describeWorkerSchedule(w: Worker): string {
   return w.schedule ? describeSpec(w.schedule.spec) : "manual";
+}
+
+/**
+ * A worker's error-driven failover target (a fallback backend and/or
+ * provider/model), or undefined when none is configured. Consumed by the Lead
+ * bot (telegram/leadBot.ts) and per-agent chat (core/agentChat.ts) to wrap their
+ * turns in runTurnWithFallback (core/fallback.ts).
+ */
+export function workerFallbackSpec(w: Worker): FallbackSpec | undefined {
+  if (!w.fallbackBackendId && !w.fallbackProviderId) return undefined;
+  return {
+    backendId: w.fallbackBackendId || undefined,
+    providerId: w.fallbackProviderId || undefined,
+    model: w.fallbackModel || undefined,
+  };
 }
 
 function summarize(input: unknown): string {

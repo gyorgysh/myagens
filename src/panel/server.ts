@@ -603,6 +603,9 @@ function workerView(w: Worker) {
     model: w.model ?? "",
     providerId: w.providerId ?? "",
     backendId: w.backendId ?? "",
+    fallbackBackendId: w.fallbackBackendId ?? "",
+    fallbackProviderId: w.fallbackProviderId ?? "",
+    fallbackModel: w.fallbackModel ?? "",
     systemPrompt: w.systemPrompt ?? "",
     skillId: w.skillId ?? "",
     schedule: describeWorkerSchedule(w),
@@ -624,6 +627,7 @@ function workerView(w: Worker) {
     persona: w.persona ?? "",
     autonomy: w.autonomy ?? "standard",
     language: w.language ?? "",
+    promptExclude: w.promptExclude ?? [],
     webhookUrl: w.webhookUrl ?? "",
     avatar: w.avatar ?? "",
     streamMode: w.streamMode ?? "",
@@ -715,10 +719,12 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       defaultLanguage,
       dryRun,
       fallbackProviderId,
+      fallbackBackendId,
       fallbackModel,
       fallbackThreshold,
       knownPaths,
       updateNotifyOptOut,
+      promptExclude,
     } = (req.body ?? {}) as {
       model?: string;
       providerId?: string;
@@ -728,10 +734,12 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       defaultLanguage?: string;
       dryRun?: boolean;
       fallbackProviderId?: string;
+      fallbackBackendId?: string;
       fallbackModel?: string;
       fallbackThreshold?: number;
       knownPaths?: Array<{ label: string; path: string }>;
       updateNotifyOptOut?: boolean;
+      promptExclude?: string[];
     };
     setMainSettings({
       model,
@@ -742,10 +750,12 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       defaultLanguage,
       dryRun,
       fallbackProviderId,
+      fallbackBackendId,
       fallbackModel,
       fallbackThreshold,
       knownPaths,
       updateNotifyOptOut,
+      promptExclude,
     });
     return mainSettingsView();
   });
@@ -1856,6 +1866,7 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
         model: isCloud ? WIZARD_CLOUD_MODEL : mainRun.model,
         maxThinkingTokens: isCloud ? WIZARD_CLOUD_THINKING_BUDGET : undefined,
         env: mainRun.env,
+        promptExclude: mainRun.promptExclude,
         permissionMode: "bypassPermissions",
         settingSources: ["user"],
         abortController: abort,

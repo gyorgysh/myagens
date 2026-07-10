@@ -10,6 +10,7 @@ import {
   daysUntilReset,
 } from "./planSettings.js";
 import { usageSummary } from "./snapshot.js";
+import { sessions } from "../session/manager.js";
 import { loadProbeResult, runProbe } from "./usageProbe.js";
 import { collectCalendarSignals, anyCalendarConnected } from "./calendarSignals.js";
 import { detectAnomalies, ANOMALY_DEFAULTS, type AnomalyConfig } from "./anomaly.js";
@@ -302,6 +303,18 @@ export class HeartbeatManager {
         if (t.column === "doing" && now - t.updatedAt > staleMs) {
           const days = Math.floor((now - t.updatedAt) / 86_400_000);
           out.push({ key: `stale:${t.id}`, text: `Task "${t.title}" stalled in Doing for ${days}d` });
+        }
+      }
+      // A chat busy longer than the stale threshold means neither the turn
+      // stall watchdog nor /stop freed it — surface the wedge instead of
+      // letting scheduled jobs silently pile up behind it.
+      for (const s of sessions.all()) {
+        if (s.busy && s.busySince && now - s.busySince > staleMs) {
+          const hours = Math.floor((now - s.busySince) / 3_600_000);
+          out.push({
+            key: `stale:busy:${s.chatId}`,
+            text: `Chat ${s.chatId} has been busy for ${hours}h — the turn may be stuck (send /stop in that chat to abort it)`,
+          });
         }
       }
     }

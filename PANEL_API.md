@@ -50,10 +50,16 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/workers \
 #   parentId      id of the Lead this Assistant reports to
 #   model         model id override (e.g. "claude-sonnet-5")
 #   providerId    id of a saved provider preset (for local models)
-#   backendId     agent backend id — "" / omit = Claude (default); "grok-cli" or "codex-cli"
-#                 to run this one agent on a different backend (see GET /api/agent's
-#                 `backends` list for what's registered). Advanced/hidden option: not
-#                 surfaced as a panel dropdown, set it directly via this API.
+#   backendId     agent backend id — "" / omit = Claude (default); "grok-cli", "codex-cli"
+#                 or "ollama" to run this one agent on a different backend (see GET
+#                 /api/agent's `backends` list for what's registered). Advanced/hidden
+#                 option: not surfaced as a panel dropdown, set it directly via this API.
+#   fallbackBackendId   error-driven failover for THIS worker's turns: an agent backend
+#                 to retry once on when a turn hits a usage/rate-limit error. "" / omit = off.
+#                 A backend switch starts a fresh conversation (a resume token doesn't cross backends).
+#   fallbackProviderId  provider preset to fail over to (Claude backend only; ignored when
+#                 fallbackBackendId is non-Claude). "" / omit = off.
+#   fallbackModel model id used on the fallback target ("" = the target's default).
 #   systemPrompt  extra domain knowledge appended to the system prompt
 #   skillId       id of a saved skill whose body augments the system prompt
 #   telegramToken vault:<id> reference for this Lead's own Telegram bot token
@@ -61,6 +67,10 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/workers \
 #   persona       character/tone instructions (separate from domain knowledge)
 #   autonomy      "supervised" | "standard" | "full"
 #   language      BCP 47 code, e.g. "en", "hu", "es"
+#   promptExclude array of prompt-slimming keys to DROP from this agent's system-prompt
+#                 append: any of "workMd" | "persona" | "knownPaths" | "memory". Trims
+#                 only our added context (not the Claude Code base prompt); mainly a win
+#                 for smaller/local models. [] / omit = nothing excluded.
 #   avatar        slug from the curated avatar set (e.g. "panda"); shown in panel and set as the Lead bot photo
 #   when          schedule: "30m", "2h", "1d", or "HH:MM" for daily
 #   enabled       true/false
@@ -328,6 +338,9 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
     "autonomy": "standard",
     "defaultLanguage": "en",
     "fallbackProviderId": "<provider-id>",
+    "fallbackBackendId": "",
+    "fallbackModel": "",
+    "fallbackThreshold": 95,
     "dryRun": false,
     "knownPaths": [
       { "label": "Projects", "path": "/Users/you/dev" },
@@ -335,13 +348,26 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
     ]
   }'
 # fallbackProviderId: when set, autonomous turns switch to this provider/model
-#   automatically when the usage probe shows the Anthropic plan is rate-limited.
-#   Interactive turns are never redirected.
+#   automatically once the usage probe shows the Anthropic plan is over
+#   fallbackThreshold (%). A usage-limit error mid-turn also fails over once, on
+#   interactive turns too (error-driven, no probe needed).
+# fallbackBackendId: optional agent backend to fail over to (e.g. "ollama") instead
+#   of just repointing the Claude backend at another endpoint. Engages on the same
+#   threshold/error trigger; a cross-backend failover starts a fresh conversation
+#   (a resume token doesn't cross backends). "" = keep the primary backend.
+# fallbackModel: model id on the fallback target ("" = the target's default; not
+#   inherited from the primary Claude model when the backend switches).
+# fallbackThreshold: usage percent (50–100, default 95) at which the probe-driven
+#   fallback engages for autonomous turns.
 # dryRun: when true, mutating tools (Bash, Write, Edit, MultiEdit, NotebookEdit)
 #   are intercepted and described ("would run X") without executing.
 # knownPaths: named directory shortcuts ({ label, path } pairs) injected into
 #   the system prompt each turn so agents know key folder locations. Also shown
 #   as quick-pick chips in the Workers panel when setting a worker cwd.
+# promptExclude: array of prompt-slimming keys to DROP from Atlas's system-prompt
+#   append: any of "workMd" | "persona" | "knownPaths" | "memory". Trims only our
+#   added context (not the Claude Code base prompt); mainly a win for smaller/local
+#   models. [] / omit = nothing excluded.
 # backendId: agent backend id — "" / omit = Claude (default). GET /api/agent's
 #   response includes `backends` (every registered id + display name, e.g.
 #   "grok-cli"/"codex-cli"). Advanced/hidden option: not a panel dropdown: set

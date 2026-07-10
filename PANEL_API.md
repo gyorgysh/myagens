@@ -799,4 +799,4 @@ A few more endpoints exist, mostly mirroring panel views:
 - `GET /api/me`: read-only deployment facts (version, brand/agent name, allowed-user count, panel host/port, tunnel/terminal flags) for the Setup view.
 - `GET /api/terminal`, `POST /api/terminal/spawn|resize`: the panel terminal session.
 - `GET /api/conversations/search`: hybrid (cosine + keyword) search across the live chat history and on-disk run transcripts (`?q=&limit=`), returning ranked hits with an extracted snippet and source (`chat` | `run`).
-- `GET|PUT /api/branding`: the white-label branding draft (product/agent name, panel title, logo, favicon, colours, email footer). Overrides are only *applied* (folded into `GET /api/me`) when `BRANDING_UNLOCKED=true`; otherwise the draft persists but the env-default names are served.
+- `GET|PUT /api/branding`: the white-label branding overrides (product/agent name, panel title, logo, favicon, colours, email footer). Saved values apply immediately (folded into `GET /api/me`), with the `ATLAS_NAME`/`BRAND_NAME` env defaults filling anything left blank.

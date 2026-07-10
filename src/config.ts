@@ -85,14 +85,6 @@ const schema = z.object({
   // Branding overrides (allows white-labelling / self-hosting with a different name).
   ATLAS_NAME: z.string().min(1).default("Atlas"),
   BRAND_NAME: z.string().min(1).default("MyAgens"),
-  // White-label (full panel branding: title, logo, favicon, colours, email
-  // footer) is a licensed feature. The configuration UI always exists, but the
-  // overrides are only *applied* when this is true. Free for personal use:
-  // self-hosters flip it here; the panel has no toggle for it.
-  BRANDING_UNLOCKED: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((v) => v === "true"),
   // Where the panel "Send feedback" form relays bug reports / suggestions. The
   // project collector handles them server-side; override to point at your own.
   FEEDBACK_URL: z.string().url().default("https://gyorgy.sh/myagens_feedback"),

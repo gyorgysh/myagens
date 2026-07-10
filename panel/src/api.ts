@@ -672,7 +672,6 @@ export interface Branding {
 
 export interface BrandingView {
   branding: Branding;
-  unlocked: boolean;
   effective: Branding;
 }
 
@@ -1110,7 +1109,7 @@ export interface AuditQueryParams {
 
 export const api = {
   me: () =>
-    get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; updateCount: number; atlasName: string; brandName: string; branding?: Branding; brandingUnlocked?: boolean; subscriptionPlan: boolean; defaultWorkdir: string; homeDir: string; platform: string; allowedUserCount: number; panelHost: string; panelPort: number; tunnelEnabled: boolean; terminalEnabled: boolean }>("/api/me"),
+    get<{ ok: boolean; chatEnabled: boolean; version: string; updateAvailable: boolean; updateCount: number; atlasName: string; brandName: string; branding?: Branding; subscriptionPlan: boolean; defaultWorkdir: string; homeDir: string; platform: string; allowedUserCount: number; panelHost: string; panelPort: number; tunnelEnabled: boolean; terminalEnabled: boolean }>("/api/me"),
   sendFeedback: (kind: "bug" | "suggestion" | "other", message: string, email?: string) =>
     req<{ ok: boolean }>("POST", "/api/feedback", { kind, message, email }),
   health: () => get<Health>("/api/health"),

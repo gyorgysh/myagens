@@ -600,10 +600,7 @@ export const hu: Translations = {
   settings_whitelabel_email_footer: "E-mail lábléc",
   settings_whitelabel_email_footer_ph: "Küldve az Atlas · MyAgens rendszerből",
   settings_whitelabel_active: "Aktív",
-  settings_whitelabel_locked: "Licencelt",
-  settings_whitelabel_lock_notice: "A fehércímkézés licencelt funkció, személyes használatra ingyenes. Az értékeket szerkesztheted és mentheted, de nem lépnek életbe, amíg a funkció nincs feloldva a telepítésedhez.",
   settings_whitelabel_saved: "Márkajelzés mentve és alkalmazva.",
-  settings_whitelabel_saved_locked: "Márkajelzés piszkozat mentve (zárolt állapotban nem alkalmazva).",
   settings_coming_soon: "Hamarosan",
 
   // Értesítések (Web Push)

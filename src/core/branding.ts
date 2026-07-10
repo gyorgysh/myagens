@@ -5,17 +5,10 @@ import { audit } from "./audit.js";
 const FILE = "branding.json";
 
 /**
- * White-label branding overrides for the panel + product chrome. This is a
- * **licensed** feature: the full configuration surface exists and persists, but
- * the overrides are only *applied* (folded into `/api/me`, so the panel actually
- * renders them) when `unlocked` is true. There is deliberately **no panel route**
- * that flips `unlocked` — it is reserved for a future license/entitlement layer.
- * Self-hosters can still set it directly via `BRANDING_UNLOCKED=true` in `.env`
- * (free for personal use), which is the only way to turn it on today.
- *
- * Until unlocked, `effectiveBranding()` returns the env-default names
- * (`ATLAS_NAME`/`BRAND_NAME`) and no custom assets, exactly as before, so the
- * stored draft has no effect on what users see.
+ * White-label branding overrides for the panel + product chrome. Free to use:
+ * whatever is saved here is applied (folded into `/api/me`, so the panel
+ * renders it), with the env-default names (`ATLAS_NAME`/`BRAND_NAME`) as the
+ * fallback for anything left blank.
  */
 export interface Branding {
   /** Product name (login/setup header, page title prefix). "" = BRAND_NAME env. */
@@ -46,12 +39,7 @@ function load(): Branding {
   return f.branding ?? EMPTY;
 }
 
-/** Whether white-label overrides may be applied. Gated behind the license env. */
-export function brandingUnlocked(): boolean {
-  return config.BRANDING_UNLOCKED === true;
-}
-
-/** The saved branding draft (always returned, regardless of unlock state). */
+/** The saved branding overrides. */
 export function getBranding(): Branding {
   return load();
 }
@@ -93,20 +81,16 @@ export function setBranding(patch: Partial<Branding>): Branding {
     next.accentColor = c === "" || HEX.test(c) ? c : cur.accentColor;
   }
   saveJson<BrandingFile>(FILE, { version: 1, branding: next });
-  audit("branding.update", { unlocked: brandingUnlocked() });
+  audit("branding.update", {});
   return next;
 }
 
 /**
- * The branding the panel should actually render. When locked, this collapses to
- * the env-default names and no custom assets, so a saved draft never leaks into
- * the live UI until the feature is unlocked.
+ * The branding the panel should actually render: the saved overrides, with the
+ * env-default names filling anything left blank.
  */
 export function effectiveBranding(): Required<Pick<Branding, "brandName" | "agentName">> & Branding {
   const draft = load();
-  if (!brandingUnlocked()) {
-    return { brandName: config.BRAND_NAME, agentName: config.ATLAS_NAME };
-  }
   return {
     brandName: draft.brandName || config.BRAND_NAME,
     agentName: draft.agentName || config.ATLAS_NAME,

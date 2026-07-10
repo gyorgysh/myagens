@@ -46,8 +46,8 @@ const FeedbackView   = lazy(() => import("./components/Feedback.tsx").then((m) =
 
 /**
  * Apply white-label branding to the document chrome (title, favicon, accent).
- * `branding` is the *effective* branding from `/api/me`: env defaults unless the
- * licensed feature is unlocked, so this is a no-op for unlicensed installs.
+ * `branding` is the *effective* branding from `/api/me`: saved overrides with
+ * env-default names as fallback.
  */
 function applyBranding(branding: Branding | undefined, brandName: string): void {
   const title = branding?.panelTitle || brandName;

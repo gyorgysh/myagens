@@ -325,17 +325,13 @@ function ServiceControl({ onAuthError }: { onAuthError: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// Whitelabel (coming soon placeholder)
+// Whitelabel
 // ---------------------------------------------------------------------------
 
 function WhitelabelSettings({ onAuthError }: { onAuthError: () => void }) {
   const { t } = useI18n();
-  // Full white-label configuration. The draft persists regardless, but applying
-  // it (so the panel chrome actually changes) is gated behind `unlocked`, a
-  // licensed entitlement set via BRANDING_UNLOCKED in .env (free for personal
-  // use). When locked the form is editable + saveable but a notice makes clear
-  // the values have no effect yet.
-  const [unlocked, setUnlocked] = useState(false);
+  // Full white-label configuration: saved values apply immediately (the panel
+  // chrome re-reads them from /api/me).
   const [b, setB] = useState<Branding>({});
   const [saved, setSaved] = useState<Branding>({});
   const [busy, setBusy] = useState(false);
@@ -344,7 +340,6 @@ function WhitelabelSettings({ onAuthError }: { onAuthError: () => void }) {
     api
       .branding()
       .then((v) => {
-        setUnlocked(v.unlocked);
         setB(v.branding);
         setSaved(v.branding);
       })
@@ -368,7 +363,7 @@ function WhitelabelSettings({ onAuthError }: { onAuthError: () => void }) {
       const v = await api.saveBranding(b);
       setSaved(v.branding);
       setB(v.branding);
-      toast.success(unlocked ? t("settings_whitelabel_saved") : t("settings_whitelabel_saved_locked"));
+      toast.success(t("settings_whitelabel_saved"));
     } catch (e) {
       if (e instanceof AuthError) onAuthError();
     } finally {
@@ -379,14 +374,9 @@ function WhitelabelSettings({ onAuthError }: { onAuthError: () => void }) {
   return (
     <Card
       title={t("settings_whitelabel")}
-      right={unlocked ? <Badge tone="green">{t("settings_whitelabel_active")}</Badge> : <Badge tone="zinc">{t("settings_whitelabel_locked")}</Badge>}
+      right={<Badge tone="green">{t("settings_whitelabel_active")}</Badge>}
     >
       <p className="mb-3 text-sm text-fg-dim">{t("settings_whitelabel_desc")}</p>
-      {!unlocked && (
-        <div className="mb-4 rounded-lg border border-accent/30 bg-accent/5 p-3 text-sm text-fg-dim">
-          {t("settings_whitelabel_lock_notice")}
-        </div>
-      )}
       <div className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>

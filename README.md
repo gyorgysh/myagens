@@ -457,7 +457,7 @@ The condensed pitch is above; this is everything, including the security hardeni
 - **Personas**: preset options (Concise, Warm, Formal, Analytical, Playful) or fully custom. Persona shapes character and tone; domain knowledge stays separate in the system prompt.
 - **Autonomy levels**: supervised / standard / full, replacing the old safe/auto toggle. Per-agent, per-session, and settable from the panel.
 - **Language**: 30 languages for agent responses; global default from Settings; per-agent override on each Lead; per-chat `/lang` command. Panel interface available in English and Hungarian.
-- **Branding overrides**: `ATLAS_NAME` and `BRAND_NAME` rename the agent and product for self-hosted deployments. **White-label** goes further: a panel surface to override the panel title, logo, favicon, colours, and email footer. It's a gated licensed feature: the configuration always exists and saves, but the overrides only take effect when you set `BRANDING_UNLOCKED=true` (free for self-hosters; there's no in-panel switch).
+- **Branding overrides**: `ATLAS_NAME` and `BRAND_NAME` rename the agent and product for self-hosted deployments. **White-label** goes further: a panel surface (Settings → Whitelabel) to override the panel title, logo, favicon, colours, and email footer. Free to use — saved values apply immediately.
 - **Daily digest**: `/digest` posts a tight summary of the last 24 hours of fleet activity to Telegram: tasks completed, autonomous runs that succeeded or errored, memories written, skills saved, and the day's cost.
 - **Conversation search**: one panel search box over everything you've said and every autonomous run transcript on disk, ranked by meaning (the same hybrid cosine + keyword search as memory) with a snippet around the match.
 - **Custom webhook tools**: register any HTTP endpoint in the panel and it becomes a callable agent tool (`webhook_<name>`); the agent fills in the declared query/header/body/path params and the call goes out through the SSRF-guarded fetch. Auth headers can reference a vaulted secret so tokens stay encrypted.
@@ -592,7 +592,7 @@ src/
     webhookTriggers.ts inbound /hook/:id triggers (HMAC-authed) that fire autonomous runs
     conversationSearch.ts  hybrid search across chat history + run transcripts
     digest.ts         24h fleet-activity summary for /digest
-    branding.ts       white-label panel branding overrides (gated by BRANDING_UNLOCKED)
+    branding.ts       white-label panel branding overrides
     languages.ts      BCP 47 language catalogue (30 languages)
     planSettings.ts   subscription plan and monthly budget configuration (Pro / Max / API)
     claudeUsage.ts    reads ~/.claude/stats-cache.json + claude auth status for historical stats

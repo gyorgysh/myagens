@@ -599,10 +599,7 @@ export const en = {
   settings_whitelabel_email_footer: "Email footer",
   settings_whitelabel_email_footer_ph: "Sent from Atlas · MyAgens",
   settings_whitelabel_active: "Active",
-  settings_whitelabel_locked: "Licensed",
-  settings_whitelabel_lock_notice: "White-label is a licensed feature, free for personal use. You can edit and save these values, but they will not be applied until the feature is unlocked for your deployment.",
   settings_whitelabel_saved: "Branding saved and applied.",
-  settings_whitelabel_saved_locked: "Branding draft saved (not applied while locked).",
   settings_coming_soon: "Coming soon",
 
   // Notifications (Web Push)

@@ -799,4 +799,6 @@ A few more endpoints exist, mostly mirroring panel views:
 - `GET /api/me`: read-only deployment facts (version, brand/agent name, allowed-user count, panel host/port, tunnel/terminal flags) for the Setup view.
 - `GET /api/terminal`, `POST /api/terminal/spawn|resize`: the panel terminal session.
 - `GET /api/conversations/search`: hybrid (cosine + keyword) search across the live chat history and on-disk run transcripts (`?q=&limit=`), returning ranked hits with an extracted snippet and source (`chat` | `run`).
-- `GET|PUT /api/branding`: the white-label branding overrides (product/agent name, panel title, logo, favicon, colours, email footer). Saved values apply immediately (folded into `GET /api/me`), with the `ATLAS_NAME`/`BRAND_NAME` env defaults filling anything left blank.
+- `GET|PUT /api/branding`: the white-label branding overrides (product/agent name, panel title, logo, favicon, colours, email footer, custom CSS). Saved values apply immediately (folded into `GET /api/me`), with the `ATLAS_NAME`/`BRAND_NAME` env defaults filling anything left blank.
+- `POST /api/branding/reset`: wipe every branding override back to the env/theme defaults.
+- `POST /api/branding/generate-css`: `{prompt}` (max 500 chars) → `{css}` — a one-shot Haiku pass that turns a plain-language description ("warm sunset oranges…") into a theme-CSS draft overriding the panel's CSS custom properties. Returned for review, never auto-saved; 502 when the model is unreachable.

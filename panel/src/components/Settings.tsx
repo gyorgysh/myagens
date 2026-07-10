@@ -4,6 +4,7 @@ import { Accordion, Badge, Button, Card, Input, Label, ModelSelect, Select, Skel
 import { MODEL_SUGGESTIONS } from "../lib/models.ts";
 import { useI18n, INTERFACE_LANGUAGES } from "../lib/useI18n.ts";
 import { useTheme, type Theme } from "../lib/useTheme.ts";
+import { applyBranding } from "../lib/branding.ts";
 import { errorMessage } from "../lib/errorMessage.ts";
 import { toast } from "../lib/useToast.ts";
 import type { TranslationKey } from "../i18n/en.ts";
@@ -335,6 +336,8 @@ function WhitelabelSettings({ onAuthError }: { onAuthError: () => void }) {
   const [b, setB] = useState<Branding>({});
   const [saved, setSaved] = useState<Branding>({});
   const [busy, setBusy] = useState(false);
+  const [genPrompt, setGenPrompt] = useState("");
+  const [genBusy, setGenBusy] = useState(false);
 
   useEffect(() => {
     api
@@ -363,11 +366,46 @@ function WhitelabelSettings({ onAuthError }: { onAuthError: () => void }) {
       const v = await api.saveBranding(b);
       setSaved(v.branding);
       setB(v.branding);
+      applyBranding(v.effective, v.effective.brandName ?? "");
       toast.success(t("settings_whitelabel_saved"));
     } catch (e) {
       if (e instanceof AuthError) onAuthError();
     } finally {
       setBusy(false);
+    }
+  };
+
+  const reset = async () => {
+    if (!confirm(t("settings_whitelabel_reset_confirm"))) return;
+    setBusy(true);
+    try {
+      const v = await api.resetBranding();
+      setSaved(v.branding);
+      setB(v.branding);
+      applyBranding(v.effective, v.effective.brandName ?? "");
+      toast.success(t("settings_whitelabel_reset_done"));
+    } catch (e) {
+      if (e instanceof AuthError) onAuthError();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // One-shot AI pass: describe the look, get a theme-CSS draft into the editor.
+  // Nothing applies until the user reviews and saves.
+  const generate = async () => {
+    const prompt = genPrompt.trim();
+    if (!prompt) return;
+    setGenBusy(true);
+    try {
+      const { css } = await api.generateBrandingCss(prompt);
+      set({ customCss: css });
+      toast.success(t("settings_whitelabel_generated"));
+    } catch (e) {
+      if (e instanceof AuthError) onAuthError();
+      else toast.error(t("settings_whitelabel_generate_failed"));
+    } finally {
+      setGenBusy(false);
     }
   };
 
@@ -423,9 +461,34 @@ function WhitelabelSettings({ onAuthError }: { onAuthError: () => void }) {
           <Label>{t("settings_whitelabel_email_footer")}</Label>
           <TextArea rows={2} placeholder={t("settings_whitelabel_email_footer_ph")} value={b.emailFooter ?? ""} onChange={(e) => set({ emailFooter: e.target.value })} />
         </div>
-        <div className="pt-1">
+        <div>
+          <Label>{t("settings_whitelabel_custom_css")}</Label>
+          <p className="mb-2 text-xs text-fg-dim">{t("settings_whitelabel_custom_css_hint")}</p>
+          <div className="mb-2 flex gap-2">
+            <Input
+              placeholder={t("settings_whitelabel_ai_ph")}
+              value={genPrompt}
+              onChange={(e) => setGenPrompt(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void generate()}
+            />
+            <Button onClick={generate} disabled={genBusy || !genPrompt.trim()} className="shrink-0">
+              {genBusy ? t("settings_whitelabel_generating") : t("settings_whitelabel_generate")}
+            </Button>
+          </div>
+          <TextArea
+            rows={8}
+            className="text-xs"
+            placeholder={':root { --accent: #6d28d9; }\n[data-theme="dark"] { --accent: #a78bfa; }'}
+            value={b.customCss ?? ""}
+            onChange={(e) => set({ customCss: e.target.value })}
+          />
+        </div>
+        <div className="flex items-center gap-2 pt-1">
           <Button variant="primary" disabled={!dirty || busy} onClick={save}>
             {busy ? t("saving") : t("save")}
+          </Button>
+          <Button variant="danger" disabled={busy} onClick={reset}>
+            {t("settings_whitelabel_reset")}
           </Button>
         </div>
       </div>

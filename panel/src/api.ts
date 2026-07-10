@@ -668,6 +668,7 @@ export interface Branding {
   faviconUrl?: string;
   emailFooter?: string;
   accentColor?: string;
+  customCss?: string;
 }
 
 export interface BrandingView {
@@ -1327,6 +1328,8 @@ export const api = {
 
   branding: () => get<BrandingView>("/api/branding"),
   saveBranding: (b: Branding) => req<BrandingView>("PUT", "/api/branding", b),
+  resetBranding: () => req<BrandingView>("POST", "/api/branding/reset"),
+  generateBrandingCss: (prompt: string) => req<{ css: string }>("POST", "/api/branding/generate-css", { prompt }),
 
   heartbeat: () => get<HeartbeatView>("/api/heartbeat"),
   saveHeartbeat: (c: Partial<HeartbeatConfig>) => req<HeartbeatView>("PUT", "/api/heartbeat", c),

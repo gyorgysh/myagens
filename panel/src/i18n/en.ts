@@ -600,6 +600,16 @@ export const en = {
   settings_whitelabel_email_footer_ph: "Sent from Atlas · MyAgens",
   settings_whitelabel_active: "Active",
   settings_whitelabel_saved: "Branding saved and applied.",
+  settings_whitelabel_custom_css: "Custom CSS",
+  settings_whitelabel_custom_css_hint: "Injected into the panel as a stylesheet. Override the theme variables (--accent, --page, --surface, --fg, …) or describe the look you want and let AI draft it — review, then save to apply.",
+  settings_whitelabel_ai_ph: "e.g. warm sunset oranges on a deep brown background",
+  settings_whitelabel_generate: "Generate with AI",
+  settings_whitelabel_generating: "Generating…",
+  settings_whitelabel_generated: "Theme CSS drafted — review it below, then save to apply.",
+  settings_whitelabel_generate_failed: "Theme generation failed — check that the agent's Claude connection is working, or write the CSS by hand.",
+  settings_whitelabel_reset: "Reset to defaults",
+  settings_whitelabel_reset_confirm: "Remove every branding override (names, logo, favicon, accent, custom CSS) and return to the stock look?",
+  settings_whitelabel_reset_done: "Branding reset to defaults.",
   settings_coming_soon: "Coming soon",
 
   // Notifications (Web Push)

@@ -85,7 +85,7 @@ import {
 import { listImages, getImage, updateImage, deleteImage, listTags, type GalleryImage } from "../core/gallery.js";
 import { generateImage, ImageGenError, type ImageProviderId } from "../core/imageGen.js";
 import { listWebhookTools, createWebhookTool, updateWebhookTool, deleteWebhookTool } from "../core/webhookTools.js";
-import { getBranding, setBranding, effectiveBranding } from "../core/branding.js";
+import { getBranding, setBranding, resetBranding, effectiveBranding, generateThemeCss } from "../core/branding.js";
 import { searchConversations } from "../core/conversationSearch.js";
 import { webhookTriggers, signWebhookBody, panelBaseHint } from "../core/webhookTriggers.js";
 import { vault, importProviderSecrets, resolveSecret, vaultUsages } from "../core/vault.js";
@@ -1483,6 +1483,21 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     branding: setBranding((req.body ?? {}) as never),
     effective: effectiveBranding(),
   }));
+  app.post("/api/branding/reset", async () => ({
+    branding: resetBranding(),
+    effective: effectiveBranding(),
+  }));
+  // One-shot Haiku pass turning a plain-language description into a theme-CSS
+  // draft. Returned to the panel for review — never saved or applied here.
+  app.post("/api/branding/generate-css", async (req, reply) => {
+    const prompt = String((req.body as { prompt?: unknown } | null)?.prompt ?? "").trim();
+    if (!prompt || prompt.length > 500) {
+      return reply.code(400).send({ error: "prompt required (max 500 chars)" });
+    }
+    const css = await generateThemeCss(prompt);
+    if (!css) return reply.code(502).send({ error: "theme generation failed" });
+    return { css };
+  });
 
   // --- secret vault ---
   app.get("/api/vault", async () => ({

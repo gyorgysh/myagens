@@ -601,6 +601,16 @@ export const hu: Translations = {
   settings_whitelabel_email_footer_ph: "Küldve az Atlas · MyAgens rendszerből",
   settings_whitelabel_active: "Aktív",
   settings_whitelabel_saved: "Márkajelzés mentve és alkalmazva.",
+  settings_whitelabel_custom_css: "Egyedi CSS",
+  settings_whitelabel_custom_css_hint: "Stíluslapként töltődik be a panelbe. Írd felül a téma változóit (--accent, --page, --surface, --fg, …), vagy írd le, milyen megjelenést szeretnél, és az AI felvázolja — nézd át, majd mentsd az alkalmazáshoz.",
+  settings_whitelabel_ai_ph: "pl. meleg naplemente-narancsok mély barna háttéren",
+  settings_whitelabel_generate: "Generálás AI-val",
+  settings_whitelabel_generating: "Generálás…",
+  settings_whitelabel_generated: "A téma CSS elkészült — nézd át lent, majd mentsd az alkalmazáshoz.",
+  settings_whitelabel_generate_failed: "A téma generálása nem sikerült — ellenőrizd az ügynök Claude kapcsolatát, vagy írd meg a CSS-t kézzel.",
+  settings_whitelabel_reset: "Visszaállítás alapértelmezettre",
+  settings_whitelabel_reset_confirm: "Eltávolítasz minden márkajelzés-felülírást (nevek, logó, favicon, kiemelőszín, egyedi CSS), és visszatérsz a gyári megjelenéshez?",
+  settings_whitelabel_reset_done: "Márkajelzés visszaállítva az alapértelmezettre.",
   settings_coming_soon: "Hamarosan",
 
   // Értesítések (Web Push)

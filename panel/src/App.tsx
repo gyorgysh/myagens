@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { api, checkToken, clearToken, getToken, setToken, type Branding } from "./api.ts";
+import { api, checkToken, clearToken, getToken, setToken } from "./api.ts";
 import { useTheme } from "./lib/useTheme.ts";
+import { applyBranding } from "./lib/branding.ts";
 import { Login } from "./components/Login.tsx";
 import { Sidebar, BottomNav, MoreDrawer, tabLabel, isTab, isCommandChild, type Tab } from "./components/Sidebar.tsx";
 import { useI18n } from "./lib/useI18n.ts";
@@ -43,28 +44,6 @@ const HeartbeatView_ = lazy(() => import("./components/Heartbeat.tsx").then((m) 
 const SettingsView   = lazy(() => import("./components/Settings.tsx").then((m) => ({ default: m.SettingsView })));
 const RemoteAccessView = lazy(() => import("./components/RemoteAccess.tsx").then((m) => ({ default: m.RemoteAccessView })));
 const FeedbackView   = lazy(() => import("./components/Feedback.tsx").then((m) => ({ default: m.FeedbackView })));
-
-/**
- * Apply white-label branding to the document chrome (title, favicon, accent).
- * `branding` is the *effective* branding from `/api/me`: saved overrides with
- * env-default names as fallback.
- */
-function applyBranding(branding: Branding | undefined, brandName: string): void {
-  const title = branding?.panelTitle || brandName;
-  if (title) document.title = title;
-  if (branding?.faviconUrl) {
-    let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = "icon";
-      document.head.appendChild(link);
-    }
-    link.href = branding.faviconUrl;
-  }
-  if (branding?.accentColor) {
-    document.documentElement.style.setProperty("--color-accent", branding.accentColor);
-  }
-}
 
 /** Tab from the URL path (e.g. /status), falling back to health. */
 function tabFromPath(): Tab | "settings" {

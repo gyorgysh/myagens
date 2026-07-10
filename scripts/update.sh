@@ -55,6 +55,9 @@ if [ -f work.md ]; then
   cp work.md "$WORK_BACKUP"
 fi
 
+# Version before the reset, for the post-restart "updated vX -> vY" notice.
+FROM_VERSION="$(node -p "require('./package.json').version" 2>/dev/null || true)"
+
 say "Fetching origin/${REF}…"
 git fetch --prune origin "$REF"
 BEFORE="$(git rev-parse HEAD)"
@@ -90,6 +93,15 @@ NODE_ENV=development npm install --include=dev
 # dev-deps treatment, so keep NODE_ENV cleared for the build too.
 say "Building (panel UI + bot)…"
 NODE_ENV=development npm run build
+
+# Leave a restart marker so the freshly booted process can tell this restart was
+# update-driven and confirm "back online" to the user (consumed in src/bot.ts).
+# The in-panel/Telegram update paths write the same file from TS before spawning
+# this script; writing it again here also covers manual shell runs. Only reached
+# on a green build (set -e), so a failed update never leaves a success marker.
+if [ -d data ]; then
+  printf '{ "mode": "update", "fromVersion": "%s", "at": %s000 }\n' "$FROM_VERSION" "$(date +%s)" > data/update-pending.json || true
+fi
 
 # Probe the optional node-pty native addon (powers the panel Terminal tab). It's
 # an optionalDependency, so a missing build toolchain doesn't fail the install —

@@ -5,6 +5,7 @@ import { log } from "../logger.js";
 import { audit } from "./audit.js";
 import { whenSettled } from "./activity.js";
 import { serviceInstalled, restartService } from "./agentControl.js";
+import { writeUpdateMarker } from "./updateControl.js";
 
 const pexec = promisify(execFile);
 
@@ -97,6 +98,8 @@ class SelfUpdateManager {
       );
       if (serviced) {
         this.state = { status: "restarting", summary, at: Date.now() };
+        // Lets the freshly booted process confirm "back online" to the user.
+        writeUpdateMarker("self-update");
         restartService();
       } else {
         this.state = { status: "idle", summary, at: Date.now() };

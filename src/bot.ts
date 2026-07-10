@@ -27,6 +27,7 @@ import { downloadIncomingFile, isViewableImage, readImageInput } from "./telegra
 import { isGitCallback, resolveGitCallback } from "./telegram/gitFlow.js";
 import { isReloadCallback, resolveReloadCallback } from "./telegram/reloadFlow.js";
 import { startUpdateNotify, isUpdateNotifyCallback, resolveUpdateNotifyCallback } from "./core/updateNotify.js";
+import { consumeUpdateMarker, currentPackageVersion } from "./core/updateControl.js";
 import { isTaskCallback, resolveTaskCallback, retryKeyboard } from "./telegram/taskFlow.js";
 import { isProjectCallback, resolveProjectCallback } from "./telegram/projects.js";
 import { isInboxCallback, resolveInboxCallback } from "./telegram/inboxFlow.js";
@@ -379,6 +380,26 @@ export function buildBot(): Telegraf {
   // server.ts already keeps fresh (no extra git fetch traffic) and messages
   // the president with Accept ( == /reload) / Reject buttons on a version bump.
   startUpdateNotify(bot.telegram, alertTargets);
+
+  // "Back online" confirmation after an update/reload/self-update restart: the
+  // update runner leaves a marker on disk before restarting, so finding a fresh
+  // one at boot means the restart completed — close the loop the "new version"
+  // notice opened instead of coming back silently.
+  const appliedUpdate = consumeUpdateMarker();
+  if (appliedUpdate) {
+    const to = currentPackageVersion() ?? "?";
+    const from = appliedUpdate.fromVersion;
+    log.info("Update restart confirmed", { mode: appliedUpdate.mode, from, to });
+    void push.notify({ title: "MyAgens updated", body: `v${to} is back online`, kind: "update", tag: "update" });
+    for (const chatId of alertTargets) {
+      const lang = langForChat(chatId);
+      const text =
+        from && from !== to
+          ? t("updatenotify_applied", lang, { from, to })
+          : t("updatenotify_applied_same", lang, { to });
+      void bot.telegram.sendMessage(chatId, text, { parse_mode: "HTML" }).catch(() => {});
+    }
+  }
 
   // Delegated kanban cards run via runTurn (not handleUserPrompt), so they have
   // no Telegram path of their own — report their outcome to the president here.

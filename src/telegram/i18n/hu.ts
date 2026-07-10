@@ -302,6 +302,8 @@ export const hu: Record<keyof typeof en, string> = {
   updatenotify_accept_btn: "✅ Frissítés most",
   updatenotify_reject_btn: "⏰ Később",
   updatenotify_rejected: "Rendben — a következő új verziónál újra jelzem.",
+  updatenotify_applied: "✅ <b>Sikeres frissítés: v{from} → v{to}.</b> Újra elérhető és üzemkész.",
+  updatenotify_applied_same: "✅ <b>Újraindítás kész — a v{to} újra elérhető.</b>",
   cmd_status_running: "fut…",
   cmd_status_idle: "tétlen",
   cmd_status_new_session: "(új)",

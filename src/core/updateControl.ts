@@ -1,17 +1,22 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
 import { repoRoot } from "../config.js";
 import { log } from "../logger.js";
 import { audit } from "./audit.js";
-import { loadJson, saveJson } from "./jsonStore.js";
+import { loadJson, saveJson, dataPath } from "./jsonStore.js";
 import { serviceInstalled, restartService } from "./agentControl.js";
 
 const pexec = promisify(execFile);
 const UPDATE_SH = join(repoRoot, "scripts", "update.sh");
 const UPDATE_PS1 = join(repoRoot, "scripts", "windows", "update.ps1");
 const FILE = "update.json";
+const MARKER_FILE = "update-pending.json";
+// A marker older than this is a run that never restarted (build failed on a
+// non-serviced host, service stuck) — don't announce "update successful" for
+// an unrelated restart hours later.
+const MARKER_MAX_AGE_MS = 30 * 60_000;
 
 export interface UpdateStatus {
   /** Branch this checkout tracks. */
@@ -60,12 +65,45 @@ function packageVersion(raw: string): string | undefined {
 }
 
 /** package.json "version" of the current checkout, read straight off disk. */
-function currentPackageVersion(): string | undefined {
+export function currentPackageVersion(): string | undefined {
   try {
     return packageVersion(readFileSync(join(repoRoot, "package.json"), "utf8"));
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Restart marker: written when an update/restore/self-update is started, so the
+ * process that boots afterwards can tell the restart was update-driven and
+ * confirm success to the user ("back online") — without it a restart is silent.
+ * scripts/update.sh writes the same file for manual shell runs.
+ */
+export interface UpdateMarker {
+  mode: "update" | "restore" | "self-update";
+  fromVersion?: string;
+  at: number;
+}
+
+export function writeUpdateMarker(mode: UpdateMarker["mode"]): void {
+  saveJson<UpdateMarker>(MARKER_FILE, { mode, fromVersion: currentPackageVersion(), at: Date.now() });
+}
+
+export function clearUpdateMarker(): void {
+  try {
+    unlinkSync(dataPath(MARKER_FILE));
+  } catch {
+    /* absent is fine */
+  }
+}
+
+/** Read-and-delete the restart marker. Returns undefined when absent or stale. */
+export function consumeUpdateMarker(): UpdateMarker | undefined {
+  const marker = loadJson<UpdateMarker | null>(MARKER_FILE, null);
+  if (!marker) return undefined;
+  clearUpdateMarker();
+  if (typeof marker.at !== "number" || Date.now() - marker.at > MARKER_MAX_AGE_MS) return undefined;
+  return marker;
 }
 
 function load(): UpdateStatus {
@@ -157,6 +195,10 @@ async function runScript(
   }
   updating = true;
   audit(mode === "restore" ? "update.restore" : "update.run", {});
+  // Written before the script runs (a serviced Unix host kills this process
+  // mid-run, so there's no "after"); cleared below on failure so an unrelated
+  // later restart can't announce a success that never happened.
+  writeUpdateMarker(mode);
   // Windows has no bash; run the PowerShell counterpart. Both update and restore
   // hard-reset the checkout to the remote, so one script covers both modes.
   const isWin = process.platform === "win32";
@@ -196,11 +238,13 @@ async function runScript(
     child.on("error", (e) => {
       onLine(`Error: ${e.message}`);
       updating = false;
+      clearUpdateMarker();
       resolve({ ok: false });
     });
     child.on("close", (code) => {
       updating = false;
       const ok = code === 0;
+      if (!ok) clearUpdateMarker();
       onLine(ok ? "✓ Update complete." : `Update exited with code ${code}.`);
       resolve({ ok });
       // On Windows the script no longer restarts the service itself (the service

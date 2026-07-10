@@ -312,6 +312,8 @@ export const en = {
   updatenotify_accept_btn: "✅ Update now",
   updatenotify_reject_btn: "⏰ Later",
   updatenotify_rejected: "Okay — I'll remind you again on the next new version.",
+  updatenotify_applied: "✅ <b>Update successful: v{from} → v{to}.</b> Back online and ready.",
+  updatenotify_applied_same: "✅ <b>Restart complete — v{to} is back online.</b>",
   cmd_status_running: "running…",
   cmd_status_idle: "idle",
   cmd_status_new_session: "(new)",

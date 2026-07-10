@@ -96,6 +96,9 @@ const PROVIDER_KIND_LABEL: Record<ProviderKind, string> = {
   custom: "Provider",
 };
 
+/** Installed local Ollama models, for the ollama-backend model pickers. */
+const fetchOllamaModels = () => api.ollamaStatus().then((s) => s.models).catch(() => []);
+
 const PERSONA_PRESETS: Array<{ labelKey: TranslationKey; descKey: TranslationKey; value: string }> = [
   { labelKey: "settings_persona_concise", descKey: "workers_persona_preset_concise", value: "Concise and direct. Lead with the result, skip preamble, use short sentences." },
   { labelKey: "settings_persona_warm", descKey: "workers_persona_preset_warm", value: "Warm and encouraging. Acknowledge effort, celebrate wins, frame challenges positively." },
@@ -224,6 +227,7 @@ export function WorkersView({
       {wizarding && (
         <WorkerWizard
           providers={providers}
+          backends={backends}
           workers={workers}
           onDone={async () => { setWizarding(false); await load(); }}
           onCancel={() => setWizarding(false)}
@@ -687,12 +691,14 @@ interface WizardAnswers {
 
 function WorkerWizard({
   providers,
+  backends,
   workers,
   onDone,
   onCancel,
   onAuthError,
 }: {
   providers: NamedProvider[];
+  backends: NamedBackend[];
   workers: Worker[];
   onDone: () => Promise<void>;
   onCancel: () => void;
@@ -742,8 +748,9 @@ function WorkerWizard({
         prompt: String(c.prompt ?? ""),
         model: String(c.model ?? ""),
         providerId: String(c.providerId ?? ""),
-        // The wizard doesn't draft a backend choice — new workers it creates
-        // always start on the default Claude backend, with no fallback set.
+        // The wizard doesn't draft a backend choice — drafts start on the
+        // default Claude backend (switchable per-agent in the review step);
+        // no fallback is drafted.
         backendId: "",
         fallbackBackendId: "",
         fallbackProviderId: "",
@@ -1004,6 +1011,7 @@ function WorkerWizard({
               form={cfg}
               onChange={(patch) => updateConfig(idx, patch)}
               providers={providers}
+              backends={backends}
               workers={workers}
               onAuthError={onAuthError}
               onConfirm={() => createOne(idx)}
@@ -1019,12 +1027,14 @@ function WizardConfigEditor({
   form,
   onChange,
   providers,
+  backends,
   onAuthError,
   onConfirm,
 }: {
   form: Form;
   onChange: (patch: Partial<Form>) => void;
   providers: NamedProvider[];
+  backends: NamedBackend[];
   workers: Worker[];
   onAuthError: () => void;
   onConfirm: () => Promise<void>;
@@ -1161,23 +1171,70 @@ function WizardConfigEditor({
           </Select>
         </div>
         <div>
-          <Label>{t("workers_model")}</Label>
-          <ModelSelect
-            value={form.model}
-            onChange={(model) => onChange({ model })}
-            suggestions={form.providerId ? [] : MODEL_SUGGESTIONS}
-            onFetch={form.providerId ? fetchModels : undefined}
-            fetchLabel={t("fetch")}
-            placeholder={form.providerId ? t("workers_model_local") : t("workers_model_default")}
-          />
-        </div>
-        <div>
-          <Label>{t("workers_provider")}</Label>
-          <Select value={form.providerId} onChange={(e) => onChange({ providerId: e.target.value })}>
-            <option value="">{t("workers_anthropic_default")}</option>
-            {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          <Label>{t("workers_ai_backend")}</Label>
+          <Select
+            value={form.backendId}
+            onChange={(e) => {
+              const v = e.target.value;
+              // Provider/model only mean anything for the Claude backend — clear
+              // them so a stale Claude model id can't be sent to another backend.
+              onChange(v ? { backendId: v, providerId: "", model: "" } : { backendId: v });
+            }}
+          >
+            <option value="">{t("workers_ai_backend_default")}</option>
+            {backends
+              .filter((b) => b.id !== "claude-agent-sdk")
+              .map((b) => (
+                <option key={b.id} value={b.id}>{b.displayName}</option>
+              ))}
           </Select>
+          <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_hint")}</p>
         </div>
+        {form.backendId === "ollama" && (
+          // Ollama runs plain local chat: keep the Model field (the installed
+          // Ollama model name) but drop Provider, which never applies. The
+          // fetch button lists the models installed on the local daemon.
+          <div>
+            <Label>{t("workers_model")}</Label>
+            <ModelSelect
+              value={form.model}
+              onChange={(model) => onChange({ model })}
+              suggestions={[]}
+              onFetch={fetchOllamaModels}
+              fetchLabel={t("fetch")}
+              placeholder={t("workers_model_local")}
+            />
+            <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_ollama_hint")}</p>
+          </div>
+        )}
+        {form.backendId && form.backendId !== "ollama" && (
+          <div>
+            <Label>{t("workers_model")}</Label>
+            <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_no_model")}</p>
+          </div>
+        )}
+        {!form.backendId && (
+          <>
+            <div>
+              <Label>{t("workers_model")}</Label>
+              <ModelSelect
+                value={form.model}
+                onChange={(model) => onChange({ model })}
+                suggestions={form.providerId ? [] : MODEL_SUGGESTIONS}
+                onFetch={form.providerId ? fetchModels : undefined}
+                fetchLabel={t("fetch")}
+                placeholder={form.providerId ? t("workers_model_local") : t("workers_model_default")}
+              />
+            </div>
+            <div>
+              <Label>{t("workers_provider")}</Label>
+              <Select value={form.providerId} onChange={(e) => onChange({ providerId: e.target.value })}>
+                <option value="">{t("workers_anthropic_default")}</option>
+                {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </Select>
+            </div>
+          </>
+        )}
       </div>
       {form.systemPrompt && (
         <div>
@@ -1494,13 +1551,16 @@ function WorkerForm({
         </div>
         {form.backendId === "ollama" && (
           // Ollama runs plain local chat: keep the Model field (the installed
-          // Ollama model name, free text) but drop Provider, which never applies.
+          // Ollama model name) but drop Provider, which never applies. The
+          // fetch button lists the models installed on the local daemon.
           <div>
             <Label>{t("workers_model")}</Label>
             <ModelSelect
               value={form.model}
               onChange={(model) => setForm({ ...form, model })}
               suggestions={[]}
+              onFetch={fetchOllamaModels}
+              fetchLabel={t("fetch")}
               placeholder={t("workers_model_local")}
             />
             <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_ollama_hint")}</p>
@@ -1741,6 +1801,8 @@ function WorkerForm({
               value={form.fallbackModel}
               onChange={(fallbackModel) => setForm({ ...form, fallbackModel })}
               suggestions={form.fallbackBackendId || form.fallbackProviderId ? [] : MODEL_SUGGESTIONS}
+              onFetch={form.fallbackBackendId === "ollama" ? fetchOllamaModels : undefined}
+              fetchLabel={t("fetch")}
               placeholder={
                 form.fallbackBackendId || form.fallbackProviderId
                   ? t("workers_model_local")

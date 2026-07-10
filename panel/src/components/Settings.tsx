@@ -643,14 +643,17 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
           </div>
           {backendId === "ollama" ? (
             // Ollama runs plain local chat: keep the Model field (it's the
-            // installed Ollama model name, free text) but drop Provider, which
-            // never applies to this backend's own auth.
+            // installed Ollama model name) but drop Provider, which never
+            // applies to this backend's own auth. The fetch button lists the
+            // models installed on the local daemon.
             <div>
               <Label>{t("model")}</Label>
               <ModelSelect
                 value={model}
                 onChange={setModel}
                 suggestions={[]}
+                onFetch={() => api.ollamaStatus().then((s) => s.models).catch(() => [])}
+                fetchLabel={t("fetch")}
                 placeholder={t("settings_model_local")}
               />
               <p className="mt-1 text-xs text-fg-dim">{t("settings_ai_backend_ollama_hint")}</p>
@@ -834,14 +837,20 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
             </div>
             {fallbackBackendId ? (
               // A non-Claude fallback backend manages its own auth, so the
-              // provider input doesn't apply — keep only a free-text model name
-              // (e.g. the installed Ollama model).
+              // provider input doesn't apply — keep only the model name (for
+              // Ollama, the fetch button lists the installed local models).
               <div>
                 <Label>{t("model")}</Label>
                 <ModelSelect
                   value={fallbackModel}
                   onChange={setFallbackModel}
                   suggestions={[]}
+                  onFetch={
+                    fallbackBackendId === "ollama"
+                      ? () => api.ollamaStatus().then((s) => s.models).catch(() => [])
+                      : undefined
+                  }
+                  fetchLabel={t("fetch")}
                   placeholder={t("settings_fallback_model_ph")}
                 />
               </div>

@@ -10,9 +10,15 @@ import { embeddingConfig, setEmbeddingsEnabled } from "./embeddings.js";
  * status simply reports `running: false` and the panel hides the offer.
  */
 
-const BASE_URL = "http://localhost:11434";
+const DEFAULT_BASE_URL = "http://localhost:11434";
 const EMBED_MODEL = "nomic-embed-text";
 const PROBE_TIMEOUT_MS = 3_000;
+
+/** Same endpoint the ollama backend runner uses, so the panel's installed-model
+ *  list always reflects the daemon the backend will actually talk to. */
+function baseUrl(): string {
+  return (process.env.OLLAMA_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
+}
 
 export interface OllamaStatus {
   /** Daemon reachable on :11434. */
@@ -30,7 +36,7 @@ export interface OllamaStatus {
 
 /** Does any saved provider point at the local Ollama endpoint? */
 function providerExists(): boolean {
-  const want = BASE_URL.replace(/\/+$/, "");
+  const want = baseUrl();
   return listProviders().some((p) => p.baseUrl.replace(/\/+$/, "") === want);
 }
 
@@ -45,7 +51,7 @@ async function listOllamaModels(): Promise<string[] | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   try {
-    const res = await fetch(`${BASE_URL}/api/tags`, { signal: ctrl.signal });
+    const res = await fetch(`${baseUrl()}/api/tags`, { signal: ctrl.signal });
     if (!res.ok) return null;
     const json = (await res.json()) as { models?: Array<{ name?: unknown }> };
     if (!Array.isArray(json.models)) return [];
@@ -66,7 +72,7 @@ export async function ollamaStatus(): Promise<OllamaStatus> {
   const list = models ?? [];
   return {
     running,
-    baseUrl: BASE_URL,
+    baseUrl: baseUrl(),
     models: list,
     hasEmbedModel: list.some((m) => m.startsWith(EMBED_MODEL)),
     providerExists: providerExists(),
@@ -89,18 +95,18 @@ export interface OllamaConnectResult {
  */
 export async function connectOllama(): Promise<OllamaConnectResult> {
   const before = await ollamaStatus();
-  if (!before.running) throw new Error("Ollama is not reachable on localhost:11434");
+  if (!before.running) throw new Error(`Ollama is not reachable on ${baseUrl()}`);
 
   let providerCreated = false;
   if (!before.providerExists) {
-    createProvider({ name: "Ollama (local)", baseUrl: BASE_URL, authToken: "ollama" });
+    createProvider({ name: "Ollama (local)", baseUrl: baseUrl(), authToken: "ollama" });
     providerCreated = true;
-    log.info("Ollama registered as a local provider", { baseUrl: BASE_URL });
+    log.info("Ollama registered as a local provider", { baseUrl: baseUrl() });
   }
 
   let embeddingsEnabled = false;
   if (before.hasEmbedModel && !before.embeddingsOn) {
-    setEmbeddingsEnabled(true, { provider: "ollama", baseUrl: BASE_URL, model: EMBED_MODEL });
+    setEmbeddingsEnabled(true, { provider: "ollama", baseUrl: baseUrl(), model: EMBED_MODEL });
     embeddingsEnabled = true;
   }
 

@@ -5,6 +5,7 @@ import {
   type Worker,
   type WorkerRun,
   type Autonomy,
+  type MainAgent,
   type NamedProvider,
   type NamedBackend,
   type ProviderKind,
@@ -34,6 +35,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { RunLog } from "./RunLog.tsx";
+import { AgentTerminal } from "./AgentTerminal.tsx";
 import { CrewArt } from "./onboarding.tsx";
 import { ms, relTime, usd } from "../lib/format.ts";
 import { useSubscription } from "../lib/useSubscription.ts";
@@ -151,11 +153,15 @@ const WIZARD_SCHEDULE_CHIPS: Array<{ labelKey: TranslationKey; value: string }> 
 export function WorkersView({
   onAuthError,
   onChat,
+  onEditAtlas,
 }: {
   onAuthError: () => void;
   /** Jump to the panel Chat view with this agent selected. Absent when web
    *  chat is disabled, in which case no "Web Chat" badge is shown. */
   onChat?: (agentId: string) => void;
+  /** Jump to the Settings view — the main agent is configured there, not in a
+   *  worker form. Absent hides the Atlas card's Edit button. */
+  onEditAtlas?: () => void;
 }) {
   const { t } = useI18n();
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -225,6 +231,8 @@ export function WorkersView({
           </ul>
         </InfoCard>
       )}
+
+      {!creating && !wizarding && <AtlasRow onChat={onChat} onEdit={onEditAtlas} />}
 
       {wizarding && (
         <WorkerWizard
@@ -314,6 +322,81 @@ export function WorkersView({
   );
 }
 
+/**
+ * The main agent, pinned above the crew. It isn't a Worker — its settings
+ * (model, autonomy, tmux mode, persona…) live on the Settings page, so Edit
+ * navigates there instead of opening a worker form.
+ */
+function AtlasRow({ onChat, onEdit }: { onChat?: (agentId: string) => void; onEdit?: () => void }) {
+  const { t } = useI18n();
+  const [agent, setAgent] = useState<MainAgent | null>(null);
+  const [name, setName] = useState("Atlas");
+  const [showTerm, setShowTerm] = useState(false);
+
+  useEffect(() => {
+    api.agent().then(setAgent).catch(() => {});
+    api.me().then((m) => {
+      if (m.atlasName) setName(m.atlasName);
+    }).catch(() => {});
+  }, []);
+
+  const providerLabel = agent?.providerName || PROVIDER_KIND_LABEL.anthropic;
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center gap-2">
+        <Avatar id="atlas" avatar="robot" size={32} alt={name} />
+        <span className="font-medium text-fg">{name}</span>
+        <Badge tone="amber">{t("workers_main_agent")}</Badge>
+        {agent && (
+          <Badge tone="blue">
+            {providerLabel} · {shortModel(agent.effectiveModel)}
+          </Badge>
+        )}
+        {agent && <Badge tone="zinc">{t(AUTONOMY_KEY[agent.autonomy])}</Badge>}
+        {agent?.tmuxMode && (
+          <span title={t("settings_tmux_mode")}>
+            <Badge tone="zinc">tmux</Badge>
+          </span>
+        )}
+        <span className="flex items-center gap-1.5">
+          {agent?.botUsername && (
+            <a
+              href={`https://t.me/${agent.botUsername}`}
+              target="_blank"
+              rel="noreferrer"
+              title={t("crew_listening_hint")}
+              className="transition-opacity hover:opacity-80"
+            >
+              <Badge tone="green" className="min-w-[4.5rem] justify-center">{t("crew_listening")}</Badge>
+            </a>
+          )}
+          {onChat && (
+            <button
+              type="button"
+              onClick={() => onChat("atlas")}
+              title={t("crew_web_chat_hint")}
+              className="transition-opacity hover:opacity-80"
+            >
+              <Badge tone="cobalt" className="min-w-[4.5rem] justify-center">{t("crew_web_chat")}</Badge>
+            </button>
+          )}
+        </span>
+        <span className="ml-auto flex gap-1.5">
+          {agent?.tmuxMode && (
+            <Button onClick={() => setShowTerm(true)}>{t("workers_terminal")}</Button>
+          )}
+          {onEdit && <Button onClick={onEdit}>{t("edit")}</Button>}
+        </span>
+      </div>
+      <div className="mt-1 text-xs text-fg-faint">{t("workers_atlas_hint")}</div>
+      {showTerm && (
+        <AgentTerminal agentId="atlas" cinemaOnly onClose={() => setShowTerm(false)} />
+      )}
+    </Card>
+  );
+}
+
 function WorkerRow({
   worker,
   skills,
@@ -342,6 +425,7 @@ function WorkerRow({
   const { t } = useI18n();
   const [editing, setEditing] = useState(Boolean(autoEdit));
   const [open, setOpen] = useState(false);
+  const [showTerm, setShowTerm] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
 
   // When arrived at via the "Edit agent" deep-link, scroll the (already-open)
@@ -473,6 +557,9 @@ function WorkerRow({
               {t("workers_run_agent")}
             </Button>
           )}
+          {worker.tmuxMode === true && (
+            <Button onClick={() => setShowTerm(true)}>{t("workers_terminal")}</Button>
+          )}
           <Button onClick={() => setOpen((o) => !o)}>{open ? t("hide") : t("details")}</Button>
           <Button onClick={() => setEditing((e) => !e)}>{t("edit")}</Button>
           <Button variant="danger" onClick={() => setConfirmDelete(true)}>
@@ -480,6 +567,9 @@ function WorkerRow({
           </Button>
         </span>
       </div>
+      {showTerm && (
+        <AgentTerminal agentId={worker.id} cinemaOnly onClose={() => setShowTerm(false)} />
+      )}
 
       <div className="mt-1 flex items-center gap-1.5">
         <span className="min-w-0 truncate font-mono text-xs text-fg-faint" title={worker.cwd}>
@@ -1371,6 +1461,9 @@ function WorkerForm({
   const [platform, setPlatform] = useState("");
   const [defaultWorkdir, setDefaultWorkdir] = useState<string>("");
   const [knownPaths, setKnownPaths] = useState<Array<{ label: string; path: string }>>([]);
+  // Assume installed until the probe says otherwise, so the toggle doesn't
+  // flash disabled on every open.
+  const [tmuxAvailable, setTmuxAvailable] = useState(true);
 
   // Prefill the working directory with the user's home dir for a brand-new
   // worker (empty cwd), so the form can be saved straight away instead of the
@@ -1388,7 +1481,10 @@ function WorkerForm({
       .catch(() => {});
     api
       .agent()
-      .then((a) => setKnownPaths(a.knownPaths ?? []))
+      .then((a) => {
+        setKnownPaths(a.knownPaths ?? []);
+        setTmuxAvailable(a.tmuxAvailable !== false);
+      })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1617,12 +1713,12 @@ function WorkerForm({
           // mean nothing to the other CLIs.
           <div className="sm:col-span-2">
             <label
-              className={`flex items-start gap-2.5 ${form.autonomy !== "full" ? "opacity-60" : "cursor-pointer"}`}
+              className={`flex items-start gap-2.5 ${form.autonomy !== "full" || !tmuxAvailable ? "opacity-60" : "cursor-pointer"}`}
             >
               <input
                 type="checkbox"
                 checked={form.tmuxMode}
-                disabled={form.autonomy !== "full"}
+                disabled={form.autonomy !== "full" || !tmuxAvailable}
                 onChange={(e) => setForm({ ...form, tmuxMode: e.target.checked })}
                 className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
               />
@@ -1631,6 +1727,9 @@ function WorkerForm({
                 <span className="block text-xs text-fg-dim">{t("settings_tmux_mode_desc")}</span>
                 {form.autonomy !== "full" && (
                   <span className="block text-xs text-warn-fg">{t("settings_tmux_requires_full")}</span>
+                )}
+                {!tmuxAvailable && (
+                  <span className="block text-xs text-warn-fg">{t("settings_tmux_missing")}</span>
                 )}
               </span>
             </label>

@@ -5,6 +5,7 @@ import { approvalQueue, type ApprovalChoice } from "./approvals.js";
 import { askQueue } from "./askQueue.js";
 import { PLANNING_PREAMBLE } from "./planningMode.js";
 import { audit } from "./audit.js";
+import { resetInstanceConversation } from "../claude/tmuxInstance.js";
 import type { ImageInput } from "../claude/runner.js";
 
 export type ChatMessage = BridgeMessage;
@@ -98,6 +99,9 @@ export class ChatManager {
       s.abort?.abort();
       sessions.reset(id);
     }
+    // Tmux mode: the conversation also lives in the persistent TUI — drop its
+    // resume tokens too, or the old thread would just be resumed next turn.
+    void resetInstanceConversation("atlas").catch(() => {});
     chatBridge.clearTranscript();
     audit("chat.clear", {});
   }

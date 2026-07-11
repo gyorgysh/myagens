@@ -5,7 +5,13 @@ import { createHash } from "node:crypto";
 import { config } from "../config.js";
 import { log } from "../logger.js";
 import { dataPath, loadJson, saveJson } from "../core/jsonStore.js";
-import type { RunOptions, RunResult, TmuxRunSpec } from "./runner.js";
+import type { RunOptions, RunResult, TmuxRunSpec, TokenUsage } from "./runner.js";
+import {
+  TranscriptTail,
+  findSessionTranscript,
+  transcriptExists,
+  type TranscriptUsage,
+} from "./transcriptTail.js";
 
 /**
  * Persistent tmux-hosted Claude instances ("Tmux mode").
@@ -18,7 +24,11 @@ import type { RunOptions, RunResult, TmuxRunSpec } from "./runner.js";
  * home. So for opted-in agents we host the real TUI inside a *named tmux
  * session* — `tmux new-session -d` gives it a terminal even though this process
  * has none — feed each prompt with paste-buffer/send-keys, and capture each
- * reply with the TUI's own `/export <file>` command. tmux (not a raw node-pty)
+ * reply by tailing the CLI's OWN session transcript (the append-only JSONL
+ * under ~/.claude/projects/<cwd-slug>/, see transcriptTail.ts): structured
+ * text/tool_use/usage per message, streamed live, nothing injected into the
+ * conversation. The old `/export <file>` capture survives only as a last-resort
+ * fallback for when the transcript can't be located. tmux (not a raw node-pty)
  * is the point: the session survives bot restarts (we re-adopt it on boot), and
  * the user can watch or take over with `tmux attach -t <name>` from any
  * terminal, from the panel viewer, or — with RC on — from the Claude app.
@@ -26,7 +36,6 @@ import type { RunOptions, RunResult, TmuxRunSpec } from "./runner.js";
  * Tradeoffs vs the SDK backend (by design, documented for callers):
  *  - Runs in bypassPermissions only (the TUI can't route approvals to Telegram),
  *    so tmux mode is gated on `full` autonomy by the resolvers.
- *  - No per-tool events and no token/cost usage (the export is prose, not JSON).
  *  - Our in-process MCP servers are NOT attached (an external CLI can't consume
  *    SDK `createSdkMcpServer` objects); `opts.mcpServers`/`canUseTool` and the
  *    system-prompt append options are ignored — the TUI builds its own context
@@ -39,8 +48,12 @@ const STORE_FILE = "tmux-instances.json";
 const SESSION_PREFIX = "myagens-";
 const TMUX_LOG_DIR = dataPath("tmux");
 
-/** How a spawn attempt may seed conversation history (the resume ladder). */
-type ResumeRung = "rc-resume" | "continue" | "fresh";
+/** How a spawn attempt may seed conversation history (the resume ladder).
+ *  Deliberately NO `--continue` rung: it resumes whatever session in the cwd
+ *  is newest, and SDK one-shots (reflection passes, delegated runs) write to
+ *  the same project dir — `--continue` once resurrected a reflection pass's
+ *  conversation into the user's TUI. Only ids we bound ourselves are trusted. */
+type ResumeRung = "local-resume" | "rc-resume" | "fresh";
 
 interface StoredInstance {
   agentName: string;
@@ -51,6 +64,10 @@ interface StoredInstance {
   rcUrl?: string;
   /** claude.ai session id scraped from the RC URL, for `--resume` on respawn. */
   rcSessionId?: string;
+  /** Local CLI session id (transcript filename) — the reliable resume token. */
+  localSessionId?: string;
+  /** The session-transcript JSONL replies are captured from. */
+  transcriptPath?: string;
   model?: string;
   turnCount: number;
   createdAt: number;
@@ -87,11 +104,12 @@ interface Instance {
   startedAt?: number;
   /** One-time notices surfaced through the next turn's onText. */
   pendingNotices: string[];
-  /** Whether this process already announced the attach/RC hint in a turn. */
-  announced: boolean;
   /** Lazily-reconciled setting drift already notified (cleared on restart). */
   noticedRcDrift?: boolean;
   noticedCwdDrift?: boolean;
+  /** True until the stored transcript binding has been (re)verified this
+   *  process — a respawn can fork the conversation into a new session file. */
+  transcriptStale: boolean;
 }
 
 const store: TmuxStore = loadJson<TmuxStore>(STORE_FILE, { version: 1, instances: {} });
@@ -244,8 +262,8 @@ function buildClaudeCommand(spec: TmuxSpawnSpec, rung: ResumeRung, st: StoredIns
   parts.push("claude", "--permission-mode", "bypassPermissions");
   if (spec.model) parts.push("--model", shq(spec.model));
   if (spec.remoteControl) parts.push("--remote-control", shq(spec.agentName));
+  if (rung === "local-resume" && st.localSessionId) parts.push("--resume", shq(st.localSessionId));
   if (rung === "rc-resume" && st.rcSessionId) parts.push("--resume", shq(st.rcSessionId));
-  if (rung === "continue") parts.push("--continue");
   return parts.join(" ");
 }
 
@@ -317,19 +335,19 @@ async function waitReady(sessionName: string, expectRcUrl: boolean): Promise<Rea
 
 /**
  * Spawn the TUI in a detached tmux session, walking the resume ladder:
- *  1. RC on + a persisted RC session id  → `--remote-control --resume <id>`
- *  2. `--continue` (most recent conversation in this cwd)
+ *  1. a persisted local CLI session id     → `--resume <uuid>` (the transcript
+ *     filename — the CLI's real resume token, most reliable)
+ *  2. RC on + a persisted RC session id    → `--remote-control --resume <id>`
  *  3. fresh spawn (always works)
  * Rungs 1–2 exist so a respawn re-attaches the previous conversation / claude.ai
- * session instead of spamming a new one; their applicability to the interactive
- * `--remote-control` flag is unverified upstream, so each rung is verified by
- * the readiness probe and failure falls through to the next.
+ * session instead of spamming a new one; each rung is verified by the readiness
+ * probe and failure falls through to the next.
  */
 async function spawnLadder(inst: Instance, spec: TmuxSpawnSpec): Promise<void> {
   const st = inst.st;
   const rungs: ResumeRung[] = [];
+  if (st.localSessionId) rungs.push("local-resume");
   if (spec.remoteControl && st.rcSessionId) rungs.push("rc-resume");
-  if (st.turnCount > 0) rungs.push("continue");
   rungs.push("fresh");
 
   inst.state = "starting";
@@ -365,9 +383,26 @@ async function spawnLadder(inst: Instance, spec: TmuxSpawnSpec): Promise<void> {
       inst.state = "idle";
       inst.adopted = false;
       inst.startedAt = Date.now();
-      inst.announced = false;
       inst.noticedRcDrift = false;
       inst.noticedCwdDrift = false;
+      // Resuming forks the conversation into a NEW session file — rebind the
+      // transcript on the next turn. A fresh spawn also invalidates the old
+      // session id (resuming it later would resurrect an abandoned thread).
+      inst.transcriptStale = true;
+      if (rung === "fresh") {
+        st.localSessionId = undefined;
+        st.transcriptPath = undefined;
+      }
+      // Surface where the conversation lives ONCE per actual (re)spawn — not
+      // on every process boot / reply. /status carries the same info on demand.
+      inst.pendingNotices.push(
+        [
+          `🖥 Persistent session \`${st.sessionName}\` ${rung === "fresh" ? "started" : "resumed"} — watch or take over with \`tmux attach -t ${st.sessionName}\`.`,
+          st.rcUrl ? `🔗 Mirrored live at ${st.rcUrl}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
       if (rung === "fresh" && rungs.length > 1) {
         inst.pendingNotices.push(
           "⚠️ The previous persistent conversation could not be resumed — started a fresh one.",
@@ -415,7 +450,7 @@ function getOrCreateInstance(spec: TmuxSpawnSpec): Instance {
       chain: Promise.resolve(),
       adopted: false,
       pendingNotices: [],
-      announced: false,
+      transcriptStale: true,
     };
     instances.set(spec.agentId, inst);
   }
@@ -545,6 +580,31 @@ export async function sendToInstance(agentId: string, text: string, submit = tru
   }
 }
 
+/**
+ * Drop an instance's conversation: kill the session and clear every resume
+ * token, so the next turn spawns a genuinely fresh conversation instead of
+ * walking the resume ladder back into the old one. Wired to the user's
+ * explicit "new conversation" actions (/new etc.) — with a persistent TUI,
+ * resetting only the SDK resume token would leave the old thread alive.
+ */
+export async function resetInstanceConversation(agentId: string): Promise<void> {
+  const inst = instances.get(agentId);
+  const st = inst?.st ?? store.instances[agentId];
+  if (!st) return;
+  await tmuxQuiet(["kill-session", "-t", sessT(st.sessionName)]);
+  st.localSessionId = undefined;
+  st.transcriptPath = undefined;
+  st.rcSessionId = undefined;
+  st.rcUrl = undefined;
+  if (inst) {
+    inst.state = "stopped";
+    inst.transcriptStale = true;
+    emitChange(inst);
+  }
+  persist();
+  log.info("[tmux] conversation reset", { agentId, session: st.sessionName });
+}
+
 /** Stop an instance (tmux kill-session). The store entry survives for resume. */
 export async function stopInstance(agentId: string): Promise<void> {
   const inst = instances.get(agentId);
@@ -613,6 +673,9 @@ export async function adoptInstances(): Promise<void> {
     });
     inst.adopted = true;
     inst.startedAt = Date.now();
+    // The claude process itself survived, so its transcript binding is still
+    // the live conversation — no need to re-discover it on the next turn.
+    if (transcriptExists(st.transcriptPath)) inst.transcriptStale = false;
     const screen = await capture(st.sessionName);
     inst.state = /esc\s*to\s*interrupt/i.test(screen.replace(/\s+/g, " ")) ? "busy" : "idle";
     const m = /claude\.ai\/code\/session_[\w-]+/.exec(screen);
@@ -663,6 +726,8 @@ async function pasteText(sessionName: string, text: string): Promise<void> {
  * `quietMs` — the stability check tells a real completion from the model's
  * silent thinking pauses (the spinner keeps repainting while it thinks). A
  * fallback covers turns so trivial the busy marker never rendered.
+ * `onTick` runs every iteration (transcript tailing) — errors are swallowed so
+ * a capture hiccup can never kill completion detection.
  */
 async function waitForTurn(
   sessionName: string,
@@ -670,6 +735,7 @@ async function waitForTurn(
   quietMs: number,
   maxMs: number,
   signal: AbortSignal,
+  onTick?: () => void,
 ): Promise<"done" | "aborted" | "timeout" | "died"> {
   let lastBusy = 0;
   let lastHash = "";
@@ -678,6 +744,11 @@ async function waitForTurn(
     if (signal.aborted) return "aborted";
     await sleep(500);
     if (!(await hasSession(sessionName))) return "died";
+    try {
+      onTick?.();
+    } catch {
+      /* capture must not break the wait */
+    }
     const screen = await capture(sessionName);
     const hash = createHash("sha256").update(screen).digest("hex");
     if (hash !== lastHash) {
@@ -738,6 +809,31 @@ function turnCapMs(): number {
   return cap;
 }
 
+/**
+ * Answer a startup dialog the TUI may be parked on (trust-folder / bypass
+ * warning) before a prompt is fed. waitReady only guards our own spawns — an
+ * ADOPTED session (bot restarted while the TUI sat at a dialog) can still be
+ * stuck on one, and pasting a prompt into a dialog corrupts the answer.
+ */
+async function clearStartupDialogs(sessionName: string): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    const flat = (await capture(sessionName)).replace(/\s+/g, " ");
+    if (/trust\s*this\s*folder/i.test(flat)) {
+      await tmuxQuiet(["send-keys", "-t", paneT(sessionName), "Enter"]);
+      await sleep(700);
+      continue;
+    }
+    if (/accept\s*all\s*responsibility/i.test(flat)) {
+      await tmuxQuiet(["send-keys", "-t", paneT(sessionName), "-l", "--", "2"]);
+      await sleep(250);
+      await tmuxQuiet(["send-keys", "-t", paneT(sessionName), "Enter"]);
+      await sleep(700);
+      continue;
+    }
+    return;
+  }
+}
+
 /** Run one turn through an agent's persistent instance (claude-tmux backend). */
 export async function runTurnOnInstance(spec: TmuxRunSpec, opts: RunOptions): Promise<RunResult> {
   const spawnSpec: TmuxSpawnSpec = {
@@ -772,22 +868,23 @@ async function doTurn(inst: Instance, opts: RunOptions): Promise<RunResult> {
   inst.state = "busy";
   emitChange(inst);
   try {
-    const logDir = join(TMUX_LOG_DIR, slug(st.agentName));
-    mkdirSync(logDir, { recursive: true });
     const turn = ++st.turnCount;
     persist();
-    const exportPath = join(logDir, `turn-${turn}-${Date.now()}.txt`);
 
-    // First turn this process: surface where the conversation lives.
-    if (!inst.announced) {
-      inst.announced = true;
-      const bits = [
-        st.rcUrl ? `🔗 Mirrored live at ${st.rcUrl}` : null,
-        `🖥 Persistent session \`${name}\` — watch or take over with \`tmux attach -t ${name}\`.`,
-      ].filter(Boolean);
-      opts.onText(bits.join("\n") + "\n\n");
-    }
     for (const notice of inst.pendingNotices.splice(0)) opts.onText(notice + "\n\n");
+
+    // Bind the CLI's session transcript — the structured reply channel. A
+    // verified binding tails from its end; a stale one (fresh process or a
+    // respawn, which can fork a new session file) is re-discovered after
+    // submit by matching the prompt we just pasted.
+    let tail: TranscriptTail | null = null;
+    if (!inst.transcriptStale && transcriptExists(st.transcriptPath)) {
+      tail = new TranscriptTail(st.transcriptPath, "end");
+    }
+
+    // An adopted session can be parked on a startup dialog — answer it before
+    // typing anything, or the prompt would be pasted into the dialog.
+    await clearStartupDialogs(name);
 
     // Feed the prompt. C-u clears any residue left in the input line first, so
     // a prior unsubmitted command (a human half-typed into the TUI) can't
@@ -799,12 +896,65 @@ async function doTurn(inst: Instance, opts: RunOptions): Promise<RunResult> {
     const submittedAt = Date.now();
     await tmux(["send-keys", "-t", paneT(name), "Enter"]);
 
+    // Live capture off the transcript: stream text, surface tool calls, and
+    // fold token usage as lines land — the same callback fan-out the SDK
+    // backend does, just sourced from the TUI's own JSONL.
+    const seenLines = new Set<string>();
+    const usageByMsg = new Map<string, TranscriptUsage>();
+    const textParts: string[] = [];
+    const toolCalls: Array<{ name: string; input: unknown }> = [];
+    let lastDiscovery = 0;
+
+    const drain = (): void => {
+      if (!tail) return;
+      for (const e of tail.poll()) {
+        if (e.type !== "assistant" || e.isSidechain) continue;
+        if (!e.timestamp || Date.parse(e.timestamp) < submittedAt - 2000) continue;
+        if (e.uuid) {
+          if (seenLines.has(e.uuid)) continue;
+          seenLines.add(e.uuid);
+        }
+        const msg = e.message;
+        if (msg?.id && msg.usage && msg.model !== "<synthetic>") usageByMsg.set(msg.id, msg.usage);
+        const blocks = Array.isArray(msg?.content) ? msg.content : [];
+        for (const block of blocks) {
+          if (block.type === "text" && block.text) {
+            opts.onText((textParts.length ? "\n\n" : "") + block.text);
+            textParts.push(block.text);
+          } else if (block.type === "tool_use" && block.name) {
+            toolCalls.push({ name: block.name, input: block.input });
+            opts.onToolUse(block.name, block.input);
+          }
+        }
+      }
+    };
+
+    const onTick = (): void => {
+      if (!tail && Date.now() - lastDiscovery >= 2000) {
+        lastDiscovery = Date.now();
+        const found = findSessionTranscript(st.cwd, submittedAt, opts.prompt);
+        if (found) {
+          st.transcriptPath = found.path;
+          st.localSessionId = found.sessionId;
+          inst.transcriptStale = false;
+          persist();
+          tail = new TranscriptTail(found.path, "recent");
+          log.info("[tmux] bound session transcript", {
+            agent: st.agentName,
+            sessionId: found.sessionId,
+          });
+        }
+      }
+      drain();
+    };
+
     const outcome = await waitForTurn(
       name,
       submittedAt,
       2500,
       turnCapMs(),
       opts.abortController.signal,
+      onTick,
     );
     if (outcome === "aborted") {
       // Esc is the TUI's own interrupt — stop generation, keep the instance.
@@ -821,47 +971,97 @@ async function doTurn(inst: Instance, opts: RunOptions): Promise<RunResult> {
     }
     if (outcome === "timeout") {
       log.warn("[tmux] turn hit its time cap", { agent: st.agentName, capMs: turnCapMs() });
-      // Fall through to export anyway — a long turn may still have output worth
-      // capturing; the export reflects whatever exists at this point.
+      // Fall through — return whatever was captured by this point.
     }
 
-    // Trigger `/export <path>`. Typing a path opens the TUI's path-autocomplete
-    // popup, which eats the first Enter (selecting a suggestion instead of
-    // submitting) — so clear the line, type the command, then submit with a
-    // deliberate second Enter after the popup settles. An extra Enter on an
-    // empty prompt is a harmless no-op in the TUI.
-    await tmux(["send-keys", "-t", paneT(name), "C-u"]);
-    await sleep(150);
-    await tmux(["send-keys", "-t", paneT(name), "-l", "--", `/export ${exportPath}`]);
-    await sleep(500);
-    await tmux(["send-keys", "-t", paneT(name), "Enter"]);
-    await sleep(400);
-    await tmux(["send-keys", "-t", paneT(name), "Enter"]);
-
-    let file: string | undefined;
-    for (let i = 0; i < 40; i++) {
-      await sleep(500);
-      file = [exportPath, exportPath + ".txt", exportPath + ".md"].find((f) => existsSync(f));
-      if (file) break;
+    if (!tail) {
+      // Transcript never located (unexpected CLI layout?) — legacy capture.
+      log.warn("[tmux] transcript never found — falling back to /export capture", {
+        agent: st.agentName,
+        turn,
+      });
+      return await captureViaExport(inst, opts, turn);
     }
-    if (!file) {
-      log.warn("[tmux] export never appeared", { agent: st.agentName, turn });
+
+    // Transcript writes can trail the rendered screen by a beat.
+    await sleep(800);
+    drain();
+
+    const reply = textParts.join("\n\n").trim();
+    const tokens = sumUsage(usageByMsg);
+    if (!reply) {
       return {
-        isError: true,
-        text: `Turn ran in the persistent session, but its transcript could not be captured — view it with \`tmux attach -t ${name}\`.`,
+        isError: false,
+        text: "(the persistent session produced no text reply)",
+        tokens,
+        toolCalls,
       };
     }
-
-    const reply = extractLatestReply(readFileSync(file, "utf8"));
-    if (!reply) return { isError: false, text: "(the persistent session produced no text reply)" };
-    opts.onText(reply);
-    return { isError: false, text: reply };
+    return { isError: false, text: reply, tokens, toolCalls };
   } finally {
     if (inst.state === "busy") {
       inst.state = "idle";
       emitChange(inst);
     }
   }
+}
+
+/** Fold per-API-call usage (deduped by message id upstream) into turn totals. */
+function sumUsage(usageByMsg: Map<string, TranscriptUsage>): TokenUsage | undefined {
+  if (!usageByMsg.size) return undefined;
+  const t: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  for (const u of usageByMsg.values()) {
+    t.inputTokens += u.input_tokens ?? 0;
+    t.outputTokens += u.output_tokens ?? 0;
+    t.cacheReadTokens += u.cache_read_input_tokens ?? 0;
+    t.cacheWriteTokens += u.cache_creation_input_tokens ?? 0;
+  }
+  return t;
+}
+
+/**
+ * Legacy capture: type `/export <path>` into the TUI and parse the export.
+ * Only reached when the session transcript could not be located — the export
+ * pollutes the conversation with a slash command, so the transcript channel
+ * is always preferred.
+ */
+async function captureViaExport(inst: Instance, opts: RunOptions, turn: number): Promise<RunResult> {
+  const st = inst.st;
+  const name = st.sessionName;
+  const logDir = join(TMUX_LOG_DIR, slug(st.agentName));
+  mkdirSync(logDir, { recursive: true });
+  const exportPath = join(logDir, `turn-${turn}-${Date.now()}.txt`);
+
+  // Typing a path opens the TUI's path-autocomplete popup, which eats the
+  // first Enter (selecting a suggestion instead of submitting) — so clear the
+  // line, type the command, then submit with a deliberate second Enter after
+  // the popup settles. An extra Enter on an empty prompt is a harmless no-op.
+  await tmux(["send-keys", "-t", paneT(name), "C-u"]);
+  await sleep(150);
+  await tmux(["send-keys", "-t", paneT(name), "-l", "--", `/export ${exportPath}`]);
+  await sleep(500);
+  await tmux(["send-keys", "-t", paneT(name), "Enter"]);
+  await sleep(400);
+  await tmux(["send-keys", "-t", paneT(name), "Enter"]);
+
+  let file: string | undefined;
+  for (let i = 0; i < 40; i++) {
+    await sleep(500);
+    file = [exportPath, exportPath + ".txt", exportPath + ".md"].find((f) => existsSync(f));
+    if (file) break;
+  }
+  if (!file) {
+    log.warn("[tmux] export never appeared", { agent: st.agentName, turn });
+    return {
+      isError: true,
+      text: `Turn ran in the persistent session, but its transcript could not be captured — view it with \`tmux attach -t ${name}\`.`,
+    };
+  }
+
+  const reply = extractLatestReply(readFileSync(file, "utf8"));
+  if (!reply) return { isError: false, text: "(the persistent session produced no text reply)" };
+  opts.onText(reply);
+  return { isError: false, text: reply };
 }
 
 /** Prune stale export logs older than `maxAgeMs` (default 72h) to bound disk. */

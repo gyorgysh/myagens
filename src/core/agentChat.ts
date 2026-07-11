@@ -33,6 +33,7 @@ import { resolveSecret } from "./vault.js";
 import { getLeadProtocol } from "../prompt.js";
 import { memoryMcp } from "../mcp/memory.js";
 import { tmuxMcp } from "../mcp/tmuxMcp.js";
+import { resetInstanceConversation } from "../claude/tmuxInstance.js";
 import { createTasksMcp } from "../mcp/tasks.js";
 import { skillsMcp } from "../mcp/skills.js";
 import { createCrewMcp } from "../mcp/crew.js";
@@ -150,6 +151,8 @@ export class AgentChatManager {
     s.abort?.abort();
     s.resume = undefined;
     s.messages = [];
+    // Tmux mode: the conversation also lives in the agent's persistent TUI.
+    void resetInstanceConversation(agentId).catch(() => {});
     this.saveResume();
     this.broadcast({ type: "agentchat", event: "cleared", agentId });
     audit("agentchat.clear", { agentId });

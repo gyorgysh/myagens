@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { Telegraf, Telegram } from "telegraf";
 import { mainSettingsView, setMainSettings } from "./core/mainSettings.js";
-import { listInstances, restartInstance } from "./claude/tmuxInstance.js";
+import { listInstances, resetInstanceConversation, restartInstance } from "./claude/tmuxInstance.js";
 import { listBackends } from "./core/backends.js";
 import { config } from "./config.js";
 import { AGENT_LANGUAGES, isValidLanguage, languageName } from "./core/languages.js";
@@ -247,6 +247,9 @@ export function registerCommands(bot: Telegraf): void {
 
   bot.command("new", async (ctx) => {
     sessions.reset(ctx.chat.id);
+    // With Tmux mode the conversation also lives in the persistent TUI —
+    // drop its resume tokens too, or the old thread would just be resumed.
+    await resetInstanceConversation("atlas").catch(() => {});
     log.info("Command /new", { chatId: ctx.chat.id });
     await ctx.reply(t("cmd_new_done", langForChat(ctx.chat.id)));
   });
@@ -548,6 +551,17 @@ export function registerCommands(bot: Telegraf): void {
       `🔗 session: <code>${s.sessionId ?? t("cmd_status_new_session", lang)}</code>`,
       `⚙️ ${s.busy ? t("cmd_status_running", lang) : t("cmd_status_idle", lang)}`,
     ];
+
+    // Persistent tmux instance (Tmux mode): where the conversation lives, and
+    // the claude.ai mirror link when Remote Control is on — surfaced here so
+    // turns themselves don't have to repeat it.
+    const inst = listInstances().find((i) => i.agentId === "atlas" && !i.foreign);
+    if (inst && inst.state !== "stopped") {
+      lines.push(
+        `🖥 tmux: <code>${escapeHtml(inst.sessionName)}</code> (${inst.state}) — <code>tmux attach -t ${escapeHtml(inst.sessionName)}</code>`,
+      );
+      if (inst.rcUrl) lines.push(`🔗 Mirrored live: ${escapeHtml(inst.rcUrl)}`);
+    }
 
     // Remote access tunnel — show the provider + public link when it's live so
     // the user can open the panel from their phone.

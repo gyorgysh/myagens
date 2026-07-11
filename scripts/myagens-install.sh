@@ -296,6 +296,16 @@ ensure_ffmpeg() {
   ok "ffmpeg installed."
 }
 
+# tmux powers "Tmux mode" (persistent per-agent Claude instances + Remote
+# Control). Optional — the app falls back to normal SDK turns without it — so
+# warn-and-continue rather than die.
+ensure_tmux() {
+  if command -v tmux >/dev/null 2>&1; then ok "tmux present."; return 0; fi
+  say "Installing tmux (persistent agent instances)…"
+  pkg_install tmux || { warn "Couldn't install tmux automatically — Tmux mode stays unavailable until it's installed."; return 1; }
+  ok "tmux installed."
+}
+
 ensure_claude_cli() {
   if command -v claude >/dev/null 2>&1; then ok "Claude Code CLI present."; return; fi
   say "Installing the Claude Code CLI (npm -g @anthropic-ai/claude-code)…"
@@ -1022,6 +1032,7 @@ main() {
   ensure_node
   ensure_git
   ensure_claude_cli
+  ensure_tmux || true
   if [ "$BROWSER_MODE" = "1" ]; then
     # Browser setup: no terminal questions past this point. Optional extras
     # (Ollama embeddings, voice, remote access) are configured later in the

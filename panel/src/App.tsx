@@ -351,7 +351,11 @@ export function App() {
               />
             )}
             {tab === "workers" && (
-              <WorkersView onAuthError={onAuthError} onChat={chatEnabled ? chatWith : undefined} />
+              <WorkersView
+                onAuthError={onAuthError}
+                onChat={chatEnabled ? chatWith : undefined}
+                onEditAtlas={() => select("settings")}
+              />
             )}
             {tab === "inbox" && <InboxView onAuthError={onAuthError} />}
             {tab === "tasks" && <TasksView onAuthError={onAuthError} />}

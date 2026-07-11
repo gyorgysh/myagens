@@ -3,6 +3,7 @@ import { config } from "../config.js";
 import { isStaleSession, type RunResult } from "../claude/runner.js";
 import { getBackend } from "./backends.js";
 import { memoryMcp } from "../mcp/memory.js";
+import { tmuxMcp } from "../mcp/tmuxMcp.js";
 import { createTasksMcp } from "../mcp/tasks.js";
 import { skillsMcp } from "../mcp/skills.js";
 import { selfUpdateMcp } from "../mcp/selfUpdate.js";
@@ -20,7 +21,7 @@ import { RunLogWriter } from "./runLog.js";
 import { log, preview } from "../logger.js";
 import { toolDiffMeta } from "../telegram/formatting.js";
 import { agentUsage } from "./agentUsage.js";
-import { isDryRun, dryRunDescription, DRY_RUN_TOOLS, resolveMainRun } from "./mainSettings.js";
+import { isDryRun, dryRunDescription, DRY_RUN_TOOLS } from "./mainSettings.js";
 
 const OUTPUT_HEAD = 3_000;
 const OUTPUT_TAIL = 5_000;
@@ -456,13 +457,10 @@ export class TaskDelegator {
         env,
         systemPromptAppend: append,
         persona: lead?.persona,
-        // Remote Control follows whoever runs the card: the delegated Lead's own
-        // toggle, or the main agent's when the card runs as Atlas.
-        remoteControl: lead
-          ? lead.remoteControl && !lead.backendId
-            ? lead.name
-            : undefined
-          : resolveMainRun().remoteControl,
+        // Deliberately no tmux routing: delegated card runs are unattended and
+        // concurrent — they need full transcripts, per-tool events, and hard
+        // timeouts, and must never interleave into the agent's persistent
+        // interactive conversation. Always the SDK backend.
         // Dry-run forces the gate on so mutating tools can be echoed instead of
         // run; otherwise delegated runs go full bypass.
         permissionMode: isDryRun() ? "default" : "bypassPermissions",
@@ -471,7 +469,7 @@ export class TaskDelegator {
         // crash this skipped was actually a corrupt-memory bug (now fixed in
         // memory.ts), not the project CLAUDE.md.
         abortController: abort,
-        mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead?.id ?? "atlas" }), skills: skillsMcp, self_update: selfUpdateMcp, ...buildConnectorMcps(), ...buildImageGenMcps(), ...webhookMcps() },
+        mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead?.id ?? "atlas" }), skills: skillsMcp, self_update: selfUpdateMcp, tmux: tmuxMcp, ...buildConnectorMcps(), ...buildImageGenMcps(), ...webhookMcps() },
         canUseTool: async (name, input) => {
           if (isDryRun() && DRY_RUN_TOOLS.includes(name as (typeof DRY_RUN_TOOLS)[number])) {
             const what = dryRunDescription(name, input);

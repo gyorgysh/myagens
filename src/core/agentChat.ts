@@ -25,13 +25,14 @@ import { PLANNING_PREAMBLE, isPlanningPrompt, stripPlanningPreamble } from "./pl
 import { isStaleSession, type ImageInput } from "../claude/runner.js";
 import { runTurnWithFallback } from "./fallback.js";
 import { agentUsage } from "./agentUsage.js";
-import { workers, workerFallbackSpec, type Worker } from "./workers.js";
+import { workers, workerFallbackSpec, resolveWorkerRun, type Worker } from "./workers.js";
 import { resolveAvatarSlug } from "./avatar.js";
 import { getSkill, recordSkillUse } from "./skills.js";
 import { getProvider } from "./providers.js";
 import { resolveSecret } from "./vault.js";
 import { getLeadProtocol } from "../prompt.js";
 import { memoryMcp } from "../mcp/memory.js";
+import { tmuxMcp } from "../mcp/tmuxMcp.js";
 import { createTasksMcp } from "../mcp/tasks.js";
 import { skillsMcp } from "../mcp/skills.js";
 import { createCrewMcp } from "../mcp/crew.js";
@@ -233,8 +234,11 @@ export class AgentChatManager {
         agentId,
         text: `Usage limit on the primary model — retrying via ${name}…`,
       });
+    // Interactive panel chat: a Tmux-mode agent routes onto its persistent
+    // tmux instance (claude-tmux backend); everyone else keeps their backendId.
+    const agentRun = resolveWorkerRun(w, { interactive: true });
     try {
-      const res = await runTurnWithFallback(w.backendId, {
+      const res = await runTurnWithFallback(agentRun.backendId, {
         prompt: text,
         images,
         cwd: s.cwd || w.cwd || config.WORKDIR,
@@ -246,7 +250,7 @@ export class AgentChatManager {
         persona: w.persona,
         language: w.language,
         promptExclude: w.promptExclude,
-        remoteControl: w.remoteControl && !w.backendId ? w.name : undefined,
+        tmux: agentRun.tmux,
         // The President is driving from the trusted panel, so allow tools.
         permissionMode: "bypassPermissions",
         settingSources: ["user"],
@@ -256,6 +260,7 @@ export class AgentChatManager {
           tasks: createTasksMcp({ createdBy: w.id }),
           skills: skillsMcp,
           crew: crewMcp,
+          tmux: tmuxMcp,
         },
         canUseTool: async (name, input) => {
           if (name === "AskUserQuestion") {

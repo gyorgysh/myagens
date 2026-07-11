@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { Telegraf, Telegram } from "telegraf";
 import { mainSettingsView, setMainSettings } from "./core/mainSettings.js";
+import { listInstances, restartInstance } from "./claude/tmuxInstance.js";
 import { listBackends } from "./core/backends.js";
 import { config } from "./config.js";
 import { AGENT_LANGUAGES, isValidLanguage, languageName } from "./core/languages.js";
@@ -74,6 +75,68 @@ function parseModelArg(arg: string): { model?: string; backendId?: string } {
 
 export function isModelCallback(data: string): boolean {
   return data.startsWith(MODEL_CB_PREFIX);
+}
+
+// ---------------------------------------------------------------------------
+// /rc — Remote Control sub-toggle of Tmux mode (persistent instance)
+// ---------------------------------------------------------------------------
+
+const RC_CB_PREFIX = "rc:";
+
+export function isRcCallback(data: string): boolean {
+  return data.startsWith(RC_CB_PREFIX);
+}
+
+/** The main agent's live persistent-instance info, if any. */
+function atlasInstance() {
+  return listInstances().find((i) => i.agentId === "atlas");
+}
+
+function describeInstance(): string {
+  const inst = atlasInstance();
+  if (!inst || inst.state === "stopped") return "—";
+  const url = inst.rcUrl ? `\n🔗 ${inst.rcUrl}` : "";
+  return `<code>${escapeHtml(inst.sessionName)}</code> (${inst.state})${url}`;
+}
+
+/** Handle the Restart-now / Later buttons under an /rc on|off reply. */
+export async function resolveRcCallback(
+  tg: Telegram,
+  chatId: number,
+  messageId: number | undefined,
+  data: string,
+): Promise<string> {
+  const lang = langForChat(chatId);
+  const arg = data.slice(RC_CB_PREFIX.length);
+  if (messageId !== undefined) {
+    await tg
+      .editMessageReplyMarkup(chatId, messageId, undefined, { inline_keyboard: [] })
+      .catch(() => {});
+  }
+  if (arg === "later") return t("cmd_rc_later", lang);
+  if (arg === "restart:1" || arg === "restart:0") {
+    // The restart walks a spawn/resume ladder and can take ~a minute; answer
+    // the button press immediately and report the outcome as a new message.
+    void restartInstance("atlas", { remoteControl: arg === "restart:1" })
+      .then((info) =>
+        tg.sendMessage(
+          chatId,
+          t("cmd_rc_restarted", lang, { url: info.rcUrl ? `\n🔗 ${info.rcUrl}` : "" }),
+          { parse_mode: "HTML" },
+        ),
+      )
+      .catch((err) =>
+        tg.sendMessage(
+          chatId,
+          t("cmd_rc_restart_failed", lang, {
+            error: escapeHtml(err instanceof Error ? err.message : String(err)),
+          }),
+          { parse_mode: "HTML" },
+        ),
+      );
+    return t("cmd_rc_restarting", lang);
+  }
+  return "";
 }
 
 /** Handle a shortcut-button press: apply model, refresh the message. */
@@ -678,6 +741,48 @@ export function registerCommands(bot: Telegraf): void {
     } else {
       await ctx.reply(t("cmd_mode_current", lang, { autonomy: s.autonomy }));
     }
+  });
+
+  bot.command("rc", async (ctx) => {
+    const lang = langForChat(ctx.chat.id);
+    const view = mainSettingsView();
+    const arg = ctx.message.text.split(/\s+/)[1]?.toLowerCase();
+    if (arg === "on" || arg === "off") {
+      const enable = arg === "on";
+      setMainSettings({ remoteControl: enable });
+      log.info("Command /rc", { chatId: ctx.chat.id, remoteControl: enable });
+      let text = t(enable ? "cmd_rc_set_on" : "cmd_rc_set_off", lang);
+      if (!view.tmuxMode) {
+        await ctx.replyWithHTML(text + t("cmd_rc_need_tmux", lang));
+        return;
+      }
+      const inst = atlasInstance();
+      if (inst && inst.state !== "stopped") {
+        // The live instance was spawned with the old flag — offer the restart
+        // that actually applies the change.
+        text += t("cmd_rc_restart_prompt", lang);
+        await ctx.replyWithHTML(text, {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: t("cmd_rc_btn_restart", lang), callback_data: `${RC_CB_PREFIX}restart:${enable ? 1 : 0}` },
+                { text: t("cmd_rc_btn_later", lang), callback_data: `${RC_CB_PREFIX}later` },
+              ],
+            ],
+          },
+        });
+        return;
+      }
+      await ctx.replyWithHTML(text);
+      return;
+    }
+    await ctx.replyWithHTML(
+      t("cmd_rc_status", lang, {
+        rc: view.remoteControl ? "on" : "off",
+        tmux: view.tmuxMode ? "on" : "off",
+        instance: describeInstance(),
+      }) + (view.tmuxMode ? "" : t("cmd_rc_need_tmux", lang)),
+    );
   });
 
   bot.command("model", async (ctx) => {

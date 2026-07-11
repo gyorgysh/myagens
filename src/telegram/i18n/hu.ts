@@ -244,6 +244,20 @@ export const hu: Record<keyof typeof en, string> = {
   cmd_mode_compat_safe: "⚖️ Normál mód (volt: safe). Biztonságos eszközök auto-engedélyezve, kockázatosak promptolnak.",
   cmd_mode_compat_auto: "⚠️ Teljes mód (volt: auto). Eszközök jóváhagyás nélkül futnak.",
   cmd_mode_current: "Jelenlegi autonómia: {autonomy}. Használat: /mode supervised|standard|full|auto_until_error",
+  cmd_rc_status:
+    "📡 <b>Remote Control</b>\nRemote Control: <b>{rc}</b>\nTmux mód (állandó példány): <b>{tmux}</b>\nPéldány: {instance}\n\nHasználat: <code>/rc on</code> | <code>/rc off</code>",
+  cmd_rc_need_tmux:
+    "\n\nℹ️ A Remote Control csak <b>Tmux módban</b> (állandó példány) érvényesül — a panel Beállításokban kapcsolható be.",
+  cmd_rc_set_on: "📡 Remote Control <b>bekapcsolva</b>.",
+  cmd_rc_set_off: "📡 Remote Control <b>kikapcsolva</b>.",
+  cmd_rc_restart_prompt:
+    "\n\nA változás a példány újraindításakor lép életbe. ⚠️ Az újraindítás törölheti a TUI-beszélgetést, ha nem folytatható.",
+  cmd_rc_btn_restart: "🔄 Példány újraindítása most",
+  cmd_rc_btn_later: "Később",
+  cmd_rc_restarting: "Állandó példány újraindítása…",
+  cmd_rc_restarted: "✅ Állandó példány újraindítva.{url}",
+  cmd_rc_restart_failed: "⚠️ Az újraindítás nem sikerült: {error}",
+  cmd_rc_later: "Rendben — bármikor újraindíthatod a panelről vagy a /rc paranccsal.",
   cmd_model_set: "🧠 Modell beállítva: <code>{model}</code>. A következő üzenettől érvényes.",
   cmd_model_menu:
     "🧠 <b>Modell</b>\nJelenlegi: <code>{model}</code>\n\nKoppints egy gyorsgombra, vagy írd be a <code>/model &lt;név&gt;</code> parancsot bármelyik modell id-hez:",

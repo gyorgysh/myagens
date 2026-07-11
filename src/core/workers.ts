@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { config } from "../config.js";
-import { AUTO_ALLOWED_TOOLS } from "../claude/runner.js";
+import { AUTO_ALLOWED_TOOLS, type TmuxRunSpec } from "../claude/runner.js";
+import { tmuxAvailableSync } from "../claude/tmuxInstance.js";
 import { getBackend } from "./backends.js";
 import type { FallbackSpec } from "./fallback.js";
 import { memoryMcp } from "../mcp/memory.js";
@@ -59,10 +60,19 @@ export interface Worker {
   fallbackProviderId?: string;
   fallbackModel?: string;
   /**
-   * Claude Code Remote Control: when true, this agent's turns run with
-   * `--remote-control <name>` so the live session can be watched and steered
-   * from claude.ai/code or the Claude mobile app. Off by default; Claude
-   * backend only.
+   * Persistent-instance ("Tmux") mode: when true, this agent's *interactive*
+   * turns (its Lead bot DMs, panel per-agent chat) run inside one long-lived
+   * `claude` TUI hosted in a named tmux session (src/claude/tmuxInstance.ts)
+   * instead of a fresh SDK query per turn. Requires full autonomy, no
+   * backendId override, and the tmux binary; scheduled/delegated runs always
+   * stay on the SDK. Intended for Leads; plain assistants rarely need it.
+   */
+  tmuxMode?: boolean;
+  /**
+   * Claude Code Remote Control — a SUB-toggle of `tmuxMode`: when both are on,
+   * the persistent instance launches with `--remote-control <name>` so it can
+   * be watched and steered from claude.ai/code or the Claude mobile app.
+   * Without tmuxMode it has no effect (RC only works in the interactive TUI).
    */
   remoteControl?: boolean;
   /** Extra persona instructions appended to the system prompt. */
@@ -254,6 +264,7 @@ export class WorkerManager {
       fallbackBackendId: input.fallbackBackendId || undefined,
       fallbackProviderId: input.fallbackProviderId || undefined,
       fallbackModel: input.fallbackModel?.trim() || undefined,
+      tmuxMode: input.tmuxMode || undefined,
       remoteControl: input.remoteControl || undefined,
       systemPrompt: input.systemPrompt?.trim() || undefined,
       skillId: input.skillId || undefined,
@@ -291,6 +302,7 @@ export class WorkerManager {
     if (input.fallbackBackendId !== undefined) w.fallbackBackendId = input.fallbackBackendId || undefined;
     if (input.fallbackProviderId !== undefined) w.fallbackProviderId = input.fallbackProviderId || undefined;
     if (input.fallbackModel !== undefined) w.fallbackModel = input.fallbackModel.trim() || undefined;
+    if (input.tmuxMode !== undefined) w.tmuxMode = input.tmuxMode || undefined;
     if (input.remoteControl !== undefined) w.remoteControl = input.remoteControl || undefined;
     if (input.systemPrompt !== undefined) w.systemPrompt = input.systemPrompt.trim() || undefined;
     if (input.skillId !== undefined) w.skillId = input.skillId || undefined;
@@ -467,7 +479,6 @@ export class WorkerManager {
         persona: w.persona,
         language: w.language,
         promptExclude: w.promptExclude,
-        remoteControl: w.remoteControl && !w.backendId ? w.name : undefined,
         permissionMode,
         // Load full project context (CLAUDE.md, settings) in the worker's cwd, so
         // it operates like a real Claude Code session. (The earlier "exit 1" this
@@ -595,6 +606,7 @@ export interface WorkerInput {
   fallbackBackendId?: string;
   fallbackProviderId?: string;
   fallbackModel?: string;
+  tmuxMode?: boolean;
   remoteControl?: boolean;
   systemPrompt?: string;
   skillId?: string;
@@ -638,6 +650,33 @@ export function workerFallbackSpec(w: Worker): FallbackSpec | undefined {
     providerId: w.fallbackProviderId || undefined,
     model: w.fallbackModel || undefined,
   };
+}
+
+/**
+ * Resolve which backend an *interactive* turn for this worker runs on. Mirrors
+ * resolveMainRun's Tmux-mode gate: when the worker opted into a persistent
+ * instance (tmuxMode), runs at full autonomy with no backendId override, and
+ * tmux is installed, route to the hidden claude-tmux backend with the spec it
+ * needs; otherwise the worker's own backendId (SDK by default). Unattended
+ * runs (execute(), delegated cards) never call this — they always stay SDK.
+ */
+export function resolveWorkerRun(
+  w: Worker,
+  opts: { interactive: boolean },
+): { backendId?: string; tmux?: TmuxRunSpec } {
+  const wantsTmux =
+    opts.interactive &&
+    w.tmuxMode === true &&
+    !w.backendId &&
+    (w.autonomy ?? "standard") === "full" &&
+    tmuxAvailableSync();
+  if (wantsTmux) {
+    return {
+      backendId: "claude-tmux",
+      tmux: { agentId: w.id, agentName: w.name, remoteControl: w.remoteControl === true },
+    };
+  }
+  return { backendId: w.backendId || undefined };
 }
 
 function summarize(input: unknown): string {

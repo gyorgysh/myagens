@@ -3,11 +3,12 @@ import { isAbsolute, resolve } from "node:path";
 import { Telegraf } from "telegraf";
 import type { Telegram } from "telegraf";
 import type { Worker } from "../core/workers.js";
-import { workers, workerFallbackSpec } from "../core/workers.js";
+import { workers, workerFallbackSpec, resolveWorkerRun } from "../core/workers.js";
 import { isStaleSession, AUTO_ALLOWED_TOOLS } from "../claude/runner.js";
 import { runTurnWithFallback } from "../core/fallback.js";
 import type { ImageInput } from "../claude/runner.js";
 import { memoryMcp } from "../mcp/memory.js";
+import { tmuxMcp } from "../mcp/tmuxMcp.js";
 import { createTasksMcp } from "../mcp/tasks.js";
 import { skillsMcp } from "../mcp/skills.js";
 import { createCrewMcp } from "../mcp/crew.js";
@@ -192,7 +193,11 @@ export class LeadBot {
           .catch(() => {});
 
       log.info("Lead turn starting", { lead: lead.name, leadId: lead.id, chatId, model: lead.model ?? config.CLAUDE_MODEL });
-      const res = await runTurnWithFallback(lead.backendId, {
+      // Interactive DM turn: a Tmux-mode Lead routes it onto its persistent
+      // tmux instance (claude-tmux backend); everyone else stays on their own
+      // backendId (SDK by default).
+      const leadRun = resolveWorkerRun(lead, { interactive: true });
+      const res = await runTurnWithFallback(leadRun.backendId, {
         prompt,
         images,
         cwd: s.cwd,
@@ -201,10 +206,10 @@ export class LeadBot {
         env,
         systemPromptAppend: append,
         promptExclude: lead.promptExclude,
-        remoteControl: lead.remoteControl && !lead.backendId ? lead.name : undefined,
+        tmux: leadRun.tmux,
         permissionMode: s.autonomy === "full" ? "bypassPermissions" : "default",
         abortController: s.abort,
-        mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead.id }), skills: skillsMcp, crew: crewMcp, ...buildConnectorMcps(), ...buildImageGenMcps(), ...webhookMcps() },
+        mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead.id }), skills: skillsMcp, crew: crewMcp, tmux: tmuxMcp, ...buildConnectorMcps(), ...buildImageGenMcps(), ...webhookMcps() },
         canUseTool: async (name, input) => {
           if (name === "AskUserQuestion") {
             log.info("AskUserQuestion intercepted (lead)", { leadId: lead.id, chatId });

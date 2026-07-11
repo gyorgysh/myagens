@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, AuthError, type MainAgent, type Autonomy, type Provider, type PlanView, type PlanType, type ProbeResult, type EmbeddingConfig, type OllamaStatus, type LmStudioStatus, type PreferredBackend, type PushView, type Branding, type PromptExcludeKey } from "../api.ts";
+import { api, AuthError, type MainAgent, type Autonomy, type Provider, type PlanView, type PlanType, type ProbeResult, type EmbeddingConfig, type OllamaStatus, type LmStudioStatus, type PreferredBackend, type PushView, type Branding, type PromptExcludeKey, type AgentInstance } from "../api.ts";
 import { Accordion, Badge, Button, Card, Input, Label, ModelSelect, Select, Skeleton, TextArea } from "./ui.tsx";
 import { MODEL_SUGGESTIONS } from "../lib/models.ts";
 import { useI18n, INTERFACE_LANGUAGES } from "../lib/useI18n.ts";
@@ -11,6 +11,7 @@ import type { TranslationKey } from "../i18n/en.ts";
 import { AGENT_LANGUAGES } from "../i18n/languages.ts";
 import { uptime } from "../lib/format.ts";
 import { VaultView } from "./Vault.tsx";
+import { AgentTerminal } from "./AgentTerminal.tsx";
 import { ConnectorsView } from "./Connectors.tsx";
 import { PromptView_ } from "./Prompt.tsx";
 import { SkillsView } from "./Skills.tsx";
@@ -524,7 +525,10 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const [persona, setPersona] = useState("");
   const [autonomy, setAutonomy] = useState<Autonomy>("standard");
   const [dryRun, setDryRun] = useState(false);
+  const [tmuxMode, setTmuxMode] = useState(false);
   const [remoteControl, setRemoteControl] = useState(false);
+  const [instances, setInstances] = useState<AgentInstance[]>([]);
+  const [showAgentTerm, setShowAgentTerm] = useState(false);
   const [updateNotifyOptOut, setUpdateNotifyOptOut] = useState(false);
   const [promptExclude, setPromptExclude] = useState<PromptExcludeKey[]>([]);
   const [fallbackProviderId, setFallbackProviderId] = useState("");
@@ -544,6 +548,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         setPersona(a.persona ?? "");
         setAutonomy(a.autonomy ?? "standard");
         setDryRun(a.dryRun === true);
+        setTmuxMode(a.tmuxMode === true);
         setRemoteControl(a.remoteControl === true);
         setUpdateNotifyOptOut(a.updateNotifyOptOut === true);
         setPromptExclude(a.promptExclude ?? []);
@@ -554,8 +559,15 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
       })
       .catch((e) => e instanceof AuthError && onAuthError());
 
+  const refreshInstances = () =>
+    api
+      .agentInstances()
+      .then((r) => setInstances(r.instances))
+      .catch(() => {});
+
   useEffect(() => {
     void load();
+    void refreshInstances();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -567,6 +579,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
       persona !== (agent.persona ?? "") ||
       autonomy !== (agent.autonomy ?? "standard") ||
       dryRun !== (agent.dryRun === true) ||
+      tmuxMode !== (agent.tmuxMode === true) ||
       remoteControl !== (agent.remoteControl === true) ||
       updateNotifyOptOut !== (agent.updateNotifyOptOut === true) ||
       !sameExclude(promptExclude, agent.promptExclude ?? []) ||
@@ -607,6 +620,22 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
     );
   }
 
+  const instanceAction = async (kind: "start" | "stop" | "restart") => {
+    if (kind === "restart" && !window.confirm(t("settings_tmux_restart_confirm"))) return;
+    setBusy(`inst-${kind}`);
+    try {
+      if (kind === "start") await api.startAgentInstance("atlas");
+      else if (kind === "stop") await api.stopAgentInstance("atlas");
+      else await api.restartAgentInstance("atlas", remoteControl);
+      await refreshInstances();
+    } catch (e) {
+      if (e instanceof AuthError) return onAuthError();
+      toast.error(errorMessage(e, t));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const save = async () => {
     setBusy("save");
     try {
@@ -617,6 +646,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         persona,
         autonomy,
         dryRun,
+        tmuxMode,
         remoteControl,
         updateNotifyOptOut,
         promptExclude,
@@ -846,23 +876,133 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
             )}
           </div>
 
-          {!backendId && (
-            // Claude backend only: --remote-control means nothing to the other CLIs.
-            <div className="mt-4 border-t border-line pt-4">
-              <label className="flex cursor-pointer items-start gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={remoteControl}
-                  onChange={(e) => setRemoteControl(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
-                />
-                <span>
-                  <span className="text-sm font-medium text-fg">{t("settings_remote_control")}</span>
-                  <span className="block text-xs text-fg-dim">{t("settings_remote_control_desc")}</span>
-                </span>
-              </label>
-            </div>
-          )}
+          {!backendId && (() => {
+            // Claude backend only: the persistent TUI (and --remote-control)
+            // mean nothing to the other CLIs.
+            const tmuxMissing = agent.tmuxAvailable === false;
+            const needsFull = autonomy !== "full";
+            const tmuxDisabled = tmuxMissing || needsFull;
+            const inst = instances.find((i) => i.agentId === "atlas");
+            const live = inst && inst.state !== "stopped";
+            const rcDrift = live && (agent.remoteControl === true) !== inst.remoteControl;
+            return (
+              <div className="mt-4 border-t border-line pt-4">
+                <label className={`flex items-start gap-2.5 ${tmuxDisabled ? "opacity-60" : "cursor-pointer"}`}>
+                  <input
+                    type="checkbox"
+                    checked={tmuxMode}
+                    disabled={tmuxDisabled}
+                    onChange={(e) => setTmuxMode(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <span>
+                    <span className="text-sm font-medium text-fg">{t("settings_tmux_mode")}</span>
+                    <span className="block text-xs text-fg-dim">{t("settings_tmux_mode_desc")}</span>
+                    {needsFull && (
+                      <span className="block text-xs text-warn-fg">{t("settings_tmux_requires_full")}</span>
+                    )}
+                    {tmuxMissing && (
+                      <span className="block text-xs text-warn-fg">{t("settings_tmux_missing")}</span>
+                    )}
+                  </span>
+                </label>
+                <label
+                  className={`mt-2 ml-6 flex items-start gap-2.5 ${tmuxMode ? "cursor-pointer" : "opacity-60"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={remoteControl}
+                    disabled={!tmuxMode}
+                    onChange={(e) => setRemoteControl(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <span>
+                    <span className="text-sm font-medium text-fg">{t("settings_remote_control")}</span>
+                    <span className="block text-xs text-fg-dim">{t("settings_remote_control_desc")}</span>
+                  </span>
+                </label>
+                {(agent.tmuxMode === true || inst) && (
+                  <div className="mt-3 ml-6 rounded-lg border border-line bg-surface px-3 py-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`inline-block h-2 w-2 rounded-full ${
+                          inst?.state === "busy"
+                            ? "bg-warn"
+                            : live
+                              ? "bg-ok"
+                              : "bg-line"
+                        }`}
+                      />
+                      <span className="text-fg-dim">
+                        {inst
+                          ? `${inst.sessionName} · ${inst.state} · ${inst.turnCount} ${t("settings_tmux_turns")}`
+                          : t("settings_tmux_no_instance")}
+                      </span>
+                      {inst?.rcUrl && (
+                        <a
+                          href={inst.rcUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[var(--accent)] hover:underline"
+                        >
+                          claude.ai ↗
+                        </a>
+                      )}
+                      <span className="ml-auto flex gap-1.5">
+                        {live ? (
+                          <>
+                            <button
+                              onClick={() => void instanceAction("restart")}
+                              disabled={busy != null}
+                              className="rounded-md border border-line px-2 py-0.5 text-fg-dim hover:text-fg disabled:opacity-50"
+                            >
+                              {busy === "inst-restart" ? "…" : t("settings_tmux_restart")}
+                            </button>
+                            <button
+                              onClick={() => void instanceAction("stop")}
+                              disabled={busy != null}
+                              className="rounded-md border border-line px-2 py-0.5 text-fg-dim hover:text-fg disabled:opacity-50"
+                            >
+                              {busy === "inst-stop" ? "…" : t("settings_tmux_stop")}
+                            </button>
+                            <button
+                              onClick={() => setShowAgentTerm((v) => !v)}
+                              className="rounded-md border border-line px-2 py-0.5 text-fg-dim hover:text-fg"
+                            >
+                              {showAgentTerm ? t("settings_tmux_hide_term") : t("settings_tmux_view_term")}
+                            </button>
+                          </>
+                        ) : (
+                          inst && (
+                            <button
+                              onClick={() => void instanceAction("start")}
+                              disabled={busy != null}
+                              className="rounded-md border border-line px-2 py-0.5 text-fg-dim hover:text-fg disabled:opacity-50"
+                            >
+                              {busy === "inst-start" ? "…" : t("settings_tmux_start")}
+                            </button>
+                          )
+                        )}
+                      </span>
+                    </div>
+                    {rcDrift && (
+                      <p className="mt-1.5 rounded-md border border-warn/40 bg-warn/10 px-2 py-1 text-warn-fg">
+                        {t("settings_tmux_rc_restart_hint")}
+                      </p>
+                    )}
+                    <p className="mt-1.5 text-fg-faint">
+                      <code className="mono">tmux attach -t {inst?.sessionName ?? "myagens-…"}</code>
+                    </p>
+                  </div>
+                )}
+                {showAgentTerm && live && (
+                  <div className="mt-2 ml-6">
+                    <AgentTerminal agentId="atlas" />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="mt-4 border-t border-line pt-4">
             <label className="flex cursor-pointer items-start gap-2.5">

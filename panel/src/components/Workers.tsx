@@ -49,6 +49,7 @@ const emptyForm = {
   fallbackBackendId: "",
   fallbackProviderId: "",
   fallbackModel: "",
+  tmuxMode: false,
   remoteControl: false,
   systemPrompt: "",
   skillId: "",
@@ -517,6 +518,7 @@ function WorkerRow({
               fallbackBackendId: worker.fallbackBackendId ?? "",
               fallbackProviderId: worker.fallbackProviderId ?? "",
               fallbackModel: worker.fallbackModel ?? "",
+              tmuxMode: worker.tmuxMode === true,
               remoteControl: worker.remoteControl === true,
               systemPrompt: worker.systemPrompt,
               skillId: worker.skillId,
@@ -757,6 +759,7 @@ function WorkerWizard({
         fallbackBackendId: "",
         fallbackProviderId: "",
         fallbackModel: "",
+        tmuxMode: false,
         remoteControl: false,
         systemPrompt: String(c.systemPrompt ?? ""),
         skillId: String(c.skillId ?? ""),
@@ -1610,12 +1613,34 @@ function WorkerForm({
           </>
         )}
         {!form.backendId && (
-          // Claude backend only: --remote-control means nothing to the other CLIs.
+          // Claude backend only: the persistent TUI (and --remote-control)
+          // mean nothing to the other CLIs.
           <div className="sm:col-span-2">
-            <label className="flex cursor-pointer items-start gap-2.5">
+            <label
+              className={`flex items-start gap-2.5 ${form.autonomy !== "full" ? "opacity-60" : "cursor-pointer"}`}
+            >
+              <input
+                type="checkbox"
+                checked={form.tmuxMode}
+                disabled={form.autonomy !== "full"}
+                onChange={(e) => setForm({ ...form, tmuxMode: e.target.checked })}
+                className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+              />
+              <span>
+                <span className="text-sm font-medium text-fg">{t("settings_tmux_mode")}</span>
+                <span className="block text-xs text-fg-dim">{t("settings_tmux_mode_desc")}</span>
+                {form.autonomy !== "full" && (
+                  <span className="block text-xs text-warn-fg">{t("settings_tmux_requires_full")}</span>
+                )}
+              </span>
+            </label>
+            <label
+              className={`mt-2 ml-6 flex items-start gap-2.5 ${form.tmuxMode ? "cursor-pointer" : "opacity-60"}`}
+            >
               <input
                 type="checkbox"
                 checked={form.remoteControl}
+                disabled={!form.tmuxMode}
                 onChange={(e) => setForm({ ...form, remoteControl: e.target.checked })}
                 className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
               />

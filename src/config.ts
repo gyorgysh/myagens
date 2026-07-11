@@ -49,6 +49,12 @@ const schema = z.object({
   // extended by the task-run timeout (delegated child runs legitimately keep
   // the parent stream silent that long). Set to 0 to disable.
   TURN_STALL_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(1_800_000),
+  // Per-turn time cap for Tmux-mode turns (persistent tmux-hosted claude TUI,
+  // src/claude/tmuxInstance.ts). Those turns emit no stream events until the
+  // final reply, so they carry their own cap instead of relying on the stall
+  // watchdog; at runtime it is clamped below TURN_STALL_TIMEOUT_MS so the
+  // watchdog can never fire first.
+  TMUX_TURN_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
   // Agentic loop detection: when the same tool call (name + input) repeats this
   // many times in one turn, pause and ask Skip / Approve once / Continue, so a
   // runaway retry can't burn tokens unattended. Set to 0 to disable.

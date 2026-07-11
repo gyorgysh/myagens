@@ -31,7 +31,8 @@ import { consumeUpdateMarker, currentPackageVersion } from "./core/updateControl
 import { isTaskCallback, resolveTaskCallback, retryKeyboard } from "./telegram/taskFlow.js";
 import { isProjectCallback, resolveProjectCallback } from "./telegram/projects.js";
 import { isInboxCallback, resolveInboxCallback } from "./telegram/inboxFlow.js";
-import { isModelCallback, resolveModelCallback } from "./commands.js";
+import { isModelCallback, resolveModelCallback, isRcCallback, resolveRcCallback } from "./commands.js";
+import { tmuxMcp } from "./mcp/tmuxMcp.js";
 import {
   isResumeCallback,
   resolveResumeCallback,
@@ -156,6 +157,11 @@ export function buildBot(): Telegraf {
         const toast = await resolveModelCallback(ctx.telegram, ctx.chat.id, messageId, data);
         await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
       }
+    } else if (data && isRcCallback(data) && ctx.chat) {
+      log.debug("RC button pressed", { chatId: ctx.chat.id, data });
+      const messageId = ctx.callbackQuery.message?.message_id;
+      const toast = await resolveRcCallback(ctx.telegram, ctx.chat.id, messageId, data);
+      await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
     } else if (data && isResumeCallback(data) && ctx.chat) {
       log.debug("Resume button pressed", { chatId: ctx.chat.id, data });
       const toast = resolveResumeCallback(ctx.telegram, ctx.chat.id, data);
@@ -719,7 +725,9 @@ async function handleUserPrompt(
 
   // Autonomous/background turns fail over to a configured local provider while
   // the Anthropic plan is rate-limited (Feature: rate-limit auto-fallback).
-  const mainRun = resolveMainRunFor({ autonomous: Boolean(autonomous) });
+  // interactive: these turns belong to the user's conversation, so a Tmux-mode
+  // Atlas routes them onto its persistent instance (claude-tmux backend).
+  const mainRun = resolveMainRunFor({ autonomous: Boolean(autonomous), interactive: true });
 
   const leads = workers.list().filter((w) => w.role === "lead" && w.enabled);
   const crew =
@@ -795,7 +803,7 @@ async function handleUserPrompt(
       knownPaths: mainRun.knownPaths,
       persona: mainRun.persona,
       promptExclude: mainRun.promptExclude,
-      remoteControl: mainRun.remoteControl,
+      tmux: mainRun.tmux,
       language: session.language ?? mainRun.defaultLanguage,
       // Dry-run forces the gate on (default mode) even in full autonomy, so the
       // canUseTool interception above can catch and echo mutating tools.
@@ -808,6 +816,7 @@ async function handleUserPrompt(
         skills: skillsMcp,
         self_update: selfUpdateMcp,
         crew: crewMcp,
+        tmux: tmuxMcp,
         ...buildConnectorMcps(),
         ...buildImageGenMcps(),
         ...webhookMcps(),

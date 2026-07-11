@@ -255,6 +255,20 @@ export const en = {
   cmd_mode_compat_safe: "⚖️ Standard mode (was: safe). Safe tools auto-allowed, risky tools prompt.",
   cmd_mode_compat_auto: "⚠️ Full mode (was: auto). Tools run without approval.",
   cmd_mode_current: "Current autonomy: {autonomy}. Usage: /mode supervised|standard|full|auto_until_error",
+  cmd_rc_status:
+    "📡 <b>Remote Control</b>\nRemote Control: <b>{rc}</b>\nTmux mode (persistent instance): <b>{tmux}</b>\nInstance: {instance}\n\nUsage: <code>/rc on</code> | <code>/rc off</code>",
+  cmd_rc_need_tmux:
+    "\n\nℹ️ Remote Control only takes effect in <b>Tmux mode</b> (persistent instance) — enable it in panel Settings.",
+  cmd_rc_set_on: "📡 Remote Control turned <b>on</b>.",
+  cmd_rc_set_off: "📡 Remote Control turned <b>off</b>.",
+  cmd_rc_restart_prompt:
+    "\n\nThe change applies when the persistent instance restarts. ⚠️ Restarting may reset the in-TUI conversation if it can't be resumed.",
+  cmd_rc_btn_restart: "🔄 Restart instance now",
+  cmd_rc_btn_later: "Later",
+  cmd_rc_restarting: "Restarting the persistent instance…",
+  cmd_rc_restarted: "✅ Persistent instance restarted.{url}",
+  cmd_rc_restart_failed: "⚠️ Instance restart failed: {error}",
+  cmd_rc_later: "Okay — restart it any time from the panel or with /rc.",
   cmd_model_set: "🧠 Model set to <code>{model}</code>. Takes effect on the next message.",
   cmd_model_menu: "🧠 <b>Model</b>\nCurrent: <code>{model}</code>\n\nTap a shortcut or type <code>/model &lt;name&gt;</code> for any model id:",
   cmd_model_local_header: "\n\n<b>Local / provider models</b>\nType <code>/model &lt;name&gt;</code> to switch:",

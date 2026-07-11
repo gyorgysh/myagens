@@ -1,4 +1,5 @@
 import { runTurn as claudeAgentSdkRunTurn, type RunOptions, type RunResult } from "../claude/runner.js";
+import { runTurn as tmuxRunTurn } from "../claude/tmuxRunner.js";
 import { runTurn as grokRunTurn } from "../grok/runner.js";
 import { runTurn as codexRunTurn } from "../codex/runner.js";
 import { runTurn as ollamaRunTurn } from "../ollama/runner.js";
@@ -15,6 +16,10 @@ import { runWithStallGuard } from "./stallGuard.js";
 export interface AgentBackend {
   id: string;
   displayName: string;
+  /** Derived-only backends (never user-selected): hidden from listBackends(),
+   *  so they can't appear in the panel/`/model` backend pickers or be stored
+   *  as a backendId — a resolver routes to them per turn instead. */
+  hidden?: boolean;
   runTurn(opts: RunOptions): Promise<RunResult>;
 }
 
@@ -52,8 +57,22 @@ const OLLAMA: AgentBackend = guarded({
   runTurn: ollamaRunTurn,
 });
 
+// Persistent tmux-hosted `claude` TUI ("Tmux mode"): the agent's interactive
+// conversation lives in a named tmux session that survives restarts and is
+// attachable from any terminal / the panel / (with RC on) the Claude app.
+// Runs bypassPermissions-only with no MCP tools or usage data (see
+// src/claude/tmuxInstance.ts). Hidden: derived per turn from the per-agent
+// `tmuxMode` flag by the resolvers, never stored as a backendId.
+const CLAUDE_TMUX: AgentBackend = guarded({
+  id: "claude-tmux",
+  displayName: "Claude (persistent tmux)",
+  hidden: true,
+  runTurn: tmuxRunTurn,
+});
+
 const backends = new Map<string, AgentBackend>([
   [CLAUDE_AGENT_SDK.id, CLAUDE_AGENT_SDK],
+  [CLAUDE_TMUX.id, CLAUDE_TMUX],
   [GROK_CLI.id, GROK_CLI],
   [CODEX_CLI.id, CODEX_CLI],
   [OLLAMA.id, OLLAMA],
@@ -65,7 +84,7 @@ export function getBackend(id?: string): AgentBackend {
   return (id && backends.get(id)) || CLAUDE_AGENT_SDK;
 }
 
-/** Every registered backend (for a future model/backend picker). */
+/** Every user-selectable backend (feeds the panel/`/model` backend pickers). */
 export function listBackends(): AgentBackend[] {
-  return [...backends.values()];
+  return [...backends.values()].filter((b) => !b.hidden);
 }

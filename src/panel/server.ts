@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
@@ -30,6 +30,7 @@ import {
 import { getHealth } from "../core/health.js";
 import { listSessions, listSchedules, usageSummary } from "../core/snapshot.js";
 import { agentUsage } from "../core/agentUsage.js";
+import { tmuxAvailableSync } from "../claude/tmuxInstance.js";
 import { isValidWebhookUrl } from "../core/webhook.js";
 import { getPrompt, restorePlaybook, savePlaybook } from "../core/playbook.js";
 import { listSkills, createSkill, updateSkill, deleteSkill, exportSkill, importSkill } from "../core/skills.js";
@@ -111,7 +112,9 @@ import { lmStudioStatus, connectLmStudio } from "../core/lmstudio.js";
 import { serviceInstalled, restartService } from "../core/agentControl.js";
 import { isActive } from "../core/activity.js";
 import { getUpdateStatus, checkForUpdate, runUpdate, runRestore } from "../core/updateControl.js";
-import { recentAudit, searchAudit, auditFacets } from "../core/audit.js";
+import { recentAudit, searchAudit, auditFacets, audit } from "../core/audit.js";
+import * as tmuxViewer from "../core/tmuxViewer.js";
+import { listInstances, restartInstance, stopInstance } from "../claude/tmuxInstance.js";
 import { detectAnomalies, ANOMALY_DEFAULTS } from "../core/anomaly.js";
 import { approvalQueue, APPROVAL_ACTIONS } from "../core/approvals.js";
 import { askQueue } from "../core/askQueue.js";
@@ -606,6 +609,7 @@ function workerView(w: Worker) {
     fallbackBackendId: w.fallbackBackendId ?? "",
     fallbackProviderId: w.fallbackProviderId ?? "",
     fallbackModel: w.fallbackModel ?? "",
+    tmuxMode: w.tmuxMode === true,
     remoteControl: w.remoteControl === true,
     systemPrompt: w.systemPrompt ?? "",
     skillId: w.skillId ?? "",
@@ -679,6 +683,9 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
   // --- main agent: runtime model/provider + lifecycle controls ---
   app.get("/api/agent", async () => ({
     ...mainSettingsView(),
+    // Whether the tmux binary is present — the panel greys the Tmux-mode
+    // checkbox and shows an install hint when it isn't.
+    tmuxAvailable: tmuxAvailableSync(),
     serviceInstalled: serviceInstalled(),
     embeddings: embeddingConfig(),
     preferredBackend: preferredBackend(),
@@ -718,6 +725,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       autonomy,
       defaultLanguage,
       dryRun,
+      tmuxMode,
       remoteControl,
       fallbackProviderId,
       fallbackBackendId,
@@ -734,6 +742,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       autonomy?: string;
       defaultLanguage?: string;
       dryRun?: boolean;
+      tmuxMode?: boolean;
       remoteControl?: boolean;
       fallbackProviderId?: string;
       fallbackBackendId?: string;
@@ -751,6 +760,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       autonomy: autonomy as "supervised" | "standard" | "full" | "auto_until_error" | undefined,
       defaultLanguage,
       dryRun,
+      tmuxMode,
       remoteControl,
       fallbackProviderId,
       fallbackBackendId,
@@ -2234,6 +2244,54 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     return { ok: true };
   });
 
+  // --- Persistent tmux instances (Tmux-mode agents) ---
+  // Lifecycle + listing for the panel's instance badges and viewer. Deliberately
+  // NOT gated by PANEL_TERMINAL_ENABLED (that gates the host shell); these act
+  // only on instances Tmux-mode agents already own.
+  const AGENT_ID_RE = /^[\w.-]+$/;
+  app.get("/api/agent-instances", async () => ({
+    tmuxAvailable: tmuxAvailableSync(),
+    instances: listInstances(),
+  }));
+  app.post("/api/agent-instances/:agentId/start", async (req, reply) => {
+    const { agentId } = req.params as { agentId: string };
+    if (!AGENT_ID_RE.test(agentId)) return reply.code(400).send({ error: "invalid agent id" });
+    try {
+      const info = await restartInstance(agentId);
+      audit("tmuxInstance.start", { agentId, via: "panel" });
+      return info;
+    } catch (err) {
+      return reply.code(400).send({
+        error:
+          (err instanceof Error ? err.message : String(err)) +
+          " — enable Tmux mode for the agent and send it a message first.",
+      });
+    }
+  });
+  app.post("/api/agent-instances/:agentId/stop", async (req, reply) => {
+    const { agentId } = req.params as { agentId: string };
+    if (!AGENT_ID_RE.test(agentId)) return reply.code(400).send({ error: "invalid agent id" });
+    try {
+      await stopInstance(agentId);
+      audit("tmuxInstance.stop", { agentId, via: "panel" });
+      return { ok: true };
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+  app.post("/api/agent-instances/:agentId/restart", async (req, reply) => {
+    const { agentId } = req.params as { agentId: string };
+    if (!AGENT_ID_RE.test(agentId)) return reply.code(400).send({ error: "invalid agent id" });
+    const { remoteControl } = (req.body ?? {}) as { remoteControl?: boolean };
+    try {
+      const info = await restartInstance(agentId, { remoteControl });
+      audit("tmuxInstance.restart", { agentId, remoteControl, via: "panel" });
+      return info;
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // --- Remote access (tunnel relay) ---
   app.get("/api/tunnel", async () => tunnelManager.view());
   app.put("/api/tunnel", async (req, reply) => {
@@ -2282,8 +2340,22 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
 }
 
 function registerWs(app: FastifyInstance, hub: PanelHub): void {
+  const AGENT_ID_RE = /^[\w.-]+$/;
   app.get("/ws", { websocket: true }, (socket) => {
     hub.add(socket);
+
+    // Per-connection identity + take-control state for the tmux-instance
+    // viewer. Take-control is recorded server-side per socket per agent — an
+    // "input" frame is only forwarded if this socket previously enabled
+    // control for that agent (a per-frame flag would be client-trusted).
+    const socketId = randomUUID();
+    const controlled = new Set<string>(); // agentIds with take-control on
+    const inputAudited = new Set<string>(); // audit once per agent per socket
+    const sendTo = (msg: unknown) => {
+      try {
+        socket.send(JSON.stringify(msg));
+      } catch { /* client gone */ }
+    };
 
     // Send terminal scrollback history to this client immediately.
     const history = ptyManager.getHistory();
@@ -2298,10 +2370,19 @@ function registerWs(app: FastifyInstance, hub: PanelHub): void {
       socket.send(JSON.stringify({ type: "presence", clients: hub.presenceList() }));
     } catch { /* client gone */ }
 
-    // Relay client frames: terminal input to the PTY, and the `hello` device
-    // handshake that registers this socket in the presence roster.
+    // Relay client frames: terminal input to the PTY, the `hello` device
+    // handshake that registers this socket in the presence roster, and the
+    // per-agent tmux-instance viewer (sub/unsub/control/input).
     socket.on("message", (raw) => {
-      let msg: { type?: string; event?: string; data?: unknown; clientId?: unknown; label?: unknown };
+      let msg: {
+        type?: string;
+        event?: string;
+        data?: unknown;
+        clientId?: unknown;
+        label?: unknown;
+        agentId?: unknown;
+        enabled?: unknown;
+      };
       try {
         msg = JSON.parse(raw.toString());
       } catch { return; /* ignore malformed frames */ }
@@ -2309,10 +2390,37 @@ function registerWs(app: FastifyInstance, hub: PanelHub): void {
         hub.register(socket, { clientId: msg.clientId, label: String(msg.label ?? "") });
         return;
       }
+      if (msg?.type === "agent-term" && typeof msg.agentId === "string" && AGENT_ID_RE.test(msg.agentId)) {
+        const agentId = msg.agentId;
+        if (msg.event === "sub") {
+          void tmuxViewer.subscribe(agentId, socketId, sendTo).then((res) => {
+            if (!res.ok) sendTo({ type: "agent-term", agentId, event: "error", error: res.error });
+          });
+        } else if (msg.event === "unsub") {
+          tmuxViewer.unsubscribe(agentId, socketId);
+          controlled.delete(agentId);
+        } else if (msg.event === "control") {
+          if (msg.enabled === true) controlled.add(agentId);
+          else controlled.delete(agentId);
+        } else if (msg.event === "input" && typeof msg.data === "string") {
+          if (!controlled.has(agentId)) return; // view-only socket
+          if (!inputAudited.has(agentId)) {
+            inputAudited.add(agentId);
+            audit("tmuxInstance.input", { agentId, via: "panel" });
+          }
+          tmuxViewer.write(agentId, msg.data);
+        }
+        return;
+      }
       if (!ptyManager.enabled) return;
       if (msg?.type === "terminal" && msg.event === "input" && typeof msg.data === "string") {
         ptyManager.write(msg.data);
       }
+    });
+
+    socket.on("close", () => {
+      tmuxViewer.dropSocket(socketId);
+      controlled.clear();
     });
   });
 }

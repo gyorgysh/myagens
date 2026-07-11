@@ -12,6 +12,7 @@ import { getPlanSettings } from "./core/planSettings.js";
 import { setMainBotUsername } from "./core/mainSettings.js";
 import { startPanel } from "./panel/server.js";
 import { tunnelManager } from "./core/tunnelManager.js";
+import { adoptInstances } from "./claude/tmuxInstance.js";
 import { workers } from "./core/workers.js";
 import { memory } from "./core/memory.js";
 import { embeddingsEnabled, autoProbeEmbeddings } from "./core/embeddings.js";
@@ -104,6 +105,13 @@ async function main(): Promise<void> {
   maintenance.start();
   startProbeScheduler(getPlanSettings().probeIntervalMs);
 
+  // Probe for tmux and re-adopt any persistent claude instances that survived
+  // the last restart (Tmux-mode agents). Best-effort, never blocks boot; when
+  // tmux is missing this logs one warning and Tmux-mode agents run on the SDK.
+  void adoptInstances().catch((err) => {
+    log.warn("tmux instance adoption failed", { error: errText(err) });
+  });
+
   // Auto-detect a local embedding model (Ollama / LM Studio) if the user hasn't
   // explicitly configured EMBEDDING_ENABLED. Fire-and-forget; sets the runtime
   // flag so the subsequent ensureEmbeddings() call sees the right state.
@@ -171,6 +179,7 @@ async function main(): Promise<void> {
     { command: "model", description: "Switch the AI model (Claude, local, providers)" },
     { command: "lang", description: "Set response language" },
     { command: "voice", description: "Toggle spoken voice replies" },
+    { command: "rc", description: "Remote Control: mirror the persistent session to the Claude app" },
     { command: "inbox", description: "Review suggestions agents filed for you" },
     { command: "council", description: "Put an idea to a Lead council vote" },
     { command: "restore", description: "Restore code to latest GitHub commit (keeps data)" },
@@ -211,6 +220,9 @@ async function main(): Promise<void> {
     // the process; on the next restart a fresh relay spawns with a new public URL
     // while the orphan keeps running — a major contributor to the restart storm.
     tunnelManager.kill();
+    // Persistent tmux-hosted claude instances are deliberately NOT killed here:
+    // surviving bot restarts is their whole point — boot re-adopts them via
+    // adoptInstances(). Only an explicit stop (panel/MCP/command) kills one.
 
     // Give in-flight turns up to 30 s to finish naturally before we abort them.
     // whenSettled() waits for the *whole* turn, not just the SDK stream: the

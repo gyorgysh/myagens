@@ -342,7 +342,10 @@ export interface Worker {
   fallbackBackendId?: string;
   fallbackProviderId?: string;
   fallbackModel?: string;
-  /** Claude Code Remote Control: watch/steer live sessions from claude.ai/mobile. */
+  /** Persistent tmux-hosted instance for interactive turns (Tmux mode). */
+  tmuxMode?: boolean;
+  /** Remote Control (sub-toggle of tmuxMode): mirror the persistent instance
+   *  to claude.ai/the Claude app. */
   remoteControl?: boolean;
   systemPrompt: string;
   skillId: string;
@@ -948,7 +951,12 @@ export interface MainAgent {
   defaultLanguage: string;
   /** Global dry-run: mutating tools are echoed, not executed. */
   dryRun: boolean;
-  /** Claude Code Remote Control: watch/steer live sessions from claude.ai/mobile. */
+  /** Persistent tmux-hosted instance for interactive turns (Tmux mode). */
+  tmuxMode: boolean;
+  /** Whether the tmux binary exists on the host (greys the Tmux-mode toggle). */
+  tmuxAvailable?: boolean;
+  /** Remote Control (sub-toggle of tmuxMode): mirror the persistent instance
+   *  to claude.ai/the Claude app. */
   remoteControl: boolean;
   /** Provider to fail over to when the plan is rate-limited ("" = off). */
   fallbackProviderId: string;
@@ -977,6 +985,23 @@ export interface MainAgent {
   updateNotifyOptOut: boolean;
   /** Per-agent prompt-slimming keys to drop from the system-prompt append. */
   promptExclude: PromptExcludeKey[];
+}
+
+/** A persistent tmux-hosted claude instance (Tmux-mode agent). */
+export interface AgentInstance {
+  /** "atlas" for the main agent, otherwise the worker id. */
+  agentId: string;
+  agentName: string;
+  sessionName: string;
+  cwd: string;
+  remoteControl: boolean;
+  rcUrl?: string;
+  state: "starting" | "idle" | "busy" | "stopped";
+  turnCount: number;
+  startedAt?: number;
+  adopted?: boolean;
+  /** A live myagens-* tmux session this bot doesn't manage (read-only). */
+  foreign?: boolean;
 }
 
 export interface Provider {
@@ -1253,7 +1278,19 @@ export const api = {
   runProbe: () => req<{ ok: boolean; message: string }>("POST", "/api/usage-probe/run"),
 
   agent: () => get<MainAgent>("/api/agent"),
-  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; remoteControl?: boolean; fallbackProviderId?: string; fallbackBackendId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean; promptExclude?: PromptExcludeKey[] }) =>
+  agentInstances: () =>
+    get<{ tmuxAvailable: boolean; instances: AgentInstance[] }>("/api/agent-instances"),
+  startAgentInstance: (agentId: string) =>
+    req<AgentInstance>("POST", `/api/agent-instances/${agentId}/start`),
+  stopAgentInstance: (agentId: string) =>
+    req<{ ok: boolean }>("POST", `/api/agent-instances/${agentId}/stop`),
+  restartAgentInstance: (agentId: string, remoteControl?: boolean) =>
+    req<AgentInstance>(
+      "POST",
+      `/api/agent-instances/${agentId}/restart`,
+      remoteControl === undefined ? undefined : { remoteControl },
+    ),
+  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; tmuxMode?: boolean; remoteControl?: boolean; fallbackProviderId?: string; fallbackBackendId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean; promptExclude?: PromptExcludeKey[] }) =>
     req<MainAgent>("PUT", "/api/agent", s),
   resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),

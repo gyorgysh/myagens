@@ -5,6 +5,8 @@ import { resolveSecret } from "./vault.js";
 import { audit } from "./audit.js";
 import { loadProbeResult } from "./usageProbe.js";
 import { listBackends, getBackend } from "./backends.js";
+import { tmuxAvailableSync } from "../claude/tmuxInstance.js";
+import type { TmuxRunSpec } from "../claude/runner.js";
 import type { FallbackSpec } from "./fallback.js";
 import { log } from "../logger.js";
 import type { Autonomy } from "../session/manager.js";
@@ -33,10 +35,22 @@ interface MainSettings {
    *  or the panel API, not surfaced as a headline UI choice. */
   backendId?: string;
   /**
-   * Claude Code Remote Control: when true, Atlas's turns run with
-   * `--remote-control <name>` so the live session can be watched and steered
-   * from claude.ai/code or the Claude mobile app. Off by default; Claude
-   * backend only (the flag means nothing to grok/codex/ollama).
+   * Persistent-instance ("Tmux") mode: when true, Atlas's *interactive* turns
+   * (Telegram, panel chat, scheduled turns in the chat) run inside one
+   * long-lived `claude` TUI hosted in a named tmux session instead of a fresh
+   * SDK `query()` per turn (src/claude/tmuxInstance.ts). The session survives
+   * restarts and is attachable from any terminal / the panel. Requires full
+   * autonomy (the TUI is bypassPermissions-only), no backendId override, and
+   * the tmux binary; otherwise turns silently stay on the SDK path. Delegated
+   * cards, council votes, and other unattended one-shots always stay SDK.
+   */
+  tmuxMode?: boolean;
+  /**
+   * Claude Code Remote Control — a SUB-toggle of `tmuxMode`: when both are on,
+   * the persistent instance launches with `--remote-control <name>` so the live
+   * session can be watched and steered from claude.ai/code or the Claude mobile
+   * app. Without tmuxMode it has no effect (RC only works in the interactive
+   * TUI; it is a silent no-op in headless `-p`/SDK mode).
    */
   remoteControl?: boolean;
   /**
@@ -155,6 +169,7 @@ export function mainSettingsView() {
     autonomy: s.autonomy ?? "standard",
     defaultLanguage: s.defaultLanguage ?? config.DEFAULT_LANGUAGE,
     dryRun: s.dryRun === true,
+    tmuxMode: s.tmuxMode === true,
     remoteControl: s.remoteControl === true,
     fallbackProviderId: s.fallbackProviderId ?? "",
     fallbackBackendId: s.fallbackBackendId ?? "",
@@ -176,6 +191,7 @@ export function setMainSettings(patch: {
   autonomy?: Autonomy;
   defaultLanguage?: string;
   dryRun?: boolean;
+  tmuxMode?: boolean;
   remoteControl?: boolean;
   fallbackProviderId?: string;
   fallbackBackendId?: string;
@@ -194,6 +210,7 @@ export function setMainSettings(patch: {
   if (patch.autonomy !== undefined) s.autonomy = patch.autonomy || undefined;
   if (patch.defaultLanguage !== undefined) s.defaultLanguage = patch.defaultLanguage || undefined;
   if (patch.dryRun !== undefined) s.dryRun = patch.dryRun || undefined;
+  if (patch.tmuxMode !== undefined) s.tmuxMode = patch.tmuxMode || undefined;
   if (patch.remoteControl !== undefined) s.remoteControl = patch.remoteControl || undefined;
   if (patch.fallbackProviderId !== undefined)
     s.fallbackProviderId = patch.fallbackProviderId || undefined;
@@ -233,15 +250,22 @@ export function setMainSettings(patch: {
   }
 }
 
+/** One warning per process when tmux mode is configured but tmux is absent. */
+let warnedTmuxMissing = false;
+
 /** Per-turn overrides for a main (bot) turn: model + provider env + persona, if set.
  *  Mirrors how workers resolve a provider, so main turns can run on a local
- *  model too. Returns empty object when nothing is overridden. */
-export function resolveMainRun(): {
+ *  model too. Returns empty object when nothing is overridden. Pass
+ *  `interactive: true` only for turns that belong to the user's conversation
+ *  (bot.ts) — that is what routes a Tmux-mode agent onto its persistent
+ *  instance; unattended callers (reflect, delegated cards) omit it and always
+ *  get the SDK path. */
+export function resolveMainRun(opts?: { interactive?: boolean }): {
   model?: string;
   env?: Record<string, string | undefined>;
   backendId?: string;
-  /** Remote Control session name when the toggle is on (Claude backend only). */
-  remoteControl?: string;
+  /** Present when this turn runs on the persistent tmux instance (claude-tmux). */
+  tmux?: TmuxRunSpec;
   persona?: string;
   autonomy: Autonomy;
   defaultLanguage?: string;
@@ -262,13 +286,31 @@ export function resolveMainRun(): {
         ANTHROPIC_API_KEY: undefined,
       }
     : undefined;
+  // Tmux mode: route Atlas's interactive turns through the `claude-tmux`
+  // backend (persistent TUI in a named tmux session) instead of the headless
+  // SDK. It runs bypassPermissions-only, so require full autonomy — never
+  // silently escalate a standard-autonomy turn. Also requires no pinned
+  // backendId and the tmux binary; a missing binary degrades to the SDK path
+  // with one logged warning.
+  const tmuxConfigured =
+    opts?.interactive === true &&
+    s.tmuxMode === true &&
+    !s.backendId &&
+    (s.autonomy ?? "standard") === "full";
+  const wantsTmux = tmuxConfigured && tmuxAvailableSync();
+  if (tmuxConfigured && !wantsTmux && !warnedTmuxMissing) {
+    warnedTmuxMissing = true;
+    log.warn(
+      "tmux mode configured but tmux is not installed — falling back to SDK turns (brew install tmux / apt install tmux)",
+    );
+  }
   return {
     model: s.model || undefined,
     env,
-    backendId: s.backendId || undefined,
-    // Named after the agent so the session is recognisable in the claude.ai
-    // session list. Only the Claude backend understands the flag.
-    remoteControl: s.remoteControl && !s.backendId ? config.ATLAS_NAME : undefined,
+    backendId: wantsTmux ? "claude-tmux" : s.backendId || undefined,
+    tmux: wantsTmux
+      ? { agentId: "atlas", agentName: config.ATLAS_NAME, remoteControl: s.remoteControl === true }
+      : undefined,
     persona: s.persona || undefined,
     autonomy: s.autonomy ?? "standard",
     defaultLanguage: s.defaultLanguage || undefined,
@@ -315,8 +357,12 @@ function overUsageLimit(threshold: number): { over: boolean; label?: string; per
  * (typically a local model) so background work keeps running; otherwise this is
  * exactly `resolveMainRun()`. Updates the degraded-mode flag as a side effect.
  */
-export function resolveMainRunFor(opts: { autonomous: boolean }): ReturnType<typeof resolveMainRun> {
-  const base = resolveMainRun();
+export function resolveMainRunFor(opts: {
+  autonomous: boolean;
+  /** Belongs to the user's conversation (routes Tmux-mode agents; see resolveMainRun). */
+  interactive?: boolean;
+}): ReturnType<typeof resolveMainRun> {
+  const base = resolveMainRun({ interactive: opts.interactive });
   const s = load();
   // Only autonomous turns fail over via the usage probe, and only when a fallback
   // target (a provider and/or a backend switch) is configured. Interactive turns
@@ -373,6 +419,9 @@ export function resolveMainRunFor(opts: { autonomous: boolean }): ReturnType<typ
       }
     : undefined;
   return {
+    // Deliberately no `tmux` here: an engaged threshold fallback always wins
+    // over the tmux derivation — a degraded turn never routes to the
+    // persistent instance.
     // On a backend switch, never inherit the primary (Claude) model id onto the
     // other backend — use the explicit fallbackModel or leave it unset. When the
     // backend is unchanged, fall back to the primary model as before.

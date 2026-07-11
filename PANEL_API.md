@@ -358,11 +358,17 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
 #   (a resume token doesn't cross backends). "" = keep the primary backend.
 # fallbackModel: model id on the fallback target ("" = the target's default; not
 #   inherited from the primary Claude model when the backend switches).
-# remoteControl: run this agent's turns with Claude Code Remote Control, so the
-#   live session can be watched/steered from claude.ai/code or the Claude mobile
-#   app while it runs. Needs the installed `claude` CLI on PATH and a Claude
-#   subscription (OAuth) sign-in; Claude backend only. Workers/Leads carry the
-#   same per-agent field on POST|PUT /api/workers.
+# tmuxMode: host this agent's interactive conversation in one persistent
+#   Claude Code TUI inside a named tmux session (survives restarts; attachable
+#   via `tmux attach`, the panel viewer, or — with remoteControl — the Claude
+#   app). Requires autonomy "full", no backendId override, and tmux installed
+#   (GET /api/agent returns `tmuxAvailable` so the UI can show an install
+#   hint). Workers/Leads carry the same per-agent field on POST|PUT /api/workers.
+# remoteControl: sub-toggle of tmuxMode — launch the persistent instance with
+#   Claude Code Remote Control so it can be watched/steered from claude.ai/code
+#   or the Claude mobile app. No effect without tmuxMode (RC is interactive-TUI
+#   only); applying a change requires an instance restart. Needs a Claude
+#   subscription (OAuth) sign-in.
 # fallbackThreshold: usage percent (50–100, default 95) at which the probe-driven
 #   fallback engages for autonomous turns.
 # dryRun: when true, mutating tools (Bash, Write, Edit, MultiEdit, NotebookEdit)
@@ -390,6 +396,35 @@ curl -X POST -H "$AUTH" $BASE/api/agent/reset
 # Restart the service (only works when a service is installed)
 curl -X POST -H "$AUTH" $BASE/api/agent/restart
 ```
+
+### Persistent tmux instances (Tmux-mode agents)
+
+```bash
+# List instances: { tmuxAvailable, instances: [{ agentId, agentName, sessionName,
+#   cwd, remoteControl, rcUrl?, state: "starting"|"idle"|"busy"|"stopped",
+#   turnCount, startedAt?, adopted?, foreign? }] }
+# agentId is "atlas" for the main agent, otherwise the worker id. `foreign`
+# marks a live myagens-* tmux session this bot doesn't manage (read-only).
+curl -H "$AUTH" $BASE/api/agent-instances
+
+# Start (respawn from the stored spec; walks the resume ladder), stop
+# (tmux kill-session; the conversation may resume on the next start), or
+# restart — restart optionally applies a new Remote Control flag.
+curl -X POST -H "$AUTH" $BASE/api/agent-instances/atlas/start
+curl -X POST -H "$AUTH" $BASE/api/agent-instances/atlas/stop
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" \
+  $BASE/api/agent-instances/atlas/restart -d '{ "remoteControl": true }'
+```
+
+Live viewer over the shared `/ws` socket (`type: "agent-term"` frames):
+client sends `{ type: "agent-term", agentId, event: "sub" | "unsub" }` to
+watch/stop watching, `{ event: "control", enabled }` to toggle take-control
+(recorded server-side per socket), and `{ event: "input", data }` keystrokes
+(forwarded only while control is enabled; first input per socket is audited).
+Server sends `{ event: "history", data }` (scrollback seed on sub),
+`{ event: "data", data }` (live bytes), `{ event: "state", state, rcUrl? }`
+(live badge updates), `{ event: "exit" }` (viewer detached), and
+`{ event: "error", error }` (subscription failed).
 
 ### Vault (secrets)
 

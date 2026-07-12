@@ -478,6 +478,7 @@ The condensed pitch is above; this is everything, including the security hardeni
 - **In-panel feedback**: send a bug report or suggestion straight from the dashboard. The Feedback view posts to a central collector with version and platform context; bug reports point you at the Logs view for detail. Set the endpoint with `FEEDBACK_URL`.
 - **Operator playbook (`work.md`)**: define once how recurring jobs should be done. Re-read every turn, so edits apply instantly.
 - **Session continuity**: context carries across messages; `/new` resets it. Sessions (resume token, cwd, autonomy, language, allow-lists, usage) survive restarts.
+- **Context-window awareness with cost guards**: `/context` shows how full the window is against the **200k premium-pricing cliff** (above which Claude's long-context rates roughly double input cost), and `/compact` summarises the conversation to shrink it — native in the persistent TUI under Tmux mode, routed through the turn pipeline otherwise. A one-shot nudge fires when a turn crosses the cliff. Separately, a **stale-cache guard** offers *Continue vs Start fresh* before reloading a large conversation whose prompt cache has gone cold (idle past `CACHE_TTL_MS`, default 1h), so you don't silently pay to re-cache a 100k+ context. Thresholds are tunable (`CONTEXT_WARN_TOKENS`, `CONTEXT_WINDOW_TOKENS`, `CACHE_RECACHE_WARN_TOKENS`).
 - **Git review from chat**: `/diff` shows the diff with inline Commit / Discard buttons; `/commit <message>` stages and commits.
 - **Voice notes**: transcribed and run as prompts via OpenAI-compatible API (OpenAI, Groq), fully local Vosk, or xAI's `/v1/stt`. `/voice on` adds a spoken reply (OpenAI TTS, fully local Piper, or xAI's `/v1/tts`) whenever *you* send a voice message, alongside the usual text answer; typed messages stay text-only. Engine, provider, model, and credentials for both directions are configurable from the panel (Settings → Voice) as well as `.env`, with an optional vault-backed key per engine.
 - **Multi-backend agents**: beyond swapping Claude models/providers, an individual Lead/worker (or Atlas) can run on **xAI's Grok CLI** or **OpenAI's Codex CLI** instead of the Claude Agent SDK. Each wraps that provider's own agentic CLI product, tool belt and sandboxing included, rather than reimplementing one. A fourth backend, **Ollama (local chat)**, talks straight to a local Ollama server's chat API instead of a CLI, giving a small local model (14-24B) a tiny hand-built prompt and a single approval-gated `Bash` tool so it stays fast and fully Anthropic-independent. This is an advanced option (`/model <backendId>` in Telegram, or a selector in the panel); Claude remains the default everywhere unless you opt in, and picking a non-Claude backend hides the now-irrelevant Provider/Model fields to prevent an invalid pairing.
@@ -517,6 +518,8 @@ The condensed pitch is above; this is everything, including the security hardeni
 | Command | Action |
 | --- | --- |
 | `/new` | Start a fresh conversation |
+| `/context` | Show how full the context window is against the 200k cost cliff |
+| `/compact` | Summarise the conversation to shrink the context |
 | `/cd <path>` | Change working directory |
 | `/pwd` | Show current directory |
 | `/status` | Show session info (cwd, model, autonomy, session id) |

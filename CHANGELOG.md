@@ -3,6 +3,21 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.6.8] - 2026-07-12
+
+### Added
+- **`/context` and `/compact` from Telegram — context-window parity with the Claude app, framed around cost**: `/context` reports how full the window is against the **200k premium-pricing cliff** (a bar, the tokens used, and free space) — because with the 1M-context beta, cost, not capacity, is what bites: Anthropic's long-context pricing (~2× input) kicks in above 200k tokens. `/compact` summarises the conversation to shrink the context — fired natively into the persistent TUI in Tmux mode, or routed through the normal turn pipeline in SDK mode. A one-shot nudge warns when a turn crosses the cost cliff (a yellow "approaching 200k" heads-up and a red "premium pricing active" alert), resetting once the context drops back under so it fires at most once per fill-up. Both commands appear in the Telegram command menu and `/help`. Tunable via `CONTEXT_WINDOW_TOKENS` (real window, set `1000000` for the 1M beta), `CONTEXT_PREMIUM_CLIFF_TOKENS` (default 200k), and `CONTEXT_WARN_TOKENS` (default 180k; `0` disables). ([9b01341](https://github.com/gyorgysh/myagens/commit/9b01341))
+- **Stale prompt-cache guard**: return to a large conversation after the prompt cache has gone cold and the whole prefix is re-cached at the write rate — a real one-time hit on a 100k+ context. When the last context was ≥ `CACHE_RECACHE_WARN_TOKENS` (default 50k) and the chat has been idle past `CACHE_TTL_MS` (default **1 hour**, matching Claude Code's extended cache), the bot holds your message and offers **Continue vs Start fresh** before paying to reload — auto-continuing after 15s since continuing is non-destructive. Wired into every prompt path (typed, voice, photo, document); set `CACHE_RECACHE_WARN_TOKENS=0` to disable. ([9b01341](https://github.com/gyorgysh/myagens/commit/9b01341))
+
+### Changed
+- **Tmux session names now carry a per-install id** (`myagens-<agent>-<id>`), so two MyAgens checkouts on one host — e.g. a local clone and a server clone — can't collide on the same session name. Stopped legacy `myagens-<agent>` instances migrate to the new scheme on boot (never a live one, so a running TUI is never orphaned). ([9b01341](https://github.com/gyorgysh/myagens/commit/9b01341))
+- **Terminal cinema view is easier to focus on**: the fullscreen overlay is now opaque with a blurred backdrop (instead of see-through) and taller by default, and the embedded viewer in Settings gets more height. ([9b01341](https://github.com/gyorgysh/myagens/commit/9b01341))
+- **Toggling Tmux mode off tears down the persistent instance** (main agent and workers) instead of leaving it running/adoptable, and unchecking Tmux mode in the panel now also clears the Remote Control sub-toggle so a dangling `remoteControl=true` isn't saved. ([9b01341](https://github.com/gyorgysh/myagens/commit/9b01341))
+
+### Fixed
+- **Tmux Remote Control could trap every turn on the "Resume session" picker**: a persistent instance spawned with `--remote-control` (or a bare `--resume`) landed on the CLI's interactive resume picker, which reads as a settled screen — so pasted prompts went into its search box and no transcript ever bound, surfacing as "turn ran but its transcript could not be captured." Both the spawn-ready wait and boot-time adoption now detect the picker and select the session to continue, landing at the real input box. ([9b01341](https://github.com/gyorgysh/myagens/commit/9b01341))
+- **Context readout/warning now use the final API call's prompt size**, not the sum of every call in a multi-tool turn (which overcounted and could show >100% of the window). ([9b01341](https://github.com/gyorgysh/myagens/commit/9b01341))
+
 ## [0.6.7] - 2026-07-12
 
 ### Added

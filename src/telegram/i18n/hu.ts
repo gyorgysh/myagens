@@ -203,6 +203,34 @@ export const hu: Record<keyof typeof en, string> = {
   cmd_help:
     "🤖 <b>{agent}: Parancsok</b>\n\n<b>Párbeszéd</b>\n/new: új kontextus (munkamenet törlése)\n/stop: futó kérés megszakítása\n\n<b>Fájlok &amp; Git</b>\n/cd &lt;elérési út&gt;: munkakönyvtár váltása\n/pwd: jelenlegi könyvtár\n/projects: mentett munkakönyvtárak között váltás\n/diff: munkamásolat diff áttekintése Commit / Elvet gombokkal\n/commit &lt;üzenet&gt;: összes változás commitolása\n\n<b>Autonómia</b>\n/mode supervised|standard|full|auto_until_error: jóváhagyási szint ehhez a chathez\n/model: AI modell váltása (Claude, helyi, providerek)\n/allow &lt;Eszköz&gt; · /allowed · /disallow &lt;Eszköz|all&gt;: tartós eszköz-engedélyezési szabályok\n\n<b>Csapat</b>\n/inbox: ügynökök által beküldött javaslatok áttekintése (elfogad → feladat, vagy elvet)\n/council &lt;ötlet&gt;: javaslat teljes Vezető tanácsi szavazásra bocsátása\n\n<b>Ütemezés</b>\n/schedule add &lt;mikor&gt; | &lt;prompt&gt;: időzített autonóm futás (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)\n/schedule list · /schedule rm &lt;id&gt;\n\n<b>Infó</b>\n/status: munkamenet info (könyvtár, modell, autonómia, munkamenet id)\n/usage: terv, előfizetési limitek és API kiadások\n/digest: reggeli összefoglaló. Elmúlt 24 óra feladatai, emlékei, készségei, költsége és riasztásai\n/update [now]: új verzió keresése, vagy alkalmazása a <code>/update now</code> paranccsal\n/restore [confirm]: kód visszaállítása a legújabb GitHub commitból, az adataid &amp; konfig megőrzésével\n/reload: mentőút — jóváhagyás után eldobja a helyi módosításokat, lehúzza a legújabb kódot, újraépít és újraindít\n/lang [kód]: válasznyelv megjelenítése vagy beállítása (pl. <code>/lang hu</code>)\n/voice [on|off]: hangválaszok be/kikapcsolása (TTS)\n/help: ez az üzenet\n\nKüldhetsz fájlokat vagy fotókat (vision inputként látom), illetve hangüzeneteket (átiratozva és promptként futtatva).",
   cmd_new_done: "🆕 Új beszélgetés indítva.",
+  cmd_context_report:
+    "🧠 <b>Kontextusablak</b>\n<code>{bar}</code> <b>{pct}%</b> a(z) {cliff} normál árazású sávból\n{tokens} token használatban{windowNote}\n\n{status}",
+  cmd_context_window_note: " · {window} ablak",
+  cmd_context_status_ok: "<b>/compact</b> a zsugorításhoz, <b>/new</b> a tiszta laphoz.",
+  cmd_context_status_near:
+    "⚠️ Közeledik a(z) {cliff} költséghatár — felette a hosszú kontextus árazása nagyjából duplázza a bemeneti költséget. <b>/compact</b> vagy <b>/new</b>, hogy olcsó maradjon.",
+  cmd_context_status_over:
+    "🔴 Túl a(z) {cliff} határon — prémium hosszú kontextus árazás (~2× bemenet) aktív. <b>/compact</b> vagy <b>/new</b> a normál árakhoz.",
+  cmd_context_nodata:
+    "🧠 Még nincs kontextusadat — küldj előbb egy üzenetet, utána a /context megmutatja, mennyire telített az ablak.",
+  cmd_context_tmux_failed: "⚠️ Nem sikerült elérni az állandó munkamenetet: {error}",
+  cmd_compact_busy: "⏳ Még fut egy kör — próbáld a /compact parancsot, ha befejeződött.",
+  cmd_compact_tmux:
+    "🗜 Tömörítés elindítva az állandó munkamenetben. Összefoglalja az előzményeket, és kisebb kontextussal folytatja.",
+  cmd_compact_running: "🗜 Beszélgetés tömörítése — az előzmények összefoglalása a kontextus felszabadításához…",
+  context_warn_near:
+    "🧠 <b>Nő a kontextus</b> — {tokens} token (a(z) {cliff} költséghatár {pct}%-a).\n{cliff} felett a hosszú kontextus árazása nagyjából duplázza a bemeneti költséget. Futtasd a <b>/compact</b> parancsot, vagy a <b>/new</b>-t a friss kezdéshez, hogy a válaszok gyorsak és olcsók maradjanak.",
+  context_warn_over:
+    "🔴 <b>Prémium árazás aktív</b> — {tokens} token, túl a(z) {cliff} határon (~2× bemeneti költség).\nFuttasd a <b>/compact</b> parancsot az előzmények összefoglalásához, vagy a <b>/new</b>-t a friss kezdéshez, hogy visszaállj a normál árakra.",
+  stale_cache_offer:
+    "⏳ <b>Lejárt a gyorsítótár</b> — kb. {minutes} perc tétlenség, így ez ~{tokens} tokent tölt újra teljes áron (egyszeri újragyorsítótárazás).\nFolytatod az előzményekkel, vagy tiszta és olcsó kezdés? Folytatás {seconds} mp múlva…",
+  stale_cache_continue_btn: "Folytatás (újratöltés)",
+  stale_cache_fresh_btn: "🆕 Új kezdés",
+  stale_cache_continuing: "Folytatás — kontextus újratöltése…",
+  stale_cache_starting_fresh: "Friss kezdés…",
+  stale_cache_continued: "⏳ Folytatva — a korábbi kontextus újratöltése.",
+  stale_cache_started_fresh: "🆕 Friss kezdés — a korábbi kontextus elvetve.",
+  stale_cache_expired: "Ez az ajánlat lejárt — küldd el újra az üzenetet.",
   cmd_cd_usage: "Használat: /cd <elérési út>",
   cmd_cd_not_dir: "⚠️ Nem könyvtár: {path}",
   cmd_cd_done: "📂 Most itt: <code>{path}</code>",

@@ -38,6 +38,11 @@ import {
   resolveResumeCallback,
   maybeOfferResume,
 } from "./telegram/resumePrompt.js";
+import {
+  isStaleCacheCallback,
+  resolveStaleCacheCallback,
+  maybeOfferStaleCache,
+} from "./telegram/staleCachePrompt.js";
 import { transcribeAudio, voiceEnabled, voiceSetupHint } from "./telegram/voice.js";
 import { sendVoiceReply, ttsEnabled } from "./telegram/tts.js";
 import { schedules, type ScheduleRunner } from "./schedule/manager.js";
@@ -46,7 +51,8 @@ import { taskDelegator } from "./core/taskRunner.js";
 import { createTask, startRecurrenceTicker } from "./core/tasks.js";
 import { push } from "./core/push.js";
 import { fireWebhook, type WebhookSource } from "./core/webhook.js";
-import { resolveMainRunFor, mainFallbackSpec, isDryRun, dryRunDescription, DRY_RUN_TOOLS } from "./core/mainSettings.js";
+import { resolveMainRunFor, mainFallbackSpec, isDryRun, dryRunDescription, DRY_RUN_TOOLS, mainSettingsView } from "./core/mainSettings.js";
+import { listInstances, sendToInstance } from "./claude/tmuxInstance.js";
 import { runTurnWithFallback } from "./core/fallback.js";
 import { TokenBucketLimiter } from "./core/rateLimiter.js";
 import { workers } from "./core/workers.js";
@@ -85,6 +91,91 @@ export function buildBot(): Telegraf {
 
   bot.use(authMiddleware);
   registerCommands(bot);
+
+  // --- Context-window parity with the Claude app: /context + /compact ---
+  // Registered here (not in registerCommands) because /compact routes through
+  // runUserPrompt. MUST be registered before the bot.on("text") handler below:
+  // that handler returns (without next()) on any "/"-message, so a command
+  // registered after it would be shadowed and never fire.
+  const atlasTmuxLive = (): boolean => {
+    if (mainSettingsView().tmuxMode !== true) return false;
+    const inst = listInstances().find((i) => i.agentId === "atlas" && !i.foreign);
+    return Boolean(inst && inst.state !== "stopped");
+  };
+  const ctxBar = (pct: number): string => {
+    const filled = Math.max(0, Math.min(10, Math.round(pct / 10)));
+    return "█".repeat(filled) + "░".repeat(10 - filled);
+  };
+  // Compact token label: 200000 → "200k", 1000000 → "1M".
+  const fmtK = (n: number): string =>
+    n >= 1_000_000
+      ? `${(n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0)}M`
+      : n >= 1_000
+        ? `${Math.round(n / 1_000)}k`
+        : String(n);
+
+  bot.command("context", async (ctx) => {
+    const chatId = ctx.chat.id;
+    const lang = langForChat(chatId);
+    // A clean token report works in both modes and fits Telegram — the TUI's own
+    // /context grid is a ~17k-char coloured table that can't be sent as a message.
+    // (Both SDK and tmux turns feed lastContextTokens via recordContext.)
+    const s = sessions.get(chatId);
+    const tokens = s.lastContextTokens;
+    if (tokens === undefined) {
+      await ctx.reply(t("cmd_context_nodata", lang));
+      return;
+    }
+    const window = config.CONTEXT_WINDOW_TOKENS;
+    const cliff = config.CONTEXT_PREMIUM_CLIFF_TOKENS;
+    // The bar tracks the cost cliff (premium pricing), not raw capacity — that's
+    // the number worth acting on. For a plain 200k model the cliff IS the window.
+    const pct = Math.round((tokens / cliff) * 100);
+    const status =
+      tokens >= cliff
+        ? t("cmd_context_status_over", lang, { cliff: fmtK(cliff) })
+        : tokens >= config.CONTEXT_WARN_TOKENS
+          ? t("cmd_context_status_near", lang, { cliff: fmtK(cliff) })
+          : t("cmd_context_status_ok", lang);
+    // Only note the full window when it's larger than the cliff (the 1M case).
+    const windowNote =
+      window > cliff ? t("cmd_context_window_note", lang, { window: fmtK(window) }) : "";
+    await ctx.replyWithHTML(
+      t("cmd_context_report", lang, {
+        tokens: tokens.toLocaleString("en-US"),
+        cliff: fmtK(cliff),
+        pct: String(pct),
+        bar: ctxBar(pct),
+        windowNote,
+        status,
+      }),
+    );
+  });
+
+  bot.command("compact", async (ctx) => {
+    const chatId = ctx.chat.id;
+    const lang = langForChat(chatId);
+    const s = sessions.get(chatId);
+    if (s.busy) {
+      await ctx.reply(t("cmd_compact_busy", lang));
+      return;
+    }
+    if (atlasTmuxLive()) {
+      // The persistent TUI compacts natively; fire it and don't wait on a
+      // transcript-captured reply (compaction isn't a normal assistant turn).
+      try {
+        await sendToInstance("atlas", "/compact");
+        await ctx.reply(t("cmd_compact_tmux", lang));
+      } catch (err) {
+        await ctx.reply(t("cmd_context_tmux_failed", lang, { error: errText(err) }));
+      }
+      return;
+    }
+    // SDK mode: route "/compact" through the normal turn pipeline — the CLI runs
+    // the slash command and streams back the compaction summary.
+    await ctx.reply(t("cmd_compact_running", lang));
+    runUserPrompt(permissions, loops, asks, chatId, "/compact", ctx.telegram);
+  });
 
   // Panel Chat is a window onto the main Telegram chat: let it drive turns and
   // abort them through the same flow the Telegram handlers use.
@@ -166,6 +257,10 @@ export function buildBot(): Telegraf {
       log.debug("Resume button pressed", { chatId: ctx.chat.id, data });
       const toast = resolveResumeCallback(ctx.telegram, ctx.chat.id, data);
       await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
+    } else if (data && isStaleCacheCallback(data) && ctx.chat) {
+      log.debug("Stale-cache button pressed", { chatId: ctx.chat.id, data });
+      const toast = resolveStaleCacheCallback(ctx.telegram, ctx.chat.id, data);
+      await ctx.answerCbQuery(toast.slice(0, 200)).catch(() => {});
     } else {
       await ctx.answerCbQuery().catch(() => {});
     }
@@ -191,6 +286,7 @@ export function buildBot(): Telegraf {
       const run = () =>
         runUserPrompt(permissions, loops, asks, ctx.chat.id, prompt, ctx.telegram, { images });
       if (await maybeOfferResume(ctx.telegram, ctx.chat.id, run)) return;
+      if (await maybeOfferStaleCache(ctx.telegram, ctx.chat.id, run)) return;
       run();
     } catch (err) {
       log.error("File download failed", { chatId: ctx.chat.id, error: errText(err) });
@@ -218,6 +314,7 @@ export function buildBot(): Telegraf {
       const run = () =>
         runUserPrompt(permissions, loops, asks, ctx.chat.id, prompt, ctx.telegram, { images });
       if (await maybeOfferResume(ctx.telegram, ctx.chat.id, run)) return;
+      if (await maybeOfferStaleCache(ctx.telegram, ctx.chat.id, run)) return;
       run();
     } catch (err) {
       log.error("Photo download failed", { chatId: ctx.chat.id, error: errText(err) });
@@ -252,6 +349,7 @@ export function buildBot(): Telegraf {
       const run = () =>
         runUserPrompt(permissions, loops, asks, chatId, text, ctx.telegram, { inputVoice: true });
       if (await maybeOfferResume(ctx.telegram, chatId, run)) return;
+      if (await maybeOfferStaleCache(ctx.telegram, chatId, run)) return;
       run();
     } catch (err) {
       log.error("Voice handling failed", { chatId, error: errText(err) });
@@ -280,6 +378,7 @@ export function buildBot(): Telegraf {
     const chatId = ctx.chat.id;
     const run = () => runUserPrompt(permissions, loops, asks, chatId, text, ctx.telegram);
     if (await maybeOfferResume(ctx.telegram, chatId, run)) return;
+    if (await maybeOfferStaleCache(ctx.telegram, chatId, run)) return;
     run();
   });
 
@@ -898,6 +997,37 @@ async function handleUserPrompt(
       cacheWriteTokens: res.tokens?.cacheWriteTokens ?? 0,
     };
     sessions.recordUsage(chatId, turnUsage);
+    // Track how full the context window is (input + both cache tiers = everything
+    // fed to the model) and nudge once when it crosses the warn threshold — only
+    // on interactive turns, so autonomous jobs don't ping the user out of the blue.
+    {
+      // Prefer the last-call context size (real occupancy); fall back to the
+      // summed turn tokens only if the runner didn't report it.
+      const contextTokens =
+        res.contextTokens ??
+        turnUsage.inputTokens + turnUsage.cacheReadTokens + turnUsage.cacheWriteTokens;
+      const crossed = sessions.recordContext(chatId, contextTokens, config.CONTEXT_WARN_TOKENS);
+      if (crossed && !autonomous) {
+        const lang = langForChat(chatId);
+        const cliff = config.CONTEXT_PREMIUM_CLIFF_TOKENS;
+        const pct = Math.round((contextTokens / cliff) * 100);
+        // Frame the nudge around COST: past the cliff, long-context premium
+        // pricing (~2× input) applies, so this is where compacting pays off.
+        const key = contextTokens >= cliff ? "context_warn_over" : "context_warn_near";
+        await tg
+          .sendMessage(
+            chatId,
+            t(key, lang, {
+              tokens: contextTokens.toLocaleString("en-US"),
+              cliff:
+                cliff >= 1_000_000 ? `${(cliff / 1_000_000).toFixed(0)}M` : `${Math.round(cliff / 1_000)}k`,
+              pct: String(pct),
+            }),
+            { parse_mode: "HTML" },
+          )
+          .catch(() => {});
+      }
+    }
     // Schedule-triggered autonomous turns are attributed to a "Schedule" category
     // so they appear separately from interactive Atlas turns in the usage view.
     if (webhook?.source === "schedule") {

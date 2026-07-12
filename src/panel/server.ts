@@ -752,6 +752,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       updateNotifyOptOut?: boolean;
       promptExclude?: string[];
     };
+    const wasTmux = mainSettingsView().tmuxMode;
     setMainSettings({
       model,
       providerId,
@@ -770,6 +771,11 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       updateNotifyOptOut,
       promptExclude,
     });
+    // Turning tmux mode off should tear down the now-orphaned persistent
+    // session rather than leaving it running/adoptable. Best-effort.
+    if (wasTmux && tmuxMode === false) {
+      await stopInstance("atlas").catch(() => {});
+    }
     return mainSettingsView();
   });
   // Abort in-flight turns and clear all conversation context (fresh slate).
@@ -1758,8 +1764,14 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     const hook = (req.body as { webhookUrl?: string })?.webhookUrl;
     if (hook?.trim() && !(await isValidWebhookUrl(hook)))
       return reply.code(400).send({ error: "invalid or blocked webhook URL" });
-    const updated = workers.update((req.params as { id: string }).id, req.body as never);
+    const id = (req.params as { id: string }).id;
+    const wasTmux = workers.get(id)?.tmuxMode === true;
+    const updated = workers.update(id, req.body as never);
     if (!updated) return reply.code(404).send({ error: "not found" });
+    // Toggling tmux off tears down the worker's persistent session too.
+    if (wasTmux && updated.tmuxMode !== true) {
+      await stopInstance(id).catch(() => {});
+    }
     return workerView(updated);
   });
   app.delete("/api/workers/:id", async (req, reply) => {

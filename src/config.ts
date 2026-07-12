@@ -59,6 +59,29 @@ const schema = z.object({
   // many times in one turn, pause and ask Skip / Approve once / Continue, so a
   // runaway retry can't burn tokens unattended. Set to 0 to disable.
   LOOP_THRESHOLD: z.coerce.number().int().nonnegative().default(3),
+  // Context-window awareness (parity with the Claude app's /context + auto-warn).
+  // CONTEXT_WINDOW_TOKENS is the model's real window, used for the % in /context
+  // (200k for standard Claude; set 1000000 if you run the Sonnet 1M-context beta).
+  // Cost, not capacity, is what usually matters: Claude's long-context PREMIUM
+  // pricing (~2x input) begins above 200k tokens (CONTEXT_PREMIUM_CLIFF_TOKENS),
+  // so the default warn threshold sits just under it. When a turn's context
+  // (last call's input + both cache tiers) crosses CONTEXT_WARN_TOKENS the bot
+  // nudges once to /compact or /new until it drops back under. WARN=0 disables.
+  CONTEXT_WINDOW_TOKENS: z.coerce.number().int().positive().default(200_000),
+  CONTEXT_PREMIUM_CLIFF_TOKENS: z.coerce.number().int().positive().default(200_000),
+  CONTEXT_WARN_TOKENS: z.coerce.number().int().nonnegative().default(180_000),
+  // Stale-cache guard: prompt caching keeps the conversation prefix cheap to
+  // re-read (~0.1x input) but only for CACHE_TTL_MS of inactivity. Claude Code
+  // uses Anthropic's EXTENDED 1-hour cache (not the 5-min default), so a chat
+  // stays warm ~1h after the last message — hence the 1h default here. Return
+  // after that to a big conversation and the whole prefix is re-cached at the
+  // write rate — a real one-time hit on a 100k+ context. When the last context
+  // was >= CACHE_RECACHE_WARN_TOKENS and the chat has been idle past the TTL,
+  // the bot offers Continue vs Start-fresh BEFORE paying to reload. Lower
+  // CACHE_TTL_MS if your setup uses the 5-min cache; set
+  // CACHE_RECACHE_WARN_TOKENS to 0 to disable the offer.
+  CACHE_TTL_MS: z.coerce.number().int().positive().default(3_600_000),
+  CACHE_RECACHE_WARN_TOKENS: z.coerce.number().int().nonnegative().default(50_000),
   // Per-chat turn rate limit (SEC): even an allow-listed user mustn't be able to
   // spawn unbounded concurrent turns by messaging faster than one finishes. Each
   // chat may start at most TURN_RATE_LIMIT new turns per TURN_RATE_WINDOW_MS

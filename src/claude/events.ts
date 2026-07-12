@@ -23,7 +23,9 @@ export interface SdkSystemMessage {
 
 export interface SdkAssistantMessage {
   type: "assistant";
-  message: { content: ContentBlock[] };
+  /** Each assistant message carries its own API-call usage; the last one before
+   *  the result reflects the final call's prompt size (= context occupancy). */
+  message: { content: ContentBlock[]; usage?: SdkUsage };
   session_id?: string;
 }
 

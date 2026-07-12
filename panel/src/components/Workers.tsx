@@ -1719,7 +1719,14 @@ function WorkerForm({
                 type="checkbox"
                 checked={form.tmuxMode}
                 disabled={form.autonomy !== "full" || !tmuxAvailable}
-                onChange={(e) => setForm({ ...form, tmuxMode: e.target.checked })}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    tmuxMode: e.target.checked,
+                    // RC is a sub-toggle of tmux; drop it when tmux goes off.
+                    remoteControl: e.target.checked ? form.remoteControl : false,
+                  })
+                }
                 className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
               />
               <span>

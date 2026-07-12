@@ -83,6 +83,18 @@ export interface Session {
   voiceReply?: boolean;
   /** Accumulated cost/duration/turn counters (lifetime + per day). */
   usage: Usage;
+  /** Most recent turn's input context size (input + cache-read + cache-write) —
+   *  a live proxy for how full the model's context window is. Transient: the SDK
+   *  only reveals it once a turn runs, so it starts undefined after a restart
+   *  until the next message. Powers /context and the fill-up warning. */
+  lastContextTokens?: number;
+  /** True once we've nudged about a full context this fill cycle; reset when the
+   *  context drops back under the threshold (after /compact or /new) so the
+   *  warning fires at most once per fill-up, not every turn. Transient. */
+  contextWarned?: boolean;
+  /** Epoch ms the last turn finished — powers the stale-cache guard (how long
+   *  the prompt cache has been idle, hence likely expired). Transient. */
+  lastTurnAt?: number;
 }
 
 export class SessionManager {
@@ -179,7 +191,29 @@ export class SessionManager {
   reset(chatId: number): void {
     const s = this.get(chatId);
     s.sessionId = undefined;
+    s.lastContextTokens = undefined;
+    s.contextWarned = false;
+    s.lastTurnAt = undefined;
     this.save();
+  }
+
+  /** Record the most recent turn's input context size (the live window-fill
+   *  proxy). Clears the one-shot warning latch once the context drops back under
+   *  `warnAt` (e.g. after a /compact or /new), so the next fill-up warns again.
+   *  Returns true exactly once per fill cycle: when this turn first crosses
+   *  `warnAt` and we haven't warned yet — the caller sends the nudge. */
+  recordContext(chatId: number, tokens: number, warnAt: number): boolean {
+    const s = this.get(chatId);
+    s.lastContextTokens = tokens;
+    s.lastTurnAt = Date.now();
+    if (warnAt <= 0) return false;
+    if (tokens < warnAt) {
+      s.contextWarned = false;
+      return false;
+    }
+    if (s.contextWarned) return false;
+    s.contextWarned = true;
+    return true;
   }
 
   /** Abort every in-flight turn and clear all conversation context (a clean

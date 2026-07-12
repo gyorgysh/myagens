@@ -158,6 +158,11 @@ export interface RunResult {
   durationMs?: number;
   /** Per-turn token counts (input/output/cache); absent if the SDK omitted them. */
   tokens?: TokenUsage;
+  /** How full the context window is *after* this turn: the final API call's
+   *  prompt size (input + cache-read + cache-creation). Unlike `tokens`, which
+   *  SUMS every call in the turn (and so overcounts a multi-tool turn), this is
+   *  the last call only — the real window occupancy. Powers /context + the warn. */
+  contextTokens?: number;
   /** Tool calls made during this turn (for auto-skill extraction). */
   toolCalls?: Array<{ name: string; input: unknown }>;
 }
@@ -233,6 +238,9 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
     let result: RunResult = { isError: false };
     let gotResult = false;
     const toolCalls: Array<{ name: string; input: unknown }> = [];
+    // Prompt size of the most recent API call = current context-window occupancy
+    // (the result's own usage is summed over the whole turn, so it overcounts).
+    let lastContextTokens: number | undefined;
 
     // Hold the dev restart-guard for the lifetime of the stream, so a source edit
     // the agent makes mid-run doesn't bounce the watcher until the turn is done.
@@ -248,6 +256,13 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
             opts.onText(delta);
           }
         } else if (isAssistant(msg)) {
+          const au = msg.message.usage;
+          if (au) {
+            lastContextTokens =
+              (au.input_tokens ?? 0) +
+              (au.cache_read_input_tokens ?? 0) +
+              (au.cache_creation_input_tokens ?? 0);
+          }
           for (const block of msg.message.content ?? []) {
             if (block.type === "tool_use" && block.name) {
               opts.onToolUse(block.name, block.input);
@@ -284,6 +299,7 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
                   cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
                 }
               : undefined,
+            contextTokens: lastContextTokens,
             toolCalls,
           };
           gotResult = true;

@@ -162,6 +162,8 @@ async function main(): Promise<void> {
 
   await retryTelegram(() => bot.telegram.setMyCommands([
     { command: "new", description: "Start a fresh conversation" },
+    { command: "context", description: "How full the context window is" },
+    { command: "compact", description: "Summarise history to shrink the context" },
     { command: "cd", description: "Change working directory" },
     { command: "pwd", description: "Show current directory" },
     { command: "status", description: "Show session info" },

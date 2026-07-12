@@ -177,7 +177,7 @@ export function AgentTerminal({
     <div
       className={
         cinema
-          ? "fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-8"
+          ? "fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-8"
           : "contents"
       }
       onMouseDown={(e) => {
@@ -188,7 +188,7 @@ export function AgentTerminal({
         ref={panelRef}
         className={
           cinema
-            ? "flex h-[85vh] w-full max-w-[1400px] flex-col overflow-hidden rounded-xl border border-line bg-base shadow-2xl"
+            ? "flex h-[92vh] w-full max-w-[1400px] flex-col overflow-hidden rounded-xl border border-line bg-base shadow-2xl"
             : "overflow-hidden rounded-xl border border-line bg-base"
         }
       >
@@ -231,7 +231,7 @@ export function AgentTerminal({
         {error ? (
           <div className="p-3 text-xs text-warn-fg">{error}</div>
         ) : (
-          <div className={cinema ? "flex-1 overflow-auto p-2" : "max-h-96 overflow-auto p-1"}>
+          <div className={cinema ? "flex-1 overflow-auto p-2" : "h-[34rem] max-h-[70vh] overflow-auto p-1"}>
             <div ref={containerRef} />
           </div>
         )}

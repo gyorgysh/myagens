@@ -1,7 +1,7 @@
 import { execFile, spawn as spawnChild } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { config } from "../config.js";
 import { log } from "../logger.js";
 import { dataPath, loadJson, saveJson } from "../core/jsonStore.js";
@@ -75,6 +75,10 @@ interface StoredInstance {
 
 interface TmuxStore {
   version: 1;
+  /** Per-install 4-char id, folded into new session names so two myagens
+   *  checkouts on the same host (e.g. a local one and a server clone) don't both
+   *  try to own `myagens-atlas`. Generated once, then stable for this install. */
+  installId?: string;
   instances: Record<string, StoredInstance>;
 }
 
@@ -239,8 +243,20 @@ function shq(s: string): string {
 
 /* -------------------------------------------------------------- lifecycle */
 
+/** Lazily-generated, then stable, 4-char (base36) id unique to this install. */
+function installId(): string {
+  if (!store.installId) {
+    // 3 random bytes → base36, padded/sliced to a stable 4 chars ([0-9a-z]).
+    store.installId = parseInt(randomBytes(3).toString("hex"), 16).toString(36).padStart(4, "0").slice(-4);
+    persist();
+  }
+  return store.installId;
+}
+
 function sessionNameFor(agentId: string, agentName: string): string {
-  const base = SESSION_PREFIX + slug(agentName);
+  // `myagens-<agent>-<installId>` — the install id keeps two checkouts on one
+  // host from colliding on the same session name.
+  const base = `${SESSION_PREFIX}${slug(agentName)}-${installId()}`;
   const taken = Object.entries(store.instances).some(
     ([id, st]) => id !== agentId && st.sessionName === base,
   );
@@ -267,6 +283,14 @@ function buildClaudeCommand(spec: TmuxSpawnSpec, rung: ResumeRung, st: StoredIns
   return parts.join(" ");
 }
 
+/** True when a flattened screen capture is the CLI's interactive "Resume
+ *  session" picker. Matched on the heading + fuzzy-search hint, both of which
+ *  survive the wide (220-col) render — unlike "Enter to select", which the
+ *  narrow-screenshot footer shows but the real capture does not. */
+function isResumePicker(flat: string): boolean {
+  return /resume\s*session/i.test(flat) && /type\s*to\s*search/i.test(flat);
+}
+
 interface ReadyResult {
   ok: boolean;
   reason?: string;
@@ -286,6 +310,7 @@ async function waitReady(sessionName: string, expectRcUrl: boolean): Promise<Rea
   const start = Date.now();
   let trusted = false;
   let accepted = false;
+  let pickedResume = false;
   let rcUrl: string | undefined;
   let lastScreenHash = "";
   let lastChange = Date.now();
@@ -306,6 +331,20 @@ async function waitReady(sessionName: string, expectRcUrl: boolean): Promise<Rea
     if (!rcUrl) {
       const m = /claude\.ai\/code\/session_[\w-]+/.exec(screen);
       if (m) rcUrl = "https://" + m[0];
+    }
+    // `--remote-control` (and a bare `--resume`) can land on the interactive
+    // "Resume session" picker instead of the input box. It's a quiet screen, so
+    // it would otherwise pass the settle check and we'd paste the prompt into
+    // its search field (no transcript ever binds — the failure the user saw).
+    // Select the highlighted (top / most recent) session to continue it, then
+    // fall through to wait for the real idle prompt. Detect on the picker's
+    // heading + search-hint (the wide TUI renders "Type to search · Esc to
+    // cancel", NOT "Enter to select").
+    if (!pickedResume && isResumePicker(flat)) {
+      pickedResume = true;
+      await sleep(400);
+      await tmuxQuiet(["send-keys", "-t", paneT(sessionName), "Enter"]);
+      continue;
     }
     if (!trusted && /trust\s*this\s*folder/i.test(flat)) {
       trusted = true;
@@ -660,8 +699,17 @@ export async function restartInstance(
 export async function adoptInstances(): Promise<void> {
   if (!(await tmuxAvailable())) return;
   const live = await listLiveSessions();
+  const idTag = `-${installId()}`;
   const known = new Set<string>();
   for (const [agentId, st] of Object.entries(store.instances)) {
+    // Migrate a legacy `myagens-<agent>` name (no install id) to the new scheme
+    // — but only when its session isn't currently live, so we never orphan a
+    // running TUI by renaming out from under it.
+    if (!st.sessionName.includes(idTag) && !live.includes(st.sessionName)) {
+      const migrated = sessionNameFor(agentId, st.agentName);
+      log.info("[tmux] migrated legacy session name", { agentId, from: st.sessionName, to: migrated });
+      st.sessionName = migrated;
+    }
     known.add(st.sessionName);
     if (!live.includes(st.sessionName)) continue;
     const inst = getOrCreateInstance({
@@ -676,7 +724,18 @@ export async function adoptInstances(): Promise<void> {
     // The claude process itself survived, so its transcript binding is still
     // the live conversation — no need to re-discover it on the next turn.
     if (transcriptExists(st.transcriptPath)) inst.transcriptStale = false;
-    const screen = await capture(st.sessionName);
+    let screen = await capture(st.sessionName);
+    // A session parked at the interactive "Resume session" picker (from an RC
+    // spawn before the picker was handled) would otherwise take pasted prompts
+    // into its search box. Dismiss it by selecting the highlighted session, then
+    // re-read the settled screen and force transcript re-discovery.
+    if (isResumePicker(screen.replace(/\s+/g, " "))) {
+      await tmuxQuiet(["send-keys", "-t", paneT(st.sessionName), "Enter"]);
+      await sleep(800);
+      inst.transcriptStale = true;
+      screen = await capture(st.sessionName);
+      log.info("[tmux] dismissed resume picker on adopt", { agentId, session: st.sessionName });
+    }
     inst.state = /esc\s*to\s*interrupt/i.test(screen.replace(/\s+/g, " ")) ? "busy" : "idle";
     const m = /claude\.ai\/code\/session_[\w-]+/.exec(screen);
     if (m) {
@@ -989,21 +1048,38 @@ async function doTurn(inst: Instance, opts: RunOptions): Promise<RunResult> {
 
     const reply = textParts.join("\n\n").trim();
     const tokens = sumUsage(usageByMsg);
+    const contextTokens = lastCallContext(usageByMsg);
     if (!reply) {
       return {
         isError: false,
         text: "(the persistent session produced no text reply)",
         tokens,
+        contextTokens,
         toolCalls,
       };
     }
-    return { isError: false, text: reply, tokens, toolCalls };
+    return { isError: false, text: reply, tokens, contextTokens, toolCalls };
   } finally {
     if (inst.state === "busy") {
       inst.state = "idle";
       emitChange(inst);
     }
   }
+}
+
+/** Prompt size of the final API call this turn (input + both cache tiers) — the
+ *  real context-window occupancy, as opposed to `sumUsage` which totals every
+ *  call. Map insertion order follows message order, so the last value is newest. */
+function lastCallContext(usageByMsg: Map<string, TranscriptUsage>): number | undefined {
+  if (!usageByMsg.size) return undefined;
+  let last: TranscriptUsage | undefined;
+  for (const u of usageByMsg.values()) last = u;
+  if (!last) return undefined;
+  return (
+    (last.input_tokens ?? 0) +
+    (last.cache_read_input_tokens ?? 0) +
+    (last.cache_creation_input_tokens ?? 0)
+  );
 }
 
 /** Fold per-API-call usage (deduped by message id upstream) into turn totals. */

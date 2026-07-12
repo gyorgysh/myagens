@@ -213,8 +213,38 @@ export const en = {
   cmd_start:
     "👋 <b>{greeting}! I'm {agent}, your {brand} coordinator.</b>\n\nI run as a real Claude Code agent on this machine. I can read files, write code, run commands, check services, and ship things. Replies stream live as I work. Anything that writes or executes pauses for your approval first.\n\n<b>Talk to me like a person:</b>\n<i>\"What's eating all the disk space?\"</i>\n<i>\"Deploy the site and let me know when it's done.\"</i>\n<i>\"Summarize any errors from the last hour of logs.\"</i>\n\nI coordinate a crew of specialist Leads (DevOps, Finance, Research, whatever you configure). Use /council to put a decision to a full team vote, or message a Lead directly if they have their own bot.\n\nYou can send me files and photos (I see images inline) and voice notes (transcribed and run as prompts).\n\n/help for the full command list.",
   cmd_help:
-    "🤖 <b>{agent}: Commands</b>\n\n<b>Conversation</b>\n/new: fresh context (clear session)\n/stop: abort the running request\n\n<b>Files &amp; Git</b>\n/cd &lt;path&gt;: change working directory\n/pwd: current directory\n/projects: switch between saved working dirs\n/diff: review the working-tree diff with Commit / Discard buttons\n/commit &lt;message&gt;: stage all changes and commit\n\n<b>Autonomy</b>\n/mode supervised|standard|full|auto_until_error: approval level for this chat\n/model: switch the AI model (Claude, local, providers)\n/allow &lt;Tool&gt; · /allowed · /disallow &lt;Tool|all&gt;: persistent tool allow-rules\n\n<b>Crew</b>\n/inbox: review suggestions agents filed for you (accept → a task, or dismiss)\n/council &lt;idea&gt;: put a proposal to a full Lead council vote\n\n<b>Scheduling</b>\n/schedule add &lt;when&gt; | &lt;prompt&gt;: timed autonomous run (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)\n/schedule list · /schedule rm &lt;id&gt;\n\n<b>Info</b>\n/status: session info (cwd, model, autonomy, session id)\n/usage: plan, subscription limits, and API spend\n/digest: morning briefing. Last 24h of tasks, memories, skills, cost &amp; alerts\n/update [now]: check for a new version, or apply it with <code>/update now</code>\n/restore [confirm]: reset code to the latest GitHub commit, keeping your data &amp; config\n/reload: rescue path — confirm to discard local changes, pull latest, rebuild, and restart\n/lang [code]: show or set response language (e.g. <code>/lang hu</code>)\n/voice [on|off]: toggle spoken voice replies (TTS)\n/help: this message\n\nSend files or photos (seen inline as vision input), or voice notes (transcribed and run as prompts).",
+    "🤖 <b>{agent}: Commands</b>\n\n<b>Conversation</b>\n/new: fresh context (clear session)\n/context: how full the context window is\n/compact: summarise history to shrink the context\n/stop: abort the running request\n\n<b>Files &amp; Git</b>\n/cd &lt;path&gt;: change working directory\n/pwd: current directory\n/projects: switch between saved working dirs\n/diff: review the working-tree diff with Commit / Discard buttons\n/commit &lt;message&gt;: stage all changes and commit\n\n<b>Autonomy</b>\n/mode supervised|standard|full|auto_until_error: approval level for this chat\n/model: switch the AI model (Claude, local, providers)\n/allow &lt;Tool&gt; · /allowed · /disallow &lt;Tool|all&gt;: persistent tool allow-rules\n\n<b>Crew</b>\n/inbox: review suggestions agents filed for you (accept → a task, or dismiss)\n/council &lt;idea&gt;: put a proposal to a full Lead council vote\n\n<b>Scheduling</b>\n/schedule add &lt;when&gt; | &lt;prompt&gt;: timed autonomous run (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)\n/schedule list · /schedule rm &lt;id&gt;\n\n<b>Info</b>\n/status: session info (cwd, model, autonomy, session id)\n/usage: plan, subscription limits, and API spend\n/digest: morning briefing. Last 24h of tasks, memories, skills, cost &amp; alerts\n/update [now]: check for a new version, or apply it with <code>/update now</code>\n/restore [confirm]: reset code to the latest GitHub commit, keeping your data &amp; config\n/reload: rescue path — confirm to discard local changes, pull latest, rebuild, and restart\n/lang [code]: show or set response language (e.g. <code>/lang hu</code>)\n/voice [on|off]: toggle spoken voice replies (TTS)\n/help: this message\n\nSend files or photos (seen inline as vision input), or voice notes (transcribed and run as prompts).",
   cmd_new_done: "🆕 Started a fresh conversation.",
+  // Context-window parity (/context, /compact) + the cost-cliff nudge.
+  cmd_context_report:
+    "🧠 <b>Context window</b>\n<code>{bar}</code> <b>{pct}%</b> of the {cliff} standard-price tier\n{tokens} tokens used{windowNote}\n\n{status}",
+  cmd_context_window_note: " · {window} window",
+  cmd_context_status_ok: "<b>/compact</b> to shrink it, <b>/new</b> for a clean slate.",
+  cmd_context_status_near:
+    "⚠️ Approaching the {cliff} cost cliff — past it, long-context pricing roughly doubles input cost. <b>/compact</b> or <b>/new</b> to stay cheap.",
+  cmd_context_status_over:
+    "🔴 Past {cliff} — premium long-context pricing (~2× input) is active. <b>/compact</b> or <b>/new</b> to get back to standard rates.",
+  cmd_context_nodata:
+    "🧠 No context reading yet — send me a message first, then /context shows how full the window is.",
+  cmd_context_tmux_failed: "⚠️ Couldn't reach the persistent session: {error}",
+  cmd_compact_busy: "⏳ A turn is still running — try /compact once it finishes.",
+  cmd_compact_tmux:
+    "🗜 Compaction started in the persistent session. It summarises the history and keeps going with a smaller context.",
+  cmd_compact_running: "🗜 Compacting the conversation — summarising history to free up the context…",
+  context_warn_near:
+    "🧠 <b>Context is getting large</b> — {tokens} tokens ({pct}% of the {cliff} cost cliff).\nBeyond {cliff}, long-context pricing roughly doubles input cost. Run <b>/compact</b> to summarise, or <b>/new</b> for a fresh start, to keep replies fast &amp; cheap.",
+  context_warn_over:
+    "🔴 <b>Premium pricing active</b> — {tokens} tokens, past the {cliff} cliff (~2× input cost now).\nRun <b>/compact</b> to summarise the history, or <b>/new</b> for a fresh start, to drop back to standard rates.",
+  // Stale prompt-cache offer (Continue vs Start fresh before re-caching).
+  stale_cache_offer:
+    "⏳ <b>Cache expired</b> — idle ~{minutes} min, so this reloads ~{tokens} tokens at full price (a one-time re-cache).\nContinue with the history, or start fresh &amp; cheap? Continuing in {seconds}s…",
+  stale_cache_continue_btn: "Continue (re-cache)",
+  stale_cache_fresh_btn: "🆕 Start fresh",
+  stale_cache_continuing: "Continuing — reloading the context…",
+  stale_cache_starting_fresh: "Starting fresh…",
+  stale_cache_continued: "⏳ Continued — reloading the prior context.",
+  stale_cache_started_fresh: "🆕 Started fresh — the prior context was dropped.",
+  stale_cache_expired: "That offer expired — send your message again.",
   cmd_cd_usage: "Usage: /cd <path>",
   cmd_cd_not_dir: "⚠️ Not a directory: {path}",
   cmd_cd_done: "📂 Now in <code>{path}</code>",

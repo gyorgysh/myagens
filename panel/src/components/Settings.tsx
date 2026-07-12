@@ -892,7 +892,12 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
                     type="checkbox"
                     checked={tmuxMode}
                     disabled={tmuxDisabled}
-                    onChange={(e) => setTmuxMode(e.target.checked)}
+                    onChange={(e) => {
+                      setTmuxMode(e.target.checked);
+                      // RC is a sub-toggle of tmux; clear it when tmux goes off
+                      // so we don't persist a dangling remoteControl=true.
+                      if (!e.target.checked) setRemoteControl(false);
+                    }}
                     className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
                   />
                   <span>

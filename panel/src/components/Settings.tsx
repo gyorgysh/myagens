@@ -728,22 +728,29 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
             </Select>
             <p className="mt-1 text-xs text-fg-dim">{t("settings_ai_backend_hint")}</p>
           </div>
-          {backendId === "ollama" ? (
-            // Ollama runs plain local chat: keep the Model field (it's the
-            // installed Ollama model name) but drop Provider, which never
-            // applies to this backend's own auth. The fetch button lists the
-            // models installed on the local daemon.
+          {backendId === "ollama" || backendId === "agy-cli" ? (
+            // These backends keep the Model field but drop Provider, which
+            // never applies to their own auth. Ollama's model is the name
+            // installed on the local daemon; agy's is one of the fixed labels
+            // the Antigravity CLI accepts (leave empty for its default). The
+            // fetch button lists what's actually available.
             <div>
               <Label>{t("model")}</Label>
               <ModelSelect
                 value={model}
                 onChange={setModel}
                 suggestions={[]}
-                onFetch={() => api.ollamaStatus().then((s) => s.models).catch(() => [])}
+                onFetch={
+                  backendId === "agy-cli"
+                    ? () => api.agyModels().then((r) => r.models).catch(() => [])
+                    : () => api.ollamaStatus().then((s) => s.models).catch(() => [])
+                }
                 fetchLabel={t("fetch")}
                 placeholder={t("settings_model_local")}
               />
-              <p className="mt-1 text-xs text-fg-dim">{t("settings_ai_backend_ollama_hint")}</p>
+              <p className="mt-1 text-xs text-fg-dim">
+                {t(backendId === "agy-cli" ? "settings_ai_backend_agy_hint" : "settings_ai_backend_ollama_hint")}
+              </p>
             </div>
           ) : backendId ? (
             <p className="text-xs text-fg-dim">{t("settings_ai_backend_no_model")}</p>
@@ -1068,7 +1075,9 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
                   onFetch={
                     fallbackBackendId === "ollama"
                       ? () => api.ollamaStatus().then((s) => s.models).catch(() => [])
-                      : undefined
+                      : fallbackBackendId === "agy-cli"
+                        ? () => api.agyModels().then((r) => r.models).catch(() => [])
+                        : undefined
                   }
                   fetchLabel={t("fetch")}
                   placeholder={t("settings_fallback_model_ph")}

@@ -3,6 +3,11 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.6.9] - 2026-07-15
+
+### Added
+- **Google Antigravity as a fifth agent backend**: an individual Lead/worker (or Atlas himself) can now run on **Google's Antigravity CLI** (`agy`) — Gemini 3.5 Flash / 3.1 Pro tiers, plus its hosted Claude and GPT-OSS options — alongside the existing Grok and Codex CLI backends. Like those, it wraps the provider's own agentic CLI (file edits, terminal, browser, sandboxing) rather than reimplementing a tool loop, and the CLI manages its own Google sign-in. Switch a chat with `/model agy-cli` (or `agy-cli:<model label>`), or pick **Antigravity (agy)** from the "AI backend" selector in Settings/Workers — there the Model field stays visible with a Fetch button listing the exact labels the installed CLI accepts (`agy models`; leave empty for its default), backed by a new `GET /api/integrations/agy/models` route. It also works as a **fallback backend**, so an agent can fail over to Antigravity when its primary hits a usage limit. Conversations resume across turns via agy's conversation id (a stale id self-heals — agy starts fresh and the new id is picked up automatically), and the session cwd is always passed as the agy workspace. Print-mode caveats: no tool-call visibility or token usage in its output, and agy auto-approves its tools non-interactively — below Full autonomy the run is confined with agy's `--sandbox` (terminal restricted to the workspace), while Full autonomy lifts the gates entirely.
+
 ## [0.6.8] - 2026-07-12
 
 ### Added

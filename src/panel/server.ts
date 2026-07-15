@@ -108,6 +108,7 @@ import { voiceSettingsView, setVoiceSettings } from "../core/voiceSettings.js";
 import { mainSettingsView, setMainSettings, resolveMainRun } from "../core/mainSettings.js";
 import { embeddingConfig, setEmbeddingsEnabled, preferredBackend, setPreferredBackend, activeBackend, envEmbeddingMode, embeddingsAuto, enterAutoMode, type PreferredBackend } from "../core/embeddings.js";
 import { ollamaStatus, connectOllama } from "../core/ollama.js";
+import { listAgyModels } from "../agy/runner.js";
 import { lmStudioStatus, connectLmStudio } from "../core/lmstudio.js";
 import { serviceInstalled, restartService } from "../core/agentControl.js";
 import { isActive } from "../core/activity.js";
@@ -2218,6 +2219,9 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
   });
 
   // --- Integrations (local Ollama / LM Studio) ---
+  // Model labels the installed Antigravity CLI accepts (empty when `agy` is
+  // missing) — feeds the model picker for the agy-cli backend.
+  app.get("/api/integrations/agy/models", async () => ({ models: await listAgyModels() }));
   app.get("/api/integrations/ollama", async () => ollamaStatus());
   app.post("/api/integrations/ollama/connect", async (_req, reply) => {
     try {

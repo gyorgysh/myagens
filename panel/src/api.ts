@@ -1300,6 +1300,7 @@ export const api = {
     req<{ embeddings: EmbeddingConfig; activeBackend: PreferredBackend | null; embeddingAuto: boolean }>("POST", "/api/agent/embeddings/auto"),
   savePreferredBackend: (preferredBackend: PreferredBackend | null) =>
     req<{ preferredBackend: PreferredBackend | null }>("PUT", "/api/agent/embeddings/preferred", { preferredBackend }),
+  agyModels: () => get<{ models: string[] }>("/api/integrations/agy/models"),
   ollamaStatus: () => get<OllamaStatus>("/api/integrations/ollama"),
   ollamaConnect: () => req<OllamaConnectResult>("POST", "/api/integrations/ollama/connect"),
   lmStudioStatus: () => get<LmStudioStatus>("/api/integrations/lmstudio"),

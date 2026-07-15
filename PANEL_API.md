@@ -677,6 +677,10 @@ curl -X POST -H "$AUTH" $BASE/api/suggestions/<id>/dismiss
 curl -H "$AUTH" $BASE/api/integrations/ollama
 curl -H "$AUTH" $BASE/api/integrations/lmstudio
 
+# Model labels the installed Antigravity CLI accepts (for the agy-cli backend's
+# model picker; empty list when the `agy` binary is missing)
+curl -H "$AUTH" $BASE/api/integrations/agy/models
+
 # One-click connect: register the backend as a provider and turn embeddings on
 curl -X POST -H "$AUTH" $BASE/api/integrations/ollama/connect
 curl -X POST -H "$AUTH" $BASE/api/integrations/lmstudio/connect

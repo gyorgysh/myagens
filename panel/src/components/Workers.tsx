@@ -103,6 +103,9 @@ const PROVIDER_KIND_LABEL: Record<ProviderKind, string> = {
 /** Installed local Ollama models, for the ollama-backend model pickers. */
 const fetchOllamaModels = () => api.ollamaStatus().then((s) => s.models).catch(() => []);
 
+/** Model labels the installed Antigravity CLI accepts, for agy-cli pickers. */
+const fetchAgyModels = () => api.agyModels().then((r) => r.models).catch(() => []);
+
 const PERSONA_PRESETS: Array<{ labelKey: TranslationKey; descKey: TranslationKey; value: string }> = [
   { labelKey: "settings_persona_concise", descKey: "workers_persona_preset_concise", value: "Concise and direct. Lead with the result, skip preamble, use short sentences." },
   { labelKey: "settings_persona_warm", descKey: "workers_persona_preset_warm", value: "Warm and encouraging. Acknowledge effort, celebrate wins, frame challenges positively." },
@@ -1286,24 +1289,27 @@ function WizardConfigEditor({
           </Select>
           <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_hint")}</p>
         </div>
-        {form.backendId === "ollama" && (
-          // Ollama runs plain local chat: keep the Model field (the installed
-          // Ollama model name) but drop Provider, which never applies. The
-          // fetch button lists the models installed on the local daemon.
+        {(form.backendId === "ollama" || form.backendId === "agy-cli") && (
+          // These backends keep the Model field (Ollama: the installed local
+          // model name; agy: a fixed Antigravity model label, empty = its
+          // default) but drop Provider, which never applies. The fetch button
+          // lists what's actually available.
           <div>
             <Label>{t("workers_model")}</Label>
             <ModelSelect
               value={form.model}
               onChange={(model) => onChange({ model })}
               suggestions={[]}
-              onFetch={fetchOllamaModels}
+              onFetch={form.backendId === "agy-cli" ? fetchAgyModels : fetchOllamaModels}
               fetchLabel={t("fetch")}
               placeholder={t("workers_model_local")}
             />
-            <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_ollama_hint")}</p>
+            <p className="mt-1 text-xs text-fg-faint">
+              {t(form.backendId === "agy-cli" ? "workers_ai_backend_agy_hint" : "workers_ai_backend_ollama_hint")}
+            </p>
           </div>
         )}
-        {form.backendId && form.backendId !== "ollama" && (
+        {form.backendId && form.backendId !== "ollama" && form.backendId !== "agy-cli" && (
           <div>
             <Label>{t("workers_model")}</Label>
             <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_no_model")}</p>
@@ -1651,24 +1657,27 @@ function WorkerForm({
           </Select>
           <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_hint")}</p>
         </div>
-        {form.backendId === "ollama" && (
-          // Ollama runs plain local chat: keep the Model field (the installed
-          // Ollama model name) but drop Provider, which never applies. The
-          // fetch button lists the models installed on the local daemon.
+        {(form.backendId === "ollama" || form.backendId === "agy-cli") && (
+          // These backends keep the Model field (Ollama: the installed local
+          // model name; agy: a fixed Antigravity model label, empty = its
+          // default) but drop Provider, which never applies. The fetch button
+          // lists what's actually available.
           <div>
             <Label>{t("workers_model")}</Label>
             <ModelSelect
               value={form.model}
               onChange={(model) => setForm({ ...form, model })}
               suggestions={[]}
-              onFetch={fetchOllamaModels}
+              onFetch={form.backendId === "agy-cli" ? fetchAgyModels : fetchOllamaModels}
               fetchLabel={t("fetch")}
               placeholder={t("workers_model_local")}
             />
-            <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_ollama_hint")}</p>
+            <p className="mt-1 text-xs text-fg-faint">
+              {t(form.backendId === "agy-cli" ? "workers_ai_backend_agy_hint" : "workers_ai_backend_ollama_hint")}
+            </p>
           </div>
         )}
-        {form.backendId && form.backendId !== "ollama" && (
+        {form.backendId && form.backendId !== "ollama" && form.backendId !== "agy-cli" && (
           <div>
             <Label>{t("workers_model")}</Label>
             <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_no_model")}</p>
@@ -1952,7 +1961,13 @@ function WorkerForm({
               value={form.fallbackModel}
               onChange={(fallbackModel) => setForm({ ...form, fallbackModel })}
               suggestions={form.fallbackBackendId || form.fallbackProviderId ? [] : MODEL_SUGGESTIONS}
-              onFetch={form.fallbackBackendId === "ollama" ? fetchOllamaModels : undefined}
+              onFetch={
+                form.fallbackBackendId === "ollama"
+                  ? fetchOllamaModels
+                  : form.fallbackBackendId === "agy-cli"
+                    ? fetchAgyModels
+                    : undefined
+              }
               fetchLabel={t("fetch")}
               placeholder={
                 form.fallbackBackendId || form.fallbackProviderId

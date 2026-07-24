@@ -3,6 +3,14 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.6.10] - 2026-07-25
+
+### Added
+- **Claude Opus 5 everywhere a model is picked**: it heads the `/model` shortcut grid in Telegram, the model suggestions in Settings, the Worker form and the add-agent wizard, and the first-run setup wizard's Opus option (browser and CLI/PowerShell installers alike). Opus 4.8 stays selectable as the previous generation.
+
+### Changed
+- **The default model is now `claude-opus-5`** (was `claude-opus-4-8`) for fresh installs and for any deployment that never pinned `CLAUDE_MODEL`. Existing `.env` and panel model overrides are untouched.
+
 ## [0.6.9] - 2026-07-15
 
 ### Added

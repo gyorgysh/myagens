@@ -8,8 +8,9 @@
  * src/commands.ts so both surfaces offer the same quick picks.
  */
 export const MODEL_SUGGESTIONS = [
-  "claude-opus-4-8",
+  "claude-opus-5",
   "claude-fable-5",
   "claude-sonnet-5",
   "claude-haiku-4-5-20251001",
+  "claude-opus-4-8",
 ];

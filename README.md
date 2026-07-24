@@ -285,7 +285,7 @@ Two variables get you running; everything else has a sane default.
 | `ALLOWED_USER_IDS` | yes | Comma-separated numeric Telegram user ids |
 | `WORKDIR` | no | Directory Atlas starts in (default: `~/MyAgens-Workspace`, auto-created on first run) |
 | `STATE_FILE` | no | Session + usage persistence path (default `data/state.json`) |
-| `CLAUDE_MODEL` | no | Default model id (default `claude-opus-4-8`). Retired ids (`claude-sonnet-4-5`, `claude-sonnet-4-6`) are silently upgraded to `claude-sonnet-5` |
+| `CLAUDE_MODEL` | no | Default model id (default `claude-opus-5`). Retired ids (`claude-sonnet-4-5`, `claude-sonnet-4-6`) are silently upgraded to `claude-sonnet-5` |
 | `ANTHROPIC_API_KEY` | no | API key; omit to use `claude` CLI login |
 | `OLLAMA_BASE_URL` | no | Local Ollama server for the `ollama` (local chat) backend (default `http://localhost:11434`) |
 | `OLLAMA_MODEL` | no | Default installed Ollama model name for agents on the `ollama` backend (see `ollama list`) |
@@ -533,7 +533,7 @@ The condensed pitch is above; this is everything, including the security hardeni
 | `/schedule [list]` / `/schedule add <when> \| <prompt>` / `/schedule rm <id>` | Timed autonomous prompts (`when` = `30m`/`2h`/`1d` or `HH:MM`) |
 | `/stop` | Abort the running request |
 | `/mode supervised\|standard\|full` | Set the approval level for this chat |
-| `/model [name]` | Show the model menu or switch directly: `/model claude-opus-4-8` |
+| `/model [name]` | Show the model menu or switch directly: `/model claude-opus-5` |
 | `/lang [code]` | Show or set the agent's response language (e.g. `/lang hu`) |
 | `/council <idea>` | Put a proposal to a vote of all enabled Leads |
 | `/inbox` | Review pending agent suggestions with Park / Delegate / Dismiss buttons |

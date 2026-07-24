@@ -33,7 +33,7 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/workers \
     "prompt": "You are the DevOps Lead. Handle infra, deployments, and monitoring.",
     "role": "lead",
     "portfolio": "Infrastructure and deployments",
-    "model": "claude-opus-4-8",
+    "model": "claude-opus-5",
     "persona": "Concise and direct.",
     "autonomy": "standard",
     "language": "en",
@@ -333,7 +333,7 @@ curl -H "$AUTH" $BASE/api/agent
 # Update (all fields optional)
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
   -d '{
-    "model": "claude-opus-4-8",
+    "model": "claude-opus-5",
     "persona": "Concise and direct.",
     "autonomy": "standard",
     "defaultLanguage": "en",

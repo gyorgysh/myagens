@@ -200,7 +200,7 @@ try {
     console.log("  " + sdkStderr.join("\n  ").slice(0, 2000));
   } else {
     console.log("  (the SDK produced no stderr — if the turn failed, try a different model:");
-    console.log("   set a model in the panel, e.g. claude-opus-4-8, and re-run)");
+    console.log("   set a model in the panel, e.g. claude-opus-5, and re-run)");
   }
 }
 
@@ -222,5 +222,5 @@ function resolveModel() {
   } catch {
     /* no .env */
   }
-  return "claude-opus-4-8";
+  return "claude-opus-5";
 }

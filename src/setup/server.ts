@@ -28,7 +28,11 @@ import { wizardHtml } from "./wizardHtml.js";
 const BASE_PORT = Number(process.env.PANEL_PORT) || 8787;
 const PORT_ATTEMPTS = 10;
 
-const MODEL_CHOICES = new Set(["claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5-20251001"]);
+const MODEL_CHOICES = new Set([
+  "claude-sonnet-5",
+  "claude-opus-5",
+  "claude-haiku-4-5-20251001",
+]);
 const DEFAULT_MODEL = "claude-sonnet-5";
 
 interface SetupSession {

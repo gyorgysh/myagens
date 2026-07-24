@@ -39,7 +39,7 @@ const schema = z.object({
   WORKDIR: z.string().min(1).default(defaultWorkdir),
   // Where per-chat session + usage state is persisted (JSON). Survives restarts.
   STATE_FILE: z.string().min(1).default(defaultStateFile),
-  CLAUDE_MODEL: z.string().min(1).default("claude-opus-4-8"),
+  CLAUDE_MODEL: z.string().min(1).default("claude-opus-5"),
   ANTHROPIC_API_KEY: z.string().optional(),
   APPROVAL_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
   // Turn stall watchdog (core/stallGuard.ts): abort a turn when the agent

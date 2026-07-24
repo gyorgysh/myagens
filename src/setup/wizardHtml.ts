@@ -587,7 +587,8 @@ const PAGE = `<!doctype html>
   // ---- step 4: launch -----------------------------------------------------
   var MODEL_META = {
     'claude-sonnet-5': ['Claude Sonnet 5', 'fast and capable, recommended'],
-    'claude-opus-4-8': ['Claude Opus 4.8', 'smartest, higher cost'],
+    'claude-opus-5': ['Claude Opus 5', 'smartest, higher cost'],
+    'claude-opus-4-8': ['Claude Opus 4.8', 'previous Opus generation'],
     'claude-haiku-4-5-20251001': ['Claude Haiku 4.5', 'light and cheap']
   };
   function showLaunchStep(){

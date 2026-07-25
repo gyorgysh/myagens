@@ -161,8 +161,13 @@ export class LeadBot {
     const loopDetector = new LoopDetector(config.LOOP_THRESHOLD);
     let loopAborted = false;
     try {
+      // A Lead identifies as itself, not as Atlas. The protocol block goes in as
+      // workerIdentity so it REPLACES the Atlas personality rather than being
+      // appended under it — the same way this Lead is built for panel chat
+      // (core/agentChat.ts) and unattended runs (core/workers.ts), so it is the
+      // same agent wherever you reach it.
       const protocol = getLeadProtocol(lead.name, lead.portfolio);
-      const append = [protocol, lead.systemPrompt].filter(Boolean).join("\n\n");
+      const append = lead.systemPrompt?.trim() || undefined;
 
       const provider = lead.providerId ? getProvider(lead.providerId) : undefined;
       const env = provider
@@ -205,6 +210,9 @@ export class LeadBot {
         model: lead.model,
         env,
         systemPromptAppend: append,
+        workerIdentity: protocol,
+        persona: lead.persona,
+        language: lead.language,
         promptExclude: lead.promptExclude,
         tmux: leadRun.tmux,
         permissionMode: s.autonomy === "full" ? "bypassPermissions" : "default",

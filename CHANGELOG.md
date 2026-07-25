@@ -3,6 +3,19 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.6.12] - 2026-07-26
+
+### Added
+- **The Antigravity backend is a full MyAgens agent now, not a bare Gemini one.** Running a chat, Lead or worker on `agy` used to mean losing everything that makes an agent yours: no MCP tools, no persona or `work.md`, no tool visibility. All three are in:
+  - **Your tools.** Memory, the kanban board, skills, crew messaging, `send_file` and every enabled connector are republished to Antigravity under the same names Claude uses, so an "always allow" preset you granted on Claude means the same thing here.
+  - **Your agent.** Persona, `work.md`, known directories, the crew roster, worker identity and the memories recalled for the message all reach the run, so it answers as Atlas (or as the Lead you set up), in your language and to your conventions. The heavy part is sent once per conversation and refreshed when it changes, not re-sent every turn.
+  - **Your approvals.** Tool calls stream to the chat as `🔧 run_command …` while they happen, and below Full autonomy the risky ones stop for Approve/Deny exactly like Claude's — including per-command "always allow `git`" grants. A refusal reaches the model as a failed tool call with your reason, and if the bot can't be asked, the call is blocked rather than run unsupervised.
+
+  All of it is scoped to MyAgens runs: your own `agy` sessions are untouched, and nothing is written to `~/.gemini/config`. Still missing versus Claude: token and cost accounting (the CLI reports none) and the connectors that run as their own process (Unreal Engine, Unity, Browser Sketchpad) — Antigravity's own browser tools cover the last one.
+
+### Fixed
+- **A Lead's own Telegram bot now uses that Lead's persona and language.** Both were configurable in the panel but ignored on that one path: the Lead answered from Atlas's personality with its role bolted on underneath, while the same Lead in panel chat or a delegated run identified as itself. It is now the same agent wherever you reach it.
+
 ## [0.6.11] - 2026-07-25
 
 ### Added

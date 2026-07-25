@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, AuthError, type MainAgent, type Autonomy, type Provider, type PlanView, type PlanType, type ProbeResult, type EmbeddingConfig, type OllamaStatus, type LmStudioStatus, type PreferredBackend, type PushView, type Branding, type PromptExcludeKey, type AgentInstance } from "../api.ts";
 import { Accordion, Badge, Button, Card, Input, Label, ModelSelect, Select, Skeleton, TextArea } from "./ui.tsx";
 import { MODEL_SUGGESTIONS } from "../lib/models.ts";
+import { backendModelKind, fetchModelsFor } from "../lib/backends.ts";
 import { useI18n, INTERFACE_LANGUAGES } from "../lib/useI18n.ts";
 import { useTheme, type Theme } from "../lib/useTheme.ts";
 import { applyBranding } from "../lib/branding.ts";
@@ -728,28 +729,24 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
             </Select>
             <p className="mt-1 text-xs text-fg-dim">{t("settings_ai_backend_hint")}</p>
           </div>
-          {backendId === "ollama" || backendId === "agy-cli" ? (
+          {backendModelKind(backendId) ? (
             // These backends keep the Model field but drop Provider, which
             // never applies to their own auth. Ollama's model is the name
-            // installed on the local daemon; agy's is one of the fixed labels
-            // the Antigravity CLI accepts (leave empty for its default). The
-            // fetch button lists what's actually available.
+            // installed on the local daemon; agy's and Cursor's are labels
+            // their CLI accepts (leave empty for the default). The fetch
+            // button lists what's actually available.
             <div>
               <Label>{t("model")}</Label>
               <ModelSelect
                 value={model}
                 onChange={setModel}
                 suggestions={[]}
-                onFetch={
-                  backendId === "agy-cli"
-                    ? () => api.agyModels().then((r) => r.models).catch(() => [])
-                    : () => api.ollamaStatus().then((s) => s.models).catch(() => [])
-                }
+                onFetch={fetchModelsFor(backendId)}
                 fetchLabel={t("fetch")}
                 placeholder={t("settings_model_local")}
               />
               <p className="mt-1 text-xs text-fg-dim">
-                {t(backendId === "agy-cli" ? "settings_ai_backend_agy_hint" : "settings_ai_backend_ollama_hint")}
+                {t(`settings_ai_backend_${backendModelKind(backendId)!}_hint`)}
               </p>
             </div>
           ) : backendId ? (
@@ -1064,21 +1061,15 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
             </div>
             {fallbackBackendId ? (
               // A non-Claude fallback backend manages its own auth, so the
-              // provider input doesn't apply — keep only the model name (for
-              // Ollama, the fetch button lists the installed local models).
+              // provider input doesn't apply: keep only the model name (where
+              // the backend has a list, the fetch button offers it).
               <div>
                 <Label>{t("model")}</Label>
                 <ModelSelect
                   value={fallbackModel}
                   onChange={setFallbackModel}
                   suggestions={[]}
-                  onFetch={
-                    fallbackBackendId === "ollama"
-                      ? () => api.ollamaStatus().then((s) => s.models).catch(() => [])
-                      : fallbackBackendId === "agy-cli"
-                        ? () => api.agyModels().then((r) => r.models).catch(() => [])
-                        : undefined
-                  }
+                  onFetch={fetchModelsFor(fallbackBackendId)}
                   fetchLabel={t("fetch")}
                   placeholder={t("settings_fallback_model_ph")}
                 />

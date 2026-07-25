@@ -18,6 +18,7 @@ import { errorMessage } from "../lib/errorMessage.ts";
 import type { TranslationKey } from "../i18n/en.ts";
 import { Avatar, Badge, Button, Card, ConfirmDialog, Empty, InfoCard, Input, Label, Modal, ModelSelect, Select, TextArea } from "./ui.tsx";
 import { MODEL_SUGGESTIONS } from "../lib/models.ts";
+import { backendModelKind, fetchModelsFor } from "../lib/backends.ts";
 import { useAvatarList, resolveAvatarSlug, AVATAR_SLUGS } from "../lib/avatar.ts";
 import {
   RefreshCw,
@@ -99,12 +100,6 @@ const PROVIDER_KIND_LABEL: Record<ProviderKind, string> = {
   lmstudio: "LM Studio",
   custom: "Provider",
 };
-
-/** Installed local Ollama models, for the ollama-backend model pickers. */
-const fetchOllamaModels = () => api.ollamaStatus().then((s) => s.models).catch(() => []);
-
-/** Model labels the installed Antigravity CLI accepts, for agy-cli pickers. */
-const fetchAgyModels = () => api.agyModels().then((r) => r.models).catch(() => []);
 
 const PERSONA_PRESETS: Array<{ labelKey: TranslationKey; descKey: TranslationKey; value: string }> = [
   { labelKey: "settings_persona_concise", descKey: "workers_persona_preset_concise", value: "Concise and direct. Lead with the result, skip preamble, use short sentences." },
@@ -1289,9 +1284,9 @@ function WizardConfigEditor({
           </Select>
           <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_hint")}</p>
         </div>
-        {(form.backendId === "ollama" || form.backendId === "agy-cli") && (
+        {backendModelKind(form.backendId) && (
           // These backends keep the Model field (Ollama: the installed local
-          // model name; agy: a fixed Antigravity model label, empty = its
+          // model name; agy/Cursor: a label their CLI accepts, empty = its
           // default) but drop Provider, which never applies. The fetch button
           // lists what's actually available.
           <div>
@@ -1300,16 +1295,16 @@ function WizardConfigEditor({
               value={form.model}
               onChange={(model) => onChange({ model })}
               suggestions={[]}
-              onFetch={form.backendId === "agy-cli" ? fetchAgyModels : fetchOllamaModels}
+              onFetch={fetchModelsFor(form.backendId)}
               fetchLabel={t("fetch")}
               placeholder={t("workers_model_local")}
             />
             <p className="mt-1 text-xs text-fg-faint">
-              {t(form.backendId === "agy-cli" ? "workers_ai_backend_agy_hint" : "workers_ai_backend_ollama_hint")}
+              {t(`workers_ai_backend_${backendModelKind(form.backendId)!}_hint`)}
             </p>
           </div>
         )}
-        {form.backendId && form.backendId !== "ollama" && form.backendId !== "agy-cli" && (
+        {form.backendId && !backendModelKind(form.backendId) && (
           <div>
             <Label>{t("workers_model")}</Label>
             <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_no_model")}</p>
@@ -1657,9 +1652,9 @@ function WorkerForm({
           </Select>
           <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_hint")}</p>
         </div>
-        {(form.backendId === "ollama" || form.backendId === "agy-cli") && (
+        {backendModelKind(form.backendId) && (
           // These backends keep the Model field (Ollama: the installed local
-          // model name; agy: a fixed Antigravity model label, empty = its
+          // model name; agy/Cursor: a label their CLI accepts, empty = its
           // default) but drop Provider, which never applies. The fetch button
           // lists what's actually available.
           <div>
@@ -1668,16 +1663,16 @@ function WorkerForm({
               value={form.model}
               onChange={(model) => setForm({ ...form, model })}
               suggestions={[]}
-              onFetch={form.backendId === "agy-cli" ? fetchAgyModels : fetchOllamaModels}
+              onFetch={fetchModelsFor(form.backendId)}
               fetchLabel={t("fetch")}
               placeholder={t("workers_model_local")}
             />
             <p className="mt-1 text-xs text-fg-faint">
-              {t(form.backendId === "agy-cli" ? "workers_ai_backend_agy_hint" : "workers_ai_backend_ollama_hint")}
+              {t(`workers_ai_backend_${backendModelKind(form.backendId)!}_hint`)}
             </p>
           </div>
         )}
-        {form.backendId && form.backendId !== "ollama" && form.backendId !== "agy-cli" && (
+        {form.backendId && !backendModelKind(form.backendId) && (
           <div>
             <Label>{t("workers_model")}</Label>
             <p className="mt-1 text-xs text-fg-faint">{t("workers_ai_backend_no_model")}</p>
@@ -1961,13 +1956,7 @@ function WorkerForm({
               value={form.fallbackModel}
               onChange={(fallbackModel) => setForm({ ...form, fallbackModel })}
               suggestions={form.fallbackBackendId || form.fallbackProviderId ? [] : MODEL_SUGGESTIONS}
-              onFetch={
-                form.fallbackBackendId === "ollama"
-                  ? fetchOllamaModels
-                  : form.fallbackBackendId === "agy-cli"
-                    ? fetchAgyModels
-                    : undefined
-              }
+              onFetch={fetchModelsFor(form.fallbackBackendId)}
               fetchLabel={t("fetch")}
               placeholder={
                 form.fallbackBackendId || form.fallbackProviderId

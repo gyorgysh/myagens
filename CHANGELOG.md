@@ -3,6 +3,11 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.6.11] - 2026-07-25
+
+### Added
+- **Cursor as a sixth agent backend**: an individual Lead/worker (or Atlas himself) can now run on **Cursor's CLI** (`cursor-agent`) alongside the Grok, Codex and Antigravity backends. It brings every model your Cursor account can run (Composer, GPT, Claude and Grok tiers) through Cursor's own agentic CLI, with its tool belt and sandboxing, rather than a reimplemented tool loop. Switch a chat with `/model cursor-cli` (or `cursor-cli:<model id>`), or pick **Cursor (CLI)** from the "AI backend" selector in Settings/Workers, where the Model field stays visible with a Fetch button listing your account's model ids (leave it empty for Auto), backed by a new `GET /api/integrations/cursor/models` route. It also works as a **fallback backend**, so an agent can fail over to Cursor when its primary hits a usage limit. Unlike the Grok and Antigravity backends, this one reports **live text, tool calls and real token usage**, so approvals-style tool activity and per-agent cost tracking work as they do on Claude. Conversations resume across turns via Cursor's session id. Print-mode caveat: `cursor-agent` auto-approves its own tools, so below Full autonomy the run is confined to Cursor's sandbox, while Full autonomy lifts the gates entirely.
+
 ## [0.6.10] - 2026-07-25
 
 ### Added

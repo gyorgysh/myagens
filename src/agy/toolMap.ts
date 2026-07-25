@@ -15,15 +15,7 @@
  * and prompting for those would make safe mode unusable.
  */
 
-/** A mapped call: what to show/gate it as, plus how to push an edited input back. */
-export interface MappedTool {
-  /** Canonical tool name (`Bash`, `Read`, …) used for status and permissions. */
-  name: string;
-  /** Canonical input, shaped like the Claude tool's input. */
-  input: Record<string, unknown>;
-  /** Convert an approved-with-edits canonical input back to Antigravity's args. */
-  toAgyArgs?: (input: Record<string, unknown>) => Record<string, unknown> | undefined;
-}
+import type { MappedTool } from "../core/cliBridge.js";
 
 /** First present string value among `keys`. */
 function pick(args: Record<string, unknown>, keys: string[]): string | undefined {
@@ -55,7 +47,7 @@ export function mapAgyTool(tool: string, args: Record<string, unknown>): MappedT
       return {
         name: "Bash",
         input: { command, ...(typeof args.Cwd === "string" ? { cwd: args.Cwd } : {}) },
-        toAgyArgs: (input) =>
+        toCliArgs: (input) =>
           typeof input.command === "string" && input.command !== command
             ? { CommandLine: input.command }
             : undefined,

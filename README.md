@@ -577,7 +577,6 @@ src/
     runner.ts         AgentBackend wrapping OpenAI's codex CLI (exec / exec resume)
   agy/
     runner.ts         AgentBackend wrapping Google's Antigravity CLI (print mode + log-file conversation id)
-    bridge.ts         loopback control plane: republishes our MCP tools, gates agy's own tools
     customization.ts  writes the .agents plugin (MCP server + hooks) passed to agy as --add-dir
     prompt.ts         carries the system prompt in the prompt text (agy has no flag for it)
     toolMap.ts        agy tool names/args -> Bash/Read/Write/... for status and approvals
@@ -585,6 +584,7 @@ src/
     runner.ts         AgentBackend wrapping Cursor's CLI (stream-json events, tool calls + usage)
   core/               telegraf-free layer shared by all agents and the panel
     backends.ts       AgentBackend registry (claude-agent-sdk default, grok-cli, codex-cli, agy-cli, cursor-cli)
+    cliBridge.ts      loopback control plane shared by CLI-wrapping backends: republishes our MCP tools, gates the CLI's own tools
     health.ts         system-health snapshot (CPU/mem/swap/disk/IO)
     status.ts         public Claude status + provider/local-backend probes
     snapshot.ts       read-only session/usage views

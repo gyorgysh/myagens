@@ -1,12 +1,13 @@
-// stdio MCP server that republishes MyAgens' in-process tools to Antigravity.
+// stdio MCP server that republishes MyAgens' in-process tools to a driven CLI.
 //
-// Registered as an MCP server in the per-run customization root written by
-// src/agy/customization.ts, so `agy` discovers and spawns it like any other MCP
-// server. It owns no tools itself: every tools/list and tools/call is forwarded
-// to the bot process over loopback (src/agy/bridge.ts), which is where the real
-// handlers, the approval flow, and the live tool status live.
+// Registered as an MCP server in the per-run customization root written by a
+// backend's customization module (e.g. src/agy/customization.ts), so the CLI
+// discovers and spawns it like any other MCP server. It owns no tools itself:
+// every tools/list and tools/call is forwarded to the bot process over
+// loopback (src/core/cliBridge.ts), which is where the real handlers, the
+// approval flow, and the live tool status live.
 //
-// The turn's endpoint and token arrive as env vars on the agy spawn. Without
+// The turn's endpoint and token arrive as env vars on the CLI spawn. Without
 // them (someone ran this by hand) it starts cleanly and advertises no tools.
 //
 // Plain Node, no build step and no dependencies: it runs from the repo in both
@@ -14,8 +15,8 @@
 
 import { createInterface } from "node:readline";
 
-const URL_BASE = process.env.MYAGENS_AGY_BRIDGE_URL;
-const TOKEN = process.env.MYAGENS_AGY_BRIDGE_TOKEN;
+const URL_BASE = process.env.MYAGENS_BRIDGE_URL;
+const TOKEN = process.env.MYAGENS_BRIDGE_TOKEN;
 
 /** Latest MCP revision we know; the client's own version wins when it sends one. */
 const FALLBACK_PROTOCOL = "2025-06-18";
@@ -60,8 +61,8 @@ async function handle(msg) {
         const { tools } = await callBot("/tools/list", {});
         return reply(id, { tools: Array.isArray(tools) ? tools : [] });
       } catch (err) {
-        // An unreachable bot must not take the whole agy session down: report an
-        // empty tool set and let the run continue with Antigravity's own tools.
+        // An unreachable bot must not take the whole CLI session down: report
+        // an empty tool set and let the run continue with the CLI's own tools.
         process.stderr.write(`myagens: tools/list failed: ${err?.message ?? err}\n`);
         return reply(id, { tools: [] });
       }
@@ -92,7 +93,7 @@ async function handle(msg) {
     default:
       // Notifications carry no id and need no answer; anything else gets an
       // empty result rather than an error, so an unknown handshake extension
-      // (Antigravity opens with its own `server/discover`) can't wedge startup.
+      // (e.g. Antigravity's own `server/discover`) can't wedge startup.
       return reply(id, {});
   }
 }

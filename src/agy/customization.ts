@@ -16,8 +16,8 @@ import { log } from "../logger.js";
  * dir and pass it as an extra `--add-dir`. Nothing outside our runs ever loads
  * it.
  *
- * The plugin holds two entries, both pointing at scripts/agy/ helpers that call
- * back into the running bot (src/agy/bridge.ts):
+ * The plugin holds two entries, both pointing at scripts/cli-bridge/ helpers
+ * that call back into the running bot (src/core/cliBridge.ts):
  * - `mcp_config.json` — republishes our in-process MCP tools (memory, kanban,
  *   crew, connectors, send_file, …).
  * - `hooks.json` — PreToolUse/PostToolUse, which is where tool status and
@@ -31,8 +31,8 @@ import { log } from "../logger.js";
 export const AGY_ROOT_DIR = dataPath("agy-customizations");
 
 const PLUGIN_DIR = join(AGY_ROOT_DIR, ".agents", "plugins", "myagens");
-const BRIDGE_SCRIPT = join(repoRoot, "scripts", "agy", "mcp-bridge.mjs");
-const HOOK_SCRIPT = join(repoRoot, "scripts", "agy", "hook.mjs");
+const BRIDGE_SCRIPT = join(repoRoot, "scripts", "cli-bridge", "mcp-bridge.mjs");
+const HOOK_SCRIPT = join(repoRoot, "scripts", "cli-bridge", "hook.mjs");
 
 /**
  * Hook timeout. Must outlast an approval prompt (APPROVAL_TIMEOUT_MS, 5 min by
@@ -50,7 +50,7 @@ function hookCommand(event: "pre" | "post"): string {
   // interpreter is named plainly (node ships on PATH there) and only the script
   // path — the one that can contain spaces mid-command — is quoted.
   const node = process.platform === "win32" ? "node" : `"${process.execPath}"`;
-  return `${node} "${HOOK_SCRIPT}" ${event}`;
+  return `${node} "${HOOK_SCRIPT}" agy ${event}`;
 }
 
 function pluginFiles(): Record<string, unknown> {

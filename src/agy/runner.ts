@@ -4,11 +4,12 @@ import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { RunOptions, RunResult } from "../claude/runner.js";
+import { registerCliRun, type CliRunHandle } from "../core/cliBridge.js";
 import { memory, formatMemoriesForPrompt } from "../core/memory.js";
 import { log } from "../logger.js";
-import { registerAgyRun, type AgyRunHandle } from "./bridge.js";
 import { ensureAgyCustomization } from "./customization.js";
 import { buildAgyPrompt, markAgySystemInjected } from "./prompt.js";
+import { mapAgyTool } from "./toolMap.js";
 
 /**
  * Drive one turn through Google's Antigravity CLI (`agy`), spawned as a
@@ -25,7 +26,7 @@ import { buildAgyPrompt, markAgySystemInjected } from "./prompt.js";
  * own `agy` setup:
  * - **Our MCP tools** (memory, kanban, crew, connectors, send_file, …) are
  *   republished to the CLI by a stdio MCP server that proxies back into this
- *   process (src/agy/bridge.ts).
+ *   process (src/core/cliBridge.ts).
  * - **Tool visibility and approvals** for Antigravity's own tools come from a
  *   PreToolUse/PostToolUse hook that calls the same bridge, so `onToolUse`
  *   fires live and risky calls still reach the user's Approve/Deny buttons.
@@ -65,14 +66,16 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
   const { prompt, systemHash } = buildAgyPrompt(opts, memoryBlock);
 
   const root = await ensureAgyCustomization();
-  let bridge: AgyRunHandle | undefined;
+  let bridge: CliRunHandle | undefined;
   if (root) {
-    bridge = await registerAgyRun({
+    bridge = await registerCliRun({
       mcpServers: opts.mcpServers,
       permissionMode: opts.permissionMode,
       canUseTool: opts.canUseTool,
       onToolUse: opts.onToolUse,
       onToolResult: opts.onToolResult,
+      mapTool: mapAgyTool,
+      backend: "agy",
     });
   }
 
@@ -114,9 +117,7 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
         // server and hooks agy spawns can call back into this turn.
         env: {
           ...process.env,
-          ...(bridge
-            ? { MYAGENS_AGY_BRIDGE_URL: bridge.url, MYAGENS_AGY_BRIDGE_TOKEN: bridge.token }
-            : {}),
+          ...(bridge ? { MYAGENS_BRIDGE_URL: bridge.url, MYAGENS_BRIDGE_TOKEN: bridge.token } : {}),
         },
       });
 

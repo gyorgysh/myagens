@@ -3,46 +3,59 @@ import { randomBytes } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import type { PermissionResult, RunOptions } from "../claude/runner.js";
 import { log } from "../logger.js";
-import { mapAgyTool } from "./toolMap.js";
 
 /**
- * Loopback control plane that gives an `agy` subprocess the two things the CLI
- * has no flag for: our in-process MCP tools, and a say in whether a tool may
- * run.
+ * Loopback control plane that gives a CLI subprocess (agy, and any future CLI
+ * backend that borrows this) the two things such a CLI has no flag for: our
+ * in-process MCP tools, and a say in whether a tool may run.
  *
- * Two helper processes call in here (see scripts/agy/):
+ * Two helper processes call in here (see scripts/cli-bridge/):
  * - `mcp-bridge.mjs` is registered as a stdio MCP server in the per-run
- *   customization root, so Antigravity discovers it like any other MCP server.
+ *   customization root, so the CLI discovers it like any other MCP server.
  *   It forwards `tools/list` / `tools/call` to `/tools/*` below, which proxies
  *   them to the SDK MCP servers this turn was given (memory, tasks, crew,
  *   connectors, …) — the same objects the Claude backend passes to the SDK.
- * - `hook.mjs` is registered as a PreToolUse/PostToolUse hook, so Antigravity's
+ * - `hook.mjs` is registered as a PreToolUse/PostToolUse hook, so the CLI's
  *   OWN tools (run_command, write_file, …) reach `/hook/*` before they run.
- *   That is where tool status and Approve/Deny come from for this backend.
+ *   That is where tool status and Approve/Deny come from for that backend.
  *
- * Both helpers learn where to call and who they are from two env vars we set on
- * the agy spawn (`MYAGENS_AGY_BRIDGE_URL` / `_TOKEN`); the token is per turn, so
- * a request can only ever reach the run that started it. The server binds
- * 127.0.0.1 on an ephemeral port and stays up for the process lifetime once
- * started — with no live sessions every request is a 401.
+ * Both helpers learn where to call and who they are from two env vars we set
+ * on the CLI spawn (`MYAGENS_BRIDGE_URL` / `MYAGENS_BRIDGE_TOKEN`); the token
+ * is per turn, so a request can only ever reach the run that started it. The
+ * server binds 127.0.0.1 on an ephemeral port and stays up for the process
+ * lifetime once started — with no live sessions every request is a 401.
  */
 
-/** What one in-flight agy turn exposes to its helper processes. */
-export interface AgyRunSpec {
+/** What one in-flight CLI turn exposes to its helper processes. */
+export interface CliRunSpec {
   mcpServers: RunOptions["mcpServers"];
   permissionMode: RunOptions["permissionMode"];
   canUseTool: RunOptions["canUseTool"];
   onToolUse: RunOptions["onToolUse"];
   onToolResult?: RunOptions["onToolResult"];
+  /** Translate this backend's own tool call into the canonical vocabulary. */
+  mapTool: (tool: string, args: Record<string, unknown>) => MappedTool | null;
+  /** Short label used only in log messages, e.g. "agy". */
+  backend: string;
 }
 
 /** Handle for a registered turn; `dispose()` must run in the caller's finally. */
-export interface AgyRunHandle {
+export interface CliRunHandle {
   url: string;
   token: string;
-  /** Tool calls seen this turn (MCP + Antigravity's own), for RunResult.toolCalls. */
+  /** Tool calls seen this turn (MCP + the CLI's own), for RunResult.toolCalls. */
   toolCalls: Array<{ name: string; input: unknown }>;
   dispose(): void;
+}
+
+/** A mapped call: what to show/gate it as, plus how to push an edited input back. */
+export interface MappedTool {
+  /** Canonical tool name (`Bash`, `Read`, …) used for status and permissions. */
+  name: string;
+  /** Canonical input, shaped like the Claude tool's input. */
+  input: Record<string, unknown>;
+  /** Convert an approved-with-edits canonical input back to the CLI's own args. */
+  toCliArgs?: (input: Record<string, unknown>) => Record<string, unknown> | undefined;
 }
 
 /** Result shape of an MCP `tools/call`, as the helper forwards it verbatim. */
@@ -52,7 +65,7 @@ interface CallToolResult {
   [k: string]: unknown;
 }
 
-/** A tool as advertised to Antigravity, named exactly like the Claude backend
+/** A tool as advertised to the CLI, named exactly like the Claude backend
  *  names it (`mcp__<server>__<tool>`) so AUTO_ALLOWED_TOOLS and the user's saved
  *  "always allow" presets mean the same thing on both backends. */
 interface BridgedTool {
@@ -132,7 +145,7 @@ class SdkServerLink {
     await this.request("initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
-      clientInfo: { name: "myagens-agy-bridge", version: "1.0.0" },
+      clientInfo: { name: "myagens-cli-bridge", version: "1.0.0" },
     });
     this.notify("notifications/initialized");
     this.ready = true;
@@ -188,7 +201,7 @@ class SdkServerLink {
 // Per-turn session
 // ---------------------------------------------------------------------------
 
-class AgySession {
+class BridgeSession {
   readonly toolCalls: Array<{ name: string; input: unknown }> = [];
   /** Server name -> link, for the SDK MCP servers this turn was given. */
   private links = new Map<string, SdkServerLink>();
@@ -199,14 +212,14 @@ class AgySession {
   /** stepIdx -> canonical tool name, so a PostToolUse result knows what failed. */
   private steps = new Map<number, string>();
 
-  constructor(readonly spec: AgyRunSpec) {
+  constructor(readonly spec: CliRunSpec) {
     for (const [name, server] of Object.entries(spec.mcpServers ?? {})) {
       // Only in-process SDK servers can be proxied. External stdio/SSE/HTTP
       // connectors (Unreal, Unity, Browser Sketchpad) are configured as real
       // subprocesses/endpoints for the Claude backend and are left out here.
       const instance = (server as { type?: string; instance?: unknown })?.instance;
       if (!instance) {
-        log.debug("agy bridge: skipping non-SDK MCP server", { server: name });
+        log.debug(`${spec.backend} bridge: skipping non-SDK MCP server`, { server: name });
         continue;
       }
       this.links.set(name, new SdkServerLink(instance as never));
@@ -227,7 +240,7 @@ class AgySession {
       try {
         tools = await link.listTools();
       } catch (err) {
-        log.warn("agy bridge: could not list tools of an MCP server", {
+        log.warn(`${this.spec.backend} bridge: could not list tools of an MCP server`, {
           server,
           err: err instanceof Error ? err.message : String(err),
         });
@@ -283,13 +296,13 @@ class AgySession {
       return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      log.warn("agy bridge: MCP tool call failed", { tool: name, err: msg });
+      log.warn(`${this.spec.backend} bridge: MCP tool call failed`, { tool: name, err: msg });
       this.spec.onToolResult?.(true);
       return { content: [{ type: "text", text: `Tool call failed: ${msg}` }], isError: true };
     }
   }
 
-  /** PreToolUse: one of Antigravity's own tools is about to run. */
+  /** PreToolUse: one of the CLI's own tools is about to run. */
   async preToolUse(
     tool: string,
     args: Record<string, unknown>,
@@ -298,11 +311,11 @@ class AgySession {
     // MCP calls are gated at the tool call itself (above), where the real tool
     // name and arguments are known — gating the opaque `call_mcp_tool` wrapper
     // here too would prompt the user twice for one call.
-    const mapped = mapAgyTool(tool, args);
+    const mapped = this.spec.mapTool(tool, args);
     if (!mapped) {
       // Most unmapped steps are internal bookkeeping, but this is also how a
-      // renamed or newly added Antigravity tool would show up, so leave a trail.
-      if (tool !== "call_mcp_tool") log.debug("agy bridge: unmapped tool step", { tool });
+      // renamed or newly added CLI tool would show up, so leave a trail.
+      if (tool !== "call_mcp_tool") log.debug(`${this.spec.backend} bridge: unmapped tool step`, { tool });
       return { decision: "allow" };
     }
 
@@ -321,14 +334,14 @@ class AgySession {
     }
     if (decision.behavior === "deny") {
       // The refusal IS this call's result; drop the step so the PostToolUse
-      // hook Antigravity still fires for it doesn't report a second, clean one.
+      // hook the CLI still fires for it doesn't report a second, clean one.
       if (stepIdx !== undefined) this.steps.delete(stepIdx);
       this.spec.onToolResult?.(true);
       return { decision: "deny", reason: decision.message };
     }
     // An approved-with-edits result (e.g. a rewritten Bash command) is pushed
     // back into the real call through the hook's `overwrite` field.
-    const overwrite = mapped.toAgyArgs?.(decision.updatedInput ?? mapped.input);
+    const overwrite = mapped.toCliArgs?.(decision.updatedInput ?? mapped.input);
     return overwrite ? { decision: "allow", overwrite } : { decision: "allow" };
   }
 
@@ -350,7 +363,7 @@ class AgySession {
 // HTTP surface
 // ---------------------------------------------------------------------------
 
-const sessions = new Map<string, AgySession>();
+const sessions = new Map<string, BridgeSession>();
 let starting: Promise<string> | undefined;
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -383,7 +396,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const auth = req.headers.authorization ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const session = token ? sessions.get(token) : undefined;
-  if (!session) return send(res, 401, { error: "unknown or expired agy run" });
+  if (!session) return send(res, 401, { error: "unknown or expired run" });
 
   let payload: Record<string, unknown>;
   try {
@@ -418,7 +431,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return send(res, 404, { error: "no such endpoint" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.warn("agy bridge request failed", { path, err: msg });
+    log.warn("cli bridge request failed", { path, err: msg });
     return send(res, 500, { error: msg });
   }
 }
@@ -442,7 +455,7 @@ function ensureServer(): Promise<string> {
     });
     server.listen(0, HOST, () => {
       const addr = server.address() as AddressInfo;
-      log.debug("agy bridge listening", { port: addr.port });
+      log.debug("cli bridge listening", { port: addr.port });
       resolve(`http://${HOST}:${addr.port}`);
     });
     server.unref();
@@ -451,14 +464,14 @@ function ensureServer(): Promise<string> {
 }
 
 /**
- * Register one agy turn and return the env values its helper processes need.
+ * Register one CLI turn and return the env values its helper processes need.
  * Always pair with `dispose()` in a finally: the token is what keeps the run's
  * MCP tools and approval callbacks reachable, and it must not outlive the turn.
  */
-export async function registerAgyRun(spec: AgyRunSpec): Promise<AgyRunHandle> {
+export async function registerCliRun(spec: CliRunSpec): Promise<CliRunHandle> {
   const url = await ensureServer();
   const token = randomBytes(24).toString("hex");
-  const session = new AgySession(spec);
+  const session = new BridgeSession(spec);
   sessions.set(token, session);
   return {
     url,

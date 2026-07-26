@@ -400,6 +400,17 @@ export function App() {
                 ◈
               </span>
               <a
+                href="https://myagens.com"
+                target="_blank"
+                rel="noreferrer"
+                className="text-fg-dim hover:text-fg-muted"
+              >
+                myagens.com
+              </a>
+              <span className="text-accent/40" aria-hidden>
+                ◈
+              </span>
+              <a
                 href="https://gyorgy.sh"
                 target="_blank"
                 rel="noreferrer"

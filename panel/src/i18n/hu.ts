@@ -680,7 +680,7 @@ export const hu: Translations = {
   // App elrendezés
   app_open_menu: "Menü megnyitása",
   breadcrumb_home: "Kezdőlap",
-  app_footer_made_with: "Nyílt forráskóddal készült Claude-dal és kávéval ☕",
+  app_footer_made_with: "GPL-3.0 nyílt forráskód, LLM-ekkel és kávéval ☕",
 
   // Parancskereső
   cmd_open: "Navigációs kereső megnyitása",

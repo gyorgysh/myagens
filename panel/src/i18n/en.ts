@@ -679,7 +679,7 @@ export const en = {
   // App layout
   app_open_menu: "Open menu",
   breadcrumb_home: "Home",
-  app_footer_made_with: "Made open source with Claude & Coffee ☕",
+  app_footer_made_with: "GPL-3.0 open source, built with LLMs & Coffee ☕",
 
   // Command palette
   cmd_open: "Open navigation palette",

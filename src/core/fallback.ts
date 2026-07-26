@@ -13,6 +13,7 @@
  * handling reports it.
  */
 import { getBackend } from "./backends.js";
+import { fallbackTargetExhausted } from "./limitHeadroom.js";
 import { getProvider } from "./providers.js";
 import { resolveSecret } from "./vault.js";
 import { log } from "../logger.js";
@@ -39,6 +40,14 @@ export function isUsageLimitError(err: unknown): boolean {
     )
   );
 }
+
+/**
+ * How full a window has to be for this path to call the target spent. Higher
+ * than the proactive threshold on purpose: here the primary has *already*
+ * failed, so the bar for refusing the only alternative left is deliberately
+ * near-certainty.
+ */
+const EXHAUSTED_PCT = 99;
 
 /** A target to fail a turn over to: a different backend and/or provider/model. */
 export interface FallbackSpec {
@@ -79,6 +88,23 @@ export async function runTurnWithFallback(
 
     const fallbackBackendId = spec.backendId || primaryBackendId;
     const backendChanged = (fallbackBackendId ?? undefined) !== (primaryBackendId ?? undefined);
+
+    // If the target publishes its own utilisation and is fresh out of allowance,
+    // the retry would only produce a second limit error a minute later. Fail now
+    // with the primary's real error instead of burning the turn. A stale or
+    // unreadable reading never blocks the attempt (core/limitHeadroom.ts).
+    if (backendChanged) {
+      const target = fallbackTargetExhausted(fallbackBackendId, EXHAUSTED_PCT);
+      if (target.exhausted) {
+        log.warn("Skipping failover — the fallback target is at its own limit", {
+          primaryBackendId,
+          fallbackBackendId,
+          limit: target.label,
+          percent: target.percent,
+        });
+        throw err;
+      }
+    }
     // Providers only apply to the Claude Agent SDK backend.
     const fallbackIsClaude = !spec.backendId || spec.backendId === "claude-agent-sdk";
     const provider = spec.providerId && fallbackIsClaude ? getProvider(spec.providerId) : undefined;

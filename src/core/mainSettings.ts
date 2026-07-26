@@ -3,7 +3,7 @@ import { loadJson, saveJson } from "./jsonStore.js";
 import { getProvider, listProviders } from "./providers.js";
 import { resolveSecret } from "./vault.js";
 import { audit } from "./audit.js";
-import { loadProbeResult } from "./usageProbe.js";
+import { backendLimitReading, fallbackTargetExhausted } from "./limitHeadroom.js";
 import { listBackends, getBackend } from "./backends.js";
 import { tmuxAvailableSync } from "../claude/tmuxInstance.js";
 import type { TmuxRunSpec } from "../claude/runner.js";
@@ -369,45 +369,18 @@ export function degradedState(): { active: boolean; since?: string; reason?: str
   return degraded;
 }
 
-/** True if the cached usage probe shows any window at/above `threshold` percent. */
-function overUsageLimit(threshold: number): {
-  over: boolean;
-  label?: string;
-  percent?: number;
-  extraUsageEnabled?: boolean;
-} {
-  const probe = loadProbeResult();
-  if (!probe || !probe.limits.length) return { over: false };
-  const now = Date.now();
-  let worst: { label: string; percent: number } | undefined;
-  for (const lim of probe.limits) {
-    if (lim.percent >= threshold && (!worst || lim.percent > worst.percent)) {
-      // If the limit reset timestamp has passed, this cached threshold is expired.
-      if (lim.resetsAt) {
-        const resetTime = new Date(lim.resetsAt).getTime();
-        if (!isNaN(resetTime) && now >= resetTime) {
-          log.info("Limit reset time passed — ignoring stale cached limit", { label: lim.label, resetsAt: lim.resetsAt });
-          continue;
-        }
-      }
-      worst = { label: lim.label, percent: lim.percent };
-    }
-  }
-  return worst
-    ? { over: true, label: worst.label, percent: worst.percent, extraUsageEnabled: probe.extraUsageEnabled }
-    : { over: false };
-}
-
 /**
  * Resolve a main run, honouring rate-limit auto-fallback. When a fallback target
- * is configured and the cached usage probe shows the primary (Claude) plan is
- * at/over the threshold, swap to the fallback provider/backend/model so the turn
- * keeps running — for autonomous/background turns and interactive chat turns
- * (Telegram, Slack) alike, no need to wait for an actual failure. Only applies
- * while the primary backend is Claude; a turn already pinned to a different
- * backend ignores Claude usage entirely. Updates the degraded-mode flag as a
- * side effect. `runTurnWithFallback` (core/fallback.ts) remains as a reactive
- * backstop for a genuine mid-turn error this probe-based check didn't catch.
+ * is configured and the *primary backend's own* utilisation is at/over the
+ * threshold, swap to the fallback provider/backend/model so the turn keeps
+ * running — for autonomous/background turns and interactive chat turns (Telegram,
+ * Slack) alike, no need to wait for an actual failure. Reads whichever source
+ * fits that backend (core/limitHeadroom.ts): the OAuth probe for Claude, session
+ * transcripts for Codex, nothing for the backends that publish nothing, which
+ * therefore keep reactive failover only. A target that is itself spent is left
+ * alone rather than switched into. Updates the degraded-mode flag as a side
+ * effect. `runTurnWithFallback` (core/fallback.ts) remains as a reactive backstop
+ * for a genuine mid-turn error this check didn't catch.
  */
 export function resolveMainRunFor(opts: {
   autonomous: boolean;
@@ -417,11 +390,11 @@ export function resolveMainRunFor(opts: {
   const base = resolveMainRun({ interactive: opts.interactive });
   const s = load();
   if (!s.fallbackProviderId && !s.fallbackBackendId) return base;
-  // Claude usage is meaningless once the primary is already a different backend.
-  const primaryIsClaude = !base.backendId || base.backendId === "claude-agent-sdk";
-  if (!primaryIsClaude) return base;
   const threshold = s.fallbackThreshold ?? DEFAULT_FALLBACK_THRESHOLD;
-  const { over, label, percent, extraUsageEnabled } = overUsageLimit(threshold);
+  // Read the *primary's* own utilisation, whichever backend that is. Claude and
+  // Codex both publish it; the rest report `known: false`, which leaves this
+  // path exactly where it was before — reactive failover only.
+  const { over, label, percent, extraUsageEnabled } = backendLimitReading(base.backendId, threshold);
   if (!over) {
     if (degraded.active) {
       log.info("Rate-limit fallback cleared — back on primary model");
@@ -450,6 +423,22 @@ export function resolveMainRunFor(opts: {
   }
   const engagedBackendId = s.fallbackBackendId || base.backendId;
   const backendChanged = (engagedBackendId ?? undefined) !== (base.backendId ?? undefined);
+  // Switching into a backend that is itself spent just trades one limit for
+  // another, and would put up a "degraded, running on X" banner for a target that
+  // cannot answer either. Staying on the primary at least fails with the real
+  // reason. Only a fresh reading counts, so an unused or unreadable target is
+  // still attempted (see core/limitHeadroom.ts).
+  if (backendChanged) {
+    const target = fallbackTargetExhausted(engagedBackendId, threshold);
+    if (target.exhausted) {
+      log.warn("Fallback target is at its own limit — staying on primary", {
+        backendId: engagedBackendId,
+        limit: target.label,
+        percent: target.percent,
+      });
+      return base;
+    }
+  }
   const backendName = s.fallbackBackendId ? getBackend(s.fallbackBackendId).displayName : undefined;
   // Banner label: the switched-backend display name (plus model) when a backend
   // fallback is engaged, else the provider name.

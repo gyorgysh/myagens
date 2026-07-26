@@ -15,8 +15,8 @@ import type { Autonomy } from "../session/manager.js";
 /**
  * Chat commands for the Slack surface, mirroring the Telegram ones.
  *
- * Slack will not deliver an unregistered `/command` to the app at all — the
- * client rejects it before it is ever sent — so the same handlers are reachable
+ * Slack will not deliver an unregistered `/command` to the app at all: the
+ * client rejects it before it is ever sent. So the same handlers are reachable
  * three ways:
  *   - `!stop` (and any other `!name`), which is a plain message and always
  *     arrives, so this works with no Slack app configuration at all;
@@ -85,9 +85,9 @@ const COMMANDS: CommandSpec[] = [
     description: "Show the command list",
     run: async (_args, ctx) => {
       const lines = [
-        `*${config.ATLAS_NAME} — commands*`,
+        `*${config.ATLAS_NAME}: commands*`,
         "",
-        ...COMMANDS.map((c) => `\`!${c.name}\` — ${c.description}`),
+        ...COMMANDS.map((c) => `\`!${c.name}\` · ${c.description}`),
         "",
         "_Slack only delivers slash commands the app declares, so `!name` always works. While a question or an approval is open you can answer it by just typing._",
       ];
@@ -134,7 +134,7 @@ const COMMANDS: CommandSpec[] = [
     run: async (_args, ctx) => {
       slackSessions.reset(ctx.userId);
       await resetInstanceConversation("atlas").catch(() => {});
-      await ctx.say(":sparkles: Fresh conversation — previous context dropped.");
+      await ctx.say(":sparkles: Fresh conversation. Previous context dropped.");
     },
   },
   {

@@ -11,7 +11,7 @@ import { Badge, Button, Card, Input, Label, Skeleton } from "./ui.tsx";
  *
  * The member id is detected from a DM rather than typed. Finding your own
  * Slack member id means digging through a profile overflow menu, and getting
- * it wrong means the bot silently ignores you — which is indistinguishable
+ * it wrong means the bot silently ignores you, which is indistinguishable
  * from it being broken.
  */
 
@@ -77,7 +77,7 @@ export function SlackView({ onAuthError }: { onAuthError: () => void }) {
       setUserIds(v.allowedUserIds);
       if (patch.botToken) setBotToken("");
       if (patch.appToken) setAppToken("");
-      toast.success(v.running ? "Saved — Slack is connected." : "Saved.");
+      toast.success(v.running ? "Saved. Slack is connected." : "Saved.");
     });
 
   const startDetect = () =>
@@ -173,7 +173,7 @@ export function SlackView({ onAuthError }: { onAuthError: () => void }) {
         <div className="mt-3 space-y-3">
           <div>
             <Label>
-              Bot token — <em>OAuth &amp; Permissions</em>, after “Install to Workspace”
+              Bot token: <em>OAuth &amp; Permissions</em>, after “Install to Workspace”
             </Label>
             <Input
               type="password"
@@ -189,7 +189,7 @@ export function SlackView({ onAuthError }: { onAuthError: () => void }) {
           </div>
           <div>
             <Label>
-              App-level token — <em>Basic Information → App-Level Tokens</em>, scope{" "}
+              App-level token: <em>Basic Information → App-Level Tokens</em>, scope{" "}
               <code>connections:write</code>
             </Label>
             <Input
@@ -223,7 +223,7 @@ export function SlackView({ onAuthError }: { onAuthError: () => void }) {
         <h4 className="text-sm font-medium text-fg">3 · Who can use it</h4>
         <p className="mt-1 text-xs text-fg-dim">
           Anyone listed here can run anything on this machine through the bot. Start detection, then
-          send the bot a direct message from Slack — it will recognise you.
+          send the bot a direct message from Slack and it will recognise you.
         </p>
 
         {userIds.length > 0 && (
@@ -307,7 +307,7 @@ export function SlackView({ onAuthError }: { onAuthError: () => void }) {
               <h4 className="text-sm font-medium text-fg">Surface</h4>
               <p className="mt-1 text-xs text-fg-dim">
                 {view.enabled
-                  ? "Slack is on. Commands use a ! prefix — send !help in the DM."
+                  ? "Slack is on. Commands use a ! prefix, so send !help in the DM."
                   : "Slack is off. The tokens are kept."}
               </p>
             </div>

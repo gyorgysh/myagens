@@ -165,7 +165,7 @@ export class SlackStreamer {
 
     try {
       if (this.ts === undefined) {
-        // breakForInterrupt() sealed the previous message — open a new one.
+        // breakForInterrupt() sealed the previous message, so open a new one.
         const res = await this.web.chat.postMessage({ channel: this.channel, text });
         if (res.ts) {
           this.ts = res.ts;
@@ -207,7 +207,7 @@ export class SlackStreamer {
       chunks[chunks.length - 1] += (chunks[chunks.length - 1] ? "\n\n" : "") + `_${this.footer}_`;
     }
 
-    // If fits in one message, update the open one — or, if breakForInterrupt()
+    // If fits in one message, update the open one, or, if breakForInterrupt()
     // sealed the last segment and nothing reopened it, post a fresh one so the
     // final content/footer isn't silently dropped.
     if (chunks.length === 1) {
@@ -220,7 +220,7 @@ export class SlackStreamer {
           else await this.web.chat.delete({ channel: this.channel, ts: this.ts });
         } else if (text) {
           // breakForInterrupt() sealed the last segment and nothing reopened it
-          // — post the final content so it isn't silently dropped.
+          // post the final content so it isn't silently dropped.
           await this.web.chat.postMessage({ channel: this.channel, text });
         }
       } catch (err) {
@@ -255,7 +255,7 @@ export class SlackStreamer {
   }
 }
 
-/** "45s" / "2m 10s" — short enough to sit inside the working-on-it line. */
+/** "45s" / "2m 10s", short enough to sit inside the working-on-it line. */
 function fmtElapsed(ms: number): string {
   const total = Math.round(ms / 1000);
   const mins = Math.floor(total / 60);

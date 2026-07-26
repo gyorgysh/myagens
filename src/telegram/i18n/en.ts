@@ -353,7 +353,7 @@ export const en = {
   reload_done: "✓ Reload complete. Restart to apply.",
   reload_failed: "⚠️ Reload failed. Check /logs.",
   update_run_failed:
-    "⚠️ <b>{what} failed — nothing was applied.</b>\nStill running the old code.\n<pre>{tail}</pre>",
+    "⚠️ <b>{what} failed. Nothing was applied.</b>\nStill running the old code.\n<pre>{tail}</pre>",
   updatenotify_available:
     "🆕 <b>New version detected: {from} → {to}</b>\n{list}\nRecommended to update. This runs the same rescue path as /reload (discards local changes, pulls latest, rebuilds, restarts) — your data, secrets, and work.md are kept.",
   updatenotify_accept_btn: "✅ Update now",

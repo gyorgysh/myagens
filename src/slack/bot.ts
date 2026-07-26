@@ -83,7 +83,7 @@ export function buildSlackBot(): SlackBotInstance | undefined {
     log.debug("Slack block action received", { kind: "askq", actionId, userId });
     if (!actionId || !userId) return;
     if (!slackAllowedUserIds.has(userId)) {
-      log.warn("Ask button ignored — user not allowed (Slack)", { userId, actionId });
+      log.warn("Ask button ignored: user not allowed (Slack)", { userId, actionId });
       return;
     }
     await asks.handleAction(actionId);
@@ -124,7 +124,7 @@ export function buildSlackBot(): SlackBotInstance | undefined {
     // A turn parked on a question or an approval is blocked on a promise no
     // message can reach, so consume the reply as the answer rather than
     // starting a new turn (the asking turn still holds busy=true). Buttons
-    // only reach us when the Slack app has Interactivity enabled — typing is
+    // only reach us when the Slack app has Interactivity enabled, so typing is
     // the path that always works.
     if (text && asks.hasPending(msgObj.channel) && asks.answerTyped(msgObj.channel, text)) return;
     if (text && permissions.hasPending(msgObj.channel) && permissions.answerTyped(msgObj.channel, text) !== undefined) {
@@ -177,7 +177,7 @@ export function buildSlackBot(): SlackBotInstance | undefined {
       await ack();
       const userId = command.user_id;
       if (!slackAllowedUserIds.has(userId)) {
-        log.warn("Slack command rejected — user not allowed", { userId, command: name });
+        log.warn("Slack command rejected: user not allowed", { userId, command: name });
         return;
       }
       await runSlackCommand(name, (command.text ?? "").trim(), {
@@ -223,9 +223,9 @@ async function handleSlackPrompt(
     // Say what the turn is stuck on: a turn parked on a question or approval
     // looks identical to a slow one from the outside, and the way out differs.
     const blockedOn = asks.hasPending(channel)
-      ? "I'm waiting on your answer to the question above — reply to it, or `!stop` to abort."
+      ? "I'm waiting on your answer to the question above. Reply to it, or `!stop` to abort."
       : permissions.hasPending(channel)
-        ? "I'm waiting on your approval above — reply `yes` / `no`, or `!stop` to abort."
+        ? "I'm waiting on your approval above. Reply `yes` / `no`, or `!stop` to abort."
         : "I'm currently busy working on another task. `!stop` aborts it.";
     await say(`_${blockedOn}_`).catch(() => {});
     return;
@@ -277,7 +277,7 @@ async function handleSlackPrompt(
     input: Record<string, unknown>,
   ): Promise<PermissionResult> => {
     if (abortSignal.aborted) {
-      log.info("Tool call refused — turn already stopped (Slack)", { userId, tool: toolName });
+      log.info("Tool call refused: turn already stopped (Slack)", { userId, tool: toolName });
       return { behavior: "deny", message: "The user stopped this turn." };
     }
 
@@ -450,7 +450,7 @@ async function handleSlackPrompt(
       session.sessionId = undefined;
       slackSessions.save();
       await say("_Session expired. Retrying on a fresh conversation..._").catch(() => {});
-      // Release the turn before re-dispatching — the retry goes through the
+      // Release the turn before re-dispatching: the retry goes through the
       // same busy guard, and this turn's `finally` is skipped by the turnSeq
       // check once the retry claims the session.
       releaseTurn(session, turnSeq);
@@ -466,7 +466,7 @@ async function handleSlackPrompt(
 
 /**
  * Clear the busy flags, unless a newer turn (or the stop command) already claimed the
- * session — a stale turn finishing late must not unlock its replacement.
+ * session. A stale turn finishing late must not unlock its replacement.
  */
 function releaseTurn(session: SlackSession, turnSeq: number): void {
   if (session.turnSeq !== turnSeq) return;

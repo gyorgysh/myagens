@@ -341,7 +341,7 @@ export const hu: Record<keyof typeof en, string> = {
   reload_done: "✓ Reload kész. Az alkalmazáshoz indítsd újra.",
   reload_failed: "⚠️ Reload sikertelen. Nézd meg a /logs parancsot.",
   update_run_failed:
-    "⚠️ <b>{what} sikertelen — semmi nem lett alkalmazva.</b>\nTovábbra is a régi kód fut.\n<pre>{tail}</pre>",
+    "⚠️ <b>{what} sikertelen. Semmi nem lett alkalmazva.</b>\nTovábbra is a régi kód fut.\n<pre>{tail}</pre>",
   updatenotify_available:
     "🆕 <b>Új verzió érkezett: {from} → {to}</b>\n{list}\nJavasolt a frissítés. Ez ugyanazt a mentőutat futtatja, mint a /reload (eldobja a helyi módosításokat, lehúzza a legújabbat, újraépít, újraindít) — az adataid, titkaid és a work.md megmaradnak.",
   updatenotify_accept_btn: "✅ Frissítés most",

@@ -37,7 +37,7 @@ const BTN_MAX = 70;
  * A typed reply always answers the open question too (by number, by option
  * text, or as free text). Buttons only reach us when the Slack app has
  * Interactivity turned on, and a question that can only be answered by button
- * would otherwise wedge the whole turn — the model stays blocked in
+ * would otherwise wedge the whole turn: the model stays blocked in
  * canUseTool, the session stays busy, and every further message the user sends
  * bounces off the busy guard.
  */
@@ -62,14 +62,14 @@ export class SlackAskQuestionManager {
     }
 
     // Questions are posted one at a time, so a cancel that lands mid-way has to
-    // stop the remaining ones from being posted — otherwise the stop command
+    // stop the remaining ones from being posted. Otherwise the stop command
     // settles the open question and the next one immediately takes its place.
     const epoch = this.cancelEpoch.get(channel) ?? 0;
 
     const parts: string[] = [];
     for (const q of questions) {
       if ((this.cancelEpoch.get(channel) ?? 0) !== epoch) {
-        parts.push(`Q: ${q.question}\nA: (not asked — the user cancelled)`);
+        parts.push(`Q: ${q.question}\nA: (not asked, the user cancelled)`);
         continue;
       }
       const answer = await this.askOne(channel, q);
@@ -100,16 +100,16 @@ export class SlackAskQuestionManager {
       ts = res.ts;
     } catch (err) {
       // If the question can't even be posted, settle it anyway rather than
-      // leaving the SDK turn blocked forever on the canUseTool promise — that
+      // leaving the SDK turn blocked forever on the canUseTool promise, which
       // would wedge the session busy until the user noticed.
-      log.warn("AskUserQuestion send failed (Slack) — no answer collected", {
+      log.warn("AskUserQuestion send failed (Slack), no answer collected", {
         channel,
         header: question.header,
         error: String(err),
       });
       // Do not invent an answer here: reporting the first option as the user's
       // choice would have the model act on a decision nobody made.
-      resolve("(the question could not be delivered to the user — no answer was given)");
+      resolve("(the question could not be delivered to the user, so no answer was given)");
       return;
     }
 
@@ -182,7 +182,7 @@ export class SlackAskQuestionManager {
     }
 
     // Slack rejects an actions block with more than 5 elements (invalid_blocks),
-    // which four options plus "Other…" plus "Done" would hit — and a rejected
+    // which four options plus "Other…" plus "Done" would hit, and a rejected
     // post falls back to answering with the first option, an answer the user
     // never gave. Spread them over as many rows as needed instead.
     const blocks: any[] = [{ type: "section", text: { type: "mrkdwn", text: renderQuestion(question) } }];
@@ -201,7 +201,7 @@ export class SlackAskQuestionManager {
   async handleAction(actionId: string): Promise<void> {
     const match = actionId.match(/^askq_([0-9a-f]+)_(o|other|done)(?:_(\d+))?$/);
     if (!match) {
-      log.warn("Ask button ignored — unrecognised action id (Slack)", { actionId });
+      log.warn("Ask button ignored: unrecognised action id (Slack)", { actionId });
       return;
     }
     const [, id, kind, idxStr] = match;
@@ -210,7 +210,7 @@ export class SlackAskQuestionManager {
       // Already settled: answered from the panel or by typing, timed out, or
       // the process restarted. Logged rather than announced, since the message
       // itself already shows the answer it settled on.
-      log.warn("Ask button ignored — question no longer pending (Slack)", { actionId, id });
+      log.warn("Ask button ignored: question no longer pending (Slack)", { actionId, id });
       return;
     }
     const { question } = entry;
@@ -362,7 +362,7 @@ export class SlackAskQuestionManager {
     // Resolve FIRST. Redrawing the message is cosmetic, but it is a Slack API
     // call: awaiting it before resolving means a slow or rate-limited
     // chat.update holds the whole turn hostage after the user has already
-    // answered — the exact "I picked one and nothing happened" failure.
+    // answered. That is the exact "I picked one and nothing happened" failure.
     entry.resolve(answer);
     void this.web.chat
       .update({
@@ -391,7 +391,7 @@ function renderQuestion(q: AskQuestion): string {
   if (q.options.length > 0) {
     lines.push("");
     q.options.forEach((o, i) => {
-      const desc = o.description?.trim() ? ` — ${escapeSlackMrkdwn(o.description.trim())}` : "";
+      const desc = o.description?.trim() ? `: ${escapeSlackMrkdwn(o.description.trim())}` : "";
       lines.push(`${i + 1}. *${escapeSlackMrkdwn(o.label)}*${desc}`);
     });
   }

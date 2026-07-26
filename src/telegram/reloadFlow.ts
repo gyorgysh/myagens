@@ -8,12 +8,12 @@ import { escapeHtml } from "./formatting.js";
 /**
  * Report how an update/restore/reload script ended.
  *
- * A success on a serviced host usually never gets here — the restart kills this
+ * A success on a serviced host usually never gets here: the restart kills this
  * process mid-run, and the "back online" restart marker (consumed in bot.ts at
  * boot) closes that loop instead. A FAILURE is the opposite: the script bails
  * before the restart step, so we are still alive and the user hears nothing
  * unless we speak. This used to be gated on `!serviceInstalled()`, which meant a
- * failed update on the hosts that matter most was completely silent — you saw
+ * failed update on the hosts that matter most was completely silent: you saw
  * "Reloading…" and then nothing, forever.
  */
 export async function reportScriptOutcome(

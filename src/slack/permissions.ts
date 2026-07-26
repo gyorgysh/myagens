@@ -116,17 +116,17 @@ export class SlackPermissionManager {
 
   handleAction(actionId: string, userId: string): void {
     if (!this.allowedUserIds.has(userId)) {
-      log.warn("Approval button ignored — user not allowed (Slack)", { userId, actionId });
+      log.warn("Approval button ignored: user not allowed (Slack)", { userId, actionId });
       return;
     }
     const match = actionId.match(/^approval_([^_]+)_(.+)$/);
     if (!match) {
-      log.warn("Approval button ignored — unrecognised action id (Slack)", { actionId });
+      log.warn("Approval button ignored: unrecognised action id (Slack)", { actionId });
       return;
     }
     const [, id, choiceStr] = match;
     if (!this.resolveById(id, choiceStr as ApprovalChoice)) {
-      log.warn("Approval button ignored — request no longer pending (Slack)", { actionId, id });
+      log.warn("Approval button ignored: request no longer pending (Slack)", { actionId, id });
     }
   }
 
@@ -215,7 +215,7 @@ export class SlackPermissionManager {
       // timer, so throwing would only surface as an unhandled rejection while
       // the turn stayed parked on the promise. Deny instead: the model gets a
       // refusal it can report, and the session comes unstuck.
-      log.error("Approval message send failed (Slack) — denying the batch", {
+      log.error("Approval message send failed (Slack), denying the batch", {
         channel,
         count: live.length,
         error: err instanceof Error ? err.message : String(err),

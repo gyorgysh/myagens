@@ -16,7 +16,7 @@ const FILE = "slackSettings.json";
  * keeps working untouched and never has to migrate.
  *
  * Tokens set from the panel are stored as `vault:<id>` references, not in this
- * file — the two Slack tokens are host-access credentials, and the vault is
+ * file. The two Slack tokens are host-access credentials, and the vault is
  * where those live. Tokens that came from .env stay in .env.
  */
 interface SlackSettings {
@@ -67,7 +67,7 @@ export function resolveSlackConfig(): ResolvedSlackConfig {
   };
 }
 
-/** Panel-facing view. Never returns a token — only whether one is set. */
+/** Panel-facing view. Never returns a token, only whether one is set. */
 export function slackSettingsView() {
   const s = load();
   const resolved = resolveSlackConfig();

@@ -51,7 +51,7 @@ interface SetupSession {
   claudeMethod: "none" | "cli" | "apikey";
   apiKey?: string;
   finished: boolean;
-  /** Optional Slack surface — skipped by default, never blocks finishing. */
+  /** Optional Slack surface, skipped by default, never blocks finishing. */
   slack?: {
     botToken: string;
     appToken: string;
@@ -219,7 +219,7 @@ export async function startSetupServer(): Promise<void> {
   // ---------------------------------------------------------------- slack ---
   // Optional. Slack's own setup is the rough part (two lookalike tokens on
   // different admin pages, plus a member id), so the wizard proves each token
-  // against Slack and detects the member id from a DM — the same treatment
+  // against Slack and detects the member id from a DM, the same treatment
   // Telegram gets above. Nothing here can block finishing.
   app.post("/setup/api/slack/tokens", async (req, reply) => {
     const body = (req.body ?? {}) as { botToken?: unknown; appToken?: unknown };
@@ -239,7 +239,7 @@ export async function startSetupServer(): Promise<void> {
         poller,
       };
       await poller.start();
-      log.info("Setup: Slack tokens verified — watching for a DM", { team: identity.team });
+      log.info("Setup: Slack tokens verified, watching for a DM", { team: identity.team });
       return { ok: true, team: identity.team };
     } catch (err) {
       return reply

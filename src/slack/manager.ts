@@ -5,7 +5,7 @@ import { log } from "../logger.js";
 /**
  * Owns the lifetime of the Slack surface so it can be (re)started when its
  * settings change, instead of only at boot. Without this, configuring Slack
- * from the panel would mean "saved — now restart the whole app", which is a
+ * from the panel would mean "saved, now restart the whole app", which is a
  * poor answer for an optional second front end.
  *
  * `sync()` is serialized: boot and a panel save can land at the same moment,

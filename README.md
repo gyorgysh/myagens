@@ -548,7 +548,7 @@ Lead bots support `/ping`, `/status`, `/cd`, `/pwd`, `/stop`, `/mode`, `/lang`, 
 
 Set it up from the first-run wizard's optional Slack step, or from **Settings → Slack** in the panel: both give you the app manifest to paste at api.slack.com, verify each token against Slack before saving, and detect your member ID from a direct message. The `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` / `SLACK_ALLOWED_USER_IDS` variables in `.env` still work and are the fallback.
 
-The Slack surface uses a `!` prefix — `!help`, `!ping`, `!status`, `!new`, `!stop`, `!pwd`, `!cd`, `!mode`, `!lang`, `!allow`, `!disallow`, `!allowed`, `!usage` — because Slack never delivers a `/command` an app has not declared. Declare them under **Slash Commands** on your Slack app and the `/` form starts working too; the handlers are already registered for both.
+The Slack surface uses a `!` prefix (`!help`, `!ping`, `!status`, `!new`, `!stop`, `!pwd`, `!cd`, `!mode`, `!lang`, `!allow`, `!disallow`, `!allowed`, `!usage`), because Slack never delivers a `/command` an app has not declared. Declare them under **Slash Commands** on your Slack app and the `/` form starts working too; the handlers are already registered for both.
 
 Anything Atlas asks for can also be answered by typing instead of clicking: a question by its option number, its option text, or your own words, and an approval by replying `yes`, `no`, or `always` (add ` all` to settle a whole batch at once). That matters if your Slack app has **Interactivity** turned off, since the buttons never reach the bot in that case. `!stop` aborts the turn and cancels whatever it was waiting on.
 

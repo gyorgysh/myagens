@@ -585,14 +585,14 @@ const PAGE = `<!doctype html>
   }
 
   // ---- step 4: slack (optional) -------------------------------------------
-  // Optional and skippable. Slack's own admin is the awkward part — two tokens
-  // that look alike, on different pages — so both are proved against Slack
+  // Optional and skippable. Slack's own admin is the awkward part: two tokens
+  // that look alike, on different pages. So both are proved against Slack
   // before they're kept, and the member id is detected from a DM rather than
   // asked for. Same treatment the Telegram step gets.
   function showSlackStep(){
     markStep(3);
     stopPolling();
-    voice('Want me in Slack too? Optional — skip it and add it later from the panel.');
+    voice('Want me in Slack too? Optional: skip it and add it later from the panel.');
     var manifest = state.slackManifest ? JSON.stringify(state.slackManifest, null, 2) : '';
     stage(
       '<h2>Add Slack <small style="color:var(--dim);font-weight:400">· optional</small></h2>' +

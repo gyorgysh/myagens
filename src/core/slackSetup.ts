@@ -5,7 +5,7 @@
  * Setting Slack up by hand is the worst onboarding path in the product: two
  * tokens that look alike and live on different pages of the Slack app admin,
  * plus a member id most people have never had to find. So the same three
- * things the Telegram wizard does are done here — prove the bot token, prove
+ * things the Telegram wizard does are done here: prove the bot token, prove
  * the app token, and detect the owner's member id from a DM instead of asking
  * them to hunt for it.
  *
@@ -32,7 +32,7 @@ const ERROR_HINTS: Record<string, string> = {
   invalid_auth: "Slack rejected this token. Check you pasted the whole value, and the right one of the two.",
   not_authed: "No token was sent to Slack.",
   account_inactive: "That token belongs to a deactivated app or workspace.",
-  token_revoked: "This token has been revoked — reinstall the app to the workspace and copy the new one.",
+  token_revoked: "This token has been revoked. Reinstall the app to the workspace and copy the new one.",
   missing_scope: "The app is missing a required scope. Reinstall it with the manifest from .env.example.",
   invalid_arguments:
     "Slack did not accept this as an app-level token. App tokens start with `xapp-` and come from Basic Information → App-Level Tokens.",
@@ -79,7 +79,7 @@ export interface SlackIdentity {
   /** Workspace name, so the user can confirm they installed it in the right one. */
   team: string;
   teamId: string;
-  /** The bot's own user id — excluded from DM detection so it can't nominate itself. */
+  /** The bot's own user id, excluded from DM detection so it can't nominate itself. */
   botUserId: string;
   botName: string;
 }
@@ -134,7 +134,7 @@ export interface SlackCandidate {
  * Watches for a DM to the bot and collects whoever sent it, so the wizard can
  * offer "is this you?" instead of making the user find their member id.
  *
- * Only direct messages count — a channel member must not be able to nominate
+ * Only direct messages count. A channel member must not be able to nominate
  * themselves as the owner by mentioning the bot in a channel, which would hand
  * them a shell on this machine.
  */

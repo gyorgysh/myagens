@@ -3,9 +3,24 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
-## [Unreleased]
+## [0.7.0] - 2026-07-27
+
+### Added
+- **Usage limits for the backends you actually use.** The Usage view used to speak only about Claude. It now shows a card per backend whose limits MyAgens can read, and it works out which those are for your machine: a Codex card appears once codex has run here, showing how much of your ChatGPT allowance it has spent, which window that belongs to, when it resets, your plan and any credit balance. Nothing appears for a backend you have never used, so a Claude-only install looks exactly as it did before.
+
+  The Codex numbers cost nothing to fetch, since codex already records the server's own rate-limit figures in its session transcripts, so there is no extra login and no API call. The flip side is that they are as recent as your last codex turn rather than live, and the card says when they were taken instead of pretending otherwise.
+
+  Each card can be switched off in **Settings → Plan and budget**, under "Usage limits on the dashboard". Detected backends start switched on, and a backend with no data here is listed but greyed out, so an empty dashboard explains itself.
+
+  `/usage` in Telegram and `!usage` in Slack list the same limits as the panel, and honour the same switches.
+
+  Cursor and Antigravity are not included, because neither one leaves its quota anywhere readable: Cursor keeps those numbers behind its dashboard, and Antigravity fetches them but never writes them down. For those two, the per-agent token and cost breakdown further down the same view remains the only picture of spend.
 
 ### Changed
+- **Failover reads the limits of whichever backend Atlas actually runs on.** The proactive "switch before you hit the wall" check only ever looked at Claude usage, so an Atlas running on Codex had no early switch at all and waited for a hard failure. It now reads the primary's own utilisation, so a codex-primary setup switches away on its own numbers, exactly as a Claude one does. Backends that publish nothing readable behave as before, failing over reactively.
+
+  Failover also stops walking into a wall: when the target backend's own figures say it is spent, MyAgens stays on the primary and reports the real limit error instead of switching to something that cannot answer either, and skips the doomed retry rather than spending a minute on it. Because Codex figures are only as fresh as its last turn, a stale reading never blocks a switch, so an unused fallback is still tried.
+
 - **Telegram is optional now.** MyAgens started life as a Telegram bot, so a Telegram bot token and a user ID were required to start at all, even for people who only ever wanted the web panel. They are not any more. The panel, Telegram, and Slack are three interchangeable front ends, and you need any one of them. A panel-only install is a first-class setup: the Chat view drives Atlas directly, with the same shared session (working directory, autonomy level, always-allow presets, conversation history), the same tool approvals, and the same clarifying questions you would get in a chat app.
 
   Startup now refuses only when *nothing* is configured, and tells you the three ways to fix it. It also catches a half-configured Telegram, a token with an empty allow-list or an allow-list with no token, which used to boot into a bot that could never answer anyone.
@@ -18,6 +33,9 @@ Commit links point to `github.com/gyorgysh/myagens`.
 
 ### Fixed
 - **A blank `SLACK_ALLOWED_USER_IDS=` line in `.env` killed startup** with a confusing "List must contain at least one valid id". An empty list now means "Slack not configured", the same as leaving the line out.
+
+### Security
+- **Dependencies audit clean.** Patched a set of high-severity advisories across both dependency trees, including an authorization-bypass and path-traversal pair in the panel's static file server (`@fastify/static`), and DoS advisories in transitive HTTP-routing and URI-parsing packages. The build-tooling chain behind the panel's service worker has no fixed upstream release, so its vulnerable transitive dependency is pinned out via an override instead.
 
 ## [0.6.14] - 2026-07-26
 

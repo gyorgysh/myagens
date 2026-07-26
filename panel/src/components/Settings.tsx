@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, AuthError, type MainAgent, type Autonomy, type Provider, type PlanView, type PlanType, type ProbeResult, type EmbeddingConfig, type OllamaStatus, type LmStudioStatus, type PreferredBackend, type PushView, type Branding, type PromptExcludeKey, type AgentInstance } from "../api.ts";
+import { api, AuthError, type MainAgent, type Autonomy, type Provider, type PlanView, type PlanType, type ProbeResult, type EmbeddingConfig, type OllamaStatus, type LmStudioStatus, type PreferredBackend, type PushView, type Branding, type PromptExcludeKey, type AgentInstance, type UsageSourceId, type UsageSourceState } from "../api.ts";
 import { Accordion, Badge, Button, Card, Input, Label, ModelSelect, Select, Skeleton, TextArea } from "./ui.tsx";
 import { MODEL_SUGGESTIONS } from "../lib/models.ts";
 import { backendModelKind, fetchModelsFor } from "../lib/backends.ts";
@@ -1467,6 +1467,22 @@ function PlanBudgetSettings({ onAuthError }: { onAuthError: () => void }) {
   const [probe, setProbe] = useState<ProbeResult | null>(null);
   const [probeRunning, setProbeRunning] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sources, setSources] = useState<UsageSourceState[]>([]);
+
+  const loadSources = () =>
+    api.usageSources().then((r) => setSources(r.sources)).catch(() => {});
+
+  /** Saved on click rather than with the Save button: it changes nothing about
+   *  billing, and the effect is a card appearing or disappearing. */
+  const toggleSource = async (id: UsageSourceId, on: boolean) => {
+    setSources((prev) => prev.map((s) => (s.id === id ? { ...s, visible: on, preference: on } : s)));
+    try {
+      await api.savePlan({ usageCards: { [id]: on } });
+    } catch (e) {
+      if (e instanceof AuthError) onAuthError();
+    }
+    await loadSources();
+  };
 
   const loadPlan = () =>
     api
@@ -1486,6 +1502,7 @@ function PlanBudgetSettings({ onAuthError }: { onAuthError: () => void }) {
 
   useEffect(() => {
     void loadPlan();
+    void loadSources();
     api.usageProbe().then(setProbe).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1618,6 +1635,38 @@ function PlanBudgetSettings({ onAuthError }: { onAuthError: () => void }) {
             </div>
           </div>
         </div>
+
+        {/* Which usage-limit cards the dashboard shows. Detected sources are on
+            by default; an undetected one has nothing to show, so its row is
+            disabled rather than hidden, to explain the absence. */}
+        {sources.length > 0 && (
+          <div className="border-t border-line pt-4">
+            <Label>{t("plan_cards_title")}</Label>
+            <p className="mt-0.5 mb-2 text-xs text-fg-faint">{t("plan_cards_desc")}</p>
+            <div className="space-y-2">
+              {sources.map((s) => (
+                <label
+                  key={s.id}
+                  className={`flex items-start gap-2.5 ${s.detected ? "cursor-pointer" : "opacity-60"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={s.visible}
+                    disabled={!s.detected}
+                    onChange={(e) => void toggleSource(s.id, e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <span>
+                    <span className="text-sm font-medium text-fg">{s.label}</span>
+                    <span className="block text-xs text-fg-dim">
+                      {s.detected ? t("plan_cards_detected") : t("plan_cards_missing")}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Manual plan override — only shown when auto-detect fails */}
         {!detectedPlan && (

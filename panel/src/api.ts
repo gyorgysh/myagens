@@ -472,6 +472,38 @@ export interface ClaudeUsageSnapshot {
   fetchedAt: number;
 }
 
+/** One codex rate-limit window, as codex recorded it on its last turn. */
+export interface CodexLimitWindow {
+  percent: number;
+  windowMinutes: number;
+  label: string;
+  resetsAt?: string;
+  severity: "normal" | "warning" | "critical";
+}
+
+/** Codex limits read from its session transcripts. `limits` is empty when codex
+ *  has never run on this machine, so the card can hide itself. */
+export interface CodexUsage {
+  observedAt?: string;
+  planType?: string;
+  limits: CodexLimitWindow[];
+  credits?: { hasCredits: boolean; unlimited: boolean; balance: number | null };
+  limitReached?: string;
+  sourceFile?: string;
+}
+
+export type UsageSourceId = "claude" | "codex";
+
+/** A vendor whose usage limits this machine can show. `visible` is what the
+ *  Usage view acts on: detected, and not switched off in Settings. */
+export interface UsageSourceState {
+  id: UsageSourceId;
+  label: string;
+  detected: boolean;
+  preference?: boolean;
+  visible: boolean;
+}
+
 export interface PlanSettings {
   plan: PlanType;
   monthlyCap: number;
@@ -482,6 +514,9 @@ export interface PlanSettings {
   costCheckIntervalMs?: number;
   lastCostCheckAt?: number;
   probeIntervalMs: number;
+  /** Per-source overrides for the usage-limit cards. A missing entry follows
+   *  detection, so this only holds a deliberate on/off choice. */
+  usageCards?: Partial<Record<UsageSourceId, boolean>>;
 }
 
 export interface UsageLimitWindow {
@@ -1313,6 +1348,9 @@ export const api = {
 
   usageProbe: () => get<ProbeResult>("/api/usage-probe"),
   runProbe: () => req<{ ok: boolean; message: string }>("POST", "/api/usage-probe/run"),
+
+  codexUsage: () => get<CodexUsage>("/api/codex-usage"),
+  usageSources: () => get<{ sources: UsageSourceState[] }>("/api/usage-sources"),
 
   agent: () => get<MainAgent>("/api/agent"),
   agentInstances: () =>

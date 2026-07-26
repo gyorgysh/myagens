@@ -35,6 +35,12 @@ export interface PlanSettings {
    * 0 = probe disabled.
    */
   probeIntervalMs: number;
+  /**
+   * Per-source visibility for the usage-limit cards (see core/usageSources.ts).
+   * A missing entry follows detection — shown when there is data for it — so
+   * this only ever holds a deliberate override.
+   */
+  usageCards?: Partial<Record<"claude" | "codex", boolean>>;
 }
 
 interface PlanFile {
@@ -66,6 +72,16 @@ export function setPlanSettings(patch: Partial<PlanSettings>): PlanSettings {
   if (patch.plan === "pro" && !patch.monthlyCap) next.monthlyCap = 20;
   if (patch.plan === "max" && !patch.monthlyCap) next.monthlyCap = 100;
   if (patch.probeIntervalMs !== undefined) next.probeIntervalMs = Math.max(0, patch.probeIntervalMs);
+  if (patch.usageCards) {
+    // Ids are spelled out rather than imported from usageSources.ts, which reads
+    // these settings and would make the import circular.
+    const clean: Partial<Record<"claude" | "codex", boolean>> = {};
+    for (const id of ["claude", "codex"] as const) {
+      const v = patch.usageCards[id];
+      if (typeof v === "boolean") clean[id] = v;
+    }
+    next.usageCards = { ...s.usageCards, ...clean };
+  }
   next.billingDay = Math.max(1, Math.min(28, next.billingDay));
   next.alertThresholdPct = Math.max(0, Math.min(100, next.alertThresholdPct));
   saveJson<PlanFile>(FILE, { version: 1, settings: next });

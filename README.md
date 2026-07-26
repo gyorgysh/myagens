@@ -429,7 +429,7 @@ Everything the panel does is a REST call you can script. Auth is the same `PANEL
 | Skills | `GET\|POST /api/skills`, `PUT\|DELETE /api/skills/:id`, `GET /api/skills/:id/export`, `POST /api/skills/import` |
 | Providers and backends | `GET\|POST /api/providers`, `PUT\|DELETE /api/providers/:id`, `GET /api/providers/:id/models`, `POST /api/providers/models`, `GET /api/integrations/ollama\|lmstudio`, `POST /api/integrations/ollama\|lmstudio/connect` |
 | Vault | `GET\|POST /api/vault`, `PUT\|DELETE /api/vault/:id`, `GET /api/vault/:id/reveal`, `POST /api/vault/import`, `POST /api/vault/rotate`, `POST /api/vault/export`, `POST /api/vault/import-backup` |
-| Plan and usage | `GET\|PUT /api/plan`, `POST /api/plan/report-test`, `GET /api/usage`, `GET /api/usage/agents`, `GET /api/usage-probe`, `POST /api/usage-probe/run`, `GET /api/claude-usage` |
+| Plan and usage | `GET\|PUT /api/plan`, `POST /api/plan/report-test`, `GET /api/usage`, `GET /api/usage/agents`, `GET /api/usage-probe`, `POST /api/usage-probe/run`, `GET /api/claude-usage`, `GET /api/codex-usage`, `GET /api/usage-sources` |
 | Approvals | `GET /api/approvals`, `POST /api/approvals/:id/resolve` |
 | Web Push | `GET /api/push`, `POST /api/push/subscribe`, `DELETE /api/push/subscribe/:id`, `POST /api/push/test` |
 | Monitoring | `GET /api/health`, `GET /api/status`, `GET /api/sessions`, `GET /api/audit`, `GET /api/audit/search`, `GET /api/audit/facets`, `GET /api/audit/anomalies`, `GET\|PUT /api/heartbeat`, `POST /api/heartbeat/run`, `GET /api/maintenance`, `POST /api/maintenance/run`, `POST /api/maintenance/preview` |

@@ -359,6 +359,8 @@ export const hu: Record<keyof typeof en, string> = {
   cmd_usage_header: "<b>📊 Felhasználás</b>",
   cmd_usage_plan: "\n<b>Terv</b>  {label}",
   cmd_usage_limits_header: "\n<b>Előfizetési limitek</b>",
+  cmd_usage_codex_header: "\n<b>Codex limitek</b>",
+  cmd_usage_codex_observed: "<i>a codex utolsó köréből ({when})</i>",
   cmd_usage_resets_in: "visszaáll: {countdown}",
   cmd_usage_chat_header: "\n<b>Ez a chat</b>",
   cmd_usage_today: "Ma        {usage}",

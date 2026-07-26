@@ -10,6 +10,8 @@ import { schedules, parseWhen } from "../schedule/manager.js";
 import { maintenance } from "../core/maintenance.js";
 import { getClaudeUsage } from "../core/claudeUsage.js";
 import { loadProbeResult, runProbe, startProbeScheduler } from "../core/usageProbe.js";
+import { readCodexUsage } from "../core/codexUsage.js";
+import { usageSources } from "../core/usageSources.js";
 import {
   getPlanSettings,
   setPlanSettings,
@@ -2117,6 +2119,12 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
     void runProbe({ force: true });
     return { ok: true, message: "Probe started" };
   });
+
+  // --- codex rate limits (read out of codex's own session transcripts) ---
+  app.get("/api/codex-usage", async () => readCodexUsage() ?? { limits: [] });
+
+  // --- which usage-limit cards this machine can show, and whether they are on ---
+  app.get("/api/usage-sources", async () => ({ sources: usageSources() }));
 
   // --- plan / budget settings ---
   app.get("/api/plan", async () => {

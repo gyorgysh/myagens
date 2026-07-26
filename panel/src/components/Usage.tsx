@@ -3,7 +3,10 @@ import {
   api,
   type PlanView,
   type ClaudeUsageSnapshot,
+  type CodexUsage,
   type ProbeResult,
+  type UsageSourceId,
+  type UsageSourceState,
   type UsageLimitWindow,
   type UsageSummary,
   type AgentUsageEntry,
@@ -35,6 +38,8 @@ export function UsageView({ onAuthError }: { onAuthError: () => void }) {
   const [plan, setPlan] = useState<PlanView | null>(null);
   const [probe, setProbe] = useState<ProbeResult | null>(null);
   const [claude, setClaude] = useState<ClaudeUsageSnapshot | null>(null);
+  const [codex, setCodex] = useState<CodexUsage | null>(null);
+  const [sources, setSources] = useState<UsageSourceState[] | null>(null);
   const [agentEntries, setAgentEntries] = useState<AgentUsageEntry[] | null>(null);
   const [agentDaily, setAgentDaily] = useState<AgentDailyByRole>({});
   const [probeRunning, setProbeRunning] = useState(false);
@@ -43,6 +48,8 @@ export function UsageView({ onAuthError }: { onAuthError: () => void }) {
     api.plan().then(setPlan).catch(() => {});
     api.usageProbe().then(setProbe).catch(() => {});
     api.claudeUsage().then(setClaude).catch(() => {});
+    api.codexUsage().then(setCodex).catch(() => {});
+    api.usageSources().then((r) => setSources(r.sources)).catch(() => {});
     api.usageAgents().then((r) => {
       setAgentEntries(r.agents);
       setAgentDaily(r.dailyByRole);
@@ -77,15 +84,25 @@ export function UsageView({ onAuthError }: { onAuthError: () => void }) {
   const isSubscription = Boolean(probe?.account?.hasPro || probe?.account?.hasMax) || configSubscription;
   const hasApiCap = !isSubscription && plan && plan.monthlyCap > 0;
 
+  // A source is shown when this machine has data for it and it has not been
+  // switched off in Settings. Until /api/usage-sources answers, treat both as
+  // shown so the cards do not flash in after the rest of the view.
+  const shows = (id: UsageSourceId) => sources?.find((s) => s.id === id)?.visible ?? true;
+
   return (
     <div className="space-y-4">
       {/* Live limits — real OAuth data */}
-      <LiveLimitsCard
-        probe={probe}
-        detectedPlan={detectedPlan}
-        probeRunning={probeRunning}
-        onRefresh={refreshProbe}
-      />
+      {shows("claude") && (
+        <LiveLimitsCard
+          probe={probe}
+          detectedPlan={detectedPlan}
+          probeRunning={probeRunning}
+          onRefresh={refreshProbe}
+        />
+      )}
+
+      {/* Codex limits — only when codex has actually run here */}
+      {shows("codex") && codex && codex.limits.length > 0 && <CodexLimitsCard codex={codex} />}
 
       {/* Historical activity from stats-cache */}
       {claude && <ActivityCard claude={claude} />}
@@ -181,14 +198,24 @@ function formatMs(ms: number): string {
   return `${m}m`;
 }
 
-function LimitBar({ lim }: { lim: UsageLimitWindow }) {
+/** What a bar needs. Codex reports no reset time on some builds, so it is
+ *  optional here and the reset line is dropped when it is missing. */
+type LimitLike = {
+  percent: number;
+  label: string;
+  severity: UsageLimitWindow["severity"];
+  resetsAt?: string;
+};
+
+function LimitBar({ lim }: { lim: LimitLike }) {
   const { t } = useI18n();
   const [, tick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => tick((n) => n + 1), 30_000);
     return () => clearInterval(id);
   }, []);
-  const resetsInMs = Math.max(0, new Date(lim.resetsAt).getTime() - Date.now());
+  const resetMs = lim.resetsAt ? new Date(lim.resetsAt).getTime() : NaN;
+  const resetsInMs = Number.isFinite(resetMs) ? Math.max(0, resetMs - Date.now()) : null;
   const pct = Math.min(100, lim.percent);
 
   return (
@@ -205,9 +232,11 @@ function LimitBar({ lim }: { lim: UsageLimitWindow }) {
       </div>
       <div className="flex items-center justify-between text-xs">
         <span className="text-fg-faint">{lim.severity === "normal" ? t("usage_within_limits") : lim.severity}</span>
-        <span className={`font-medium ${resetsInMs < 600_000 ? "text-warn-fg" : "text-fg-dim"}`}>
-          {t("usage_resets_in").replace("{time}", formatMs(resetsInMs))}
-        </span>
+        {resetsInMs !== null && (
+          <span className={`font-medium ${resetsInMs < 600_000 ? "text-warn-fg" : "text-fg-dim"}`}>
+            {t("usage_resets_in").replace("{time}", formatMs(resetsInMs))}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -272,6 +301,65 @@ function LiveLimitsCard({
           )}
         </div>
       )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Codex limits card
+// ---------------------------------------------------------------------------
+
+/** Translate a codex window label when it matches one of the known lengths. */
+function codexLabel(label: string, t: (k: TranslationKey) => string): string {
+  if (label === "5-hour") return t("limit_5h");
+  if (label === "weekly") return t("limit_weekly");
+  if (label === "monthly") return t("limit_monthly");
+  return label;
+}
+
+/**
+ * Codex has no live endpoint we can poll: the numbers come out of its own
+ * session transcripts, so they are as old as the last codex turn. Hence no
+ * Refresh button, and the age is stated rather than implied.
+ */
+function CodexLimitsCard({ codex }: { codex: CodexUsage }) {
+  const { t } = useI18n();
+
+  return (
+    <Card
+      title={t("codex_limits_title")}
+      right={
+        codex.planType ? (
+          <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-medium text-accent">
+            {capFirst(codex.planType)}
+          </span>
+        ) : undefined
+      }
+    >
+      <div className="space-y-5">
+        {codex.limitReached && (
+          <div className="rounded-lg border border-warn/30 bg-warn-subtle px-3 py-2 text-xs text-warn-fg">
+            {t("codex_limit_reached").replace("{kind}", codex.limitReached)}
+          </div>
+        )}
+        <div className="grid gap-6 sm:grid-cols-2">
+          {codex.limits.map((lim) => (
+            <LimitBar
+              key={lim.label}
+              lim={{ ...lim, label: codexLabel(lim.label, t) }}
+            />
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-faint">
+          {codex.observedAt && (
+            <span>{t("codex_observed").replace("{time}", relTime(new Date(codex.observedAt).getTime()))}</span>
+          )}
+          {codex.credits?.unlimited && <span>{t("codex_credits_unlimited")}</span>}
+          {!codex.credits?.unlimited && codex.credits?.balance !== null && codex.credits?.balance !== undefined && (
+            <span>{t("codex_credits").replace("{n}", String(codex.credits.balance))}</span>
+          )}
+        </div>
+      </div>
     </Card>
   );
 }

@@ -1210,6 +1210,10 @@ export const en = {
   plan_last_checked: "Last checked: {time}",
   plan_resets: "resets {time}",
   plan_autorefresh: "Auto-refresh interval",
+  plan_cards_title: "Usage limits on the dashboard",
+  plan_cards_desc: "Only Claude and Codex publish their limits where MyAgens can read them. Each one is shown once there is data for it.",
+  plan_cards_detected: "Data found on this machine",
+  plan_cards_missing: "No data here yet — nothing to show",
   plan_manual: "Plan (manual)",
   plan_manual_desc: "Set manually if the auto-detect above is unavailable.",
   plan_budget_ref: "Monthly budget reference ({plan})",
@@ -1281,6 +1285,15 @@ export const en = {
   // Usage-limit window labels (shared by System + Usage)
   limit_5h: "5-hour session",
   limit_7d: "7-day weekly",
+  limit_weekly: "weekly",
+  limit_monthly: "monthly",
+
+  // Codex usage limits (read from codex's own session transcripts)
+  codex_limits_title: "Codex usage limits",
+  codex_observed: "From codex's last turn, {time}",
+  codex_limit_reached: "Codex reported hitting its {kind} limit on that turn.",
+  codex_credits: "{n} credits left",
+  codex_credits_unlimited: "unlimited credits",
 
   // Usage view
   usage_failed_load: "Failed to load: {error}",

@@ -8,6 +8,9 @@ import {
   type MemoryEntry,
   type ProbeResult,
   type UsageLimitWindow,
+  type CodexUsage,
+  type UsageSourceId,
+  type UsageSourceState,
 } from "../api.ts";
 import { Bar, Card, Button, Empty, Metric, InfoCard } from "./ui.tsx";
 import { bytes, bytesPerSec, duration, uptime, relTime, friendlyProbeError } from "../lib/format.ts";
@@ -34,11 +37,17 @@ export function HealthView({ onGoto }: { onGoto?: (t: Tab) => void }) {
   const [health, setHealth] = useState<Health | null>(null);
   const [status, setStatus] = useState<ConnStatus>("connecting");
   const [brand, setBrand] = useState("MyAgens");
+  const [sources, setSources] = useState<UsageSourceState[] | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     api.me().then((m) => m.brandName && setBrand(m.brandName)).catch(() => {});
+    api.usageSources().then((r) => setSources(r.sources)).catch(() => {});
   }, []);
+
+  // Shown when this machine has data for the backend and it is not switched off
+  // in Settings. Assume shown until the answer arrives, so cards do not flash in.
+  const shows = (id: UsageSourceId) => sources?.find((s) => s.id === id)?.visible ?? true;
 
   useEffect(() => {
     let closed = false;
@@ -100,8 +109,9 @@ export function HealthView({ onGoto }: { onGoto?: (t: Tab) => void }) {
       {/* At-a-glance status strip: compact health pills, scrolls on mobile. */}
       <StatusStrip health={health} memPct={memPct} swapPct={swapPct} status={status} />
 
-      {/* Claude usage: real OAuth data */}
-      <ClaudeUsageCard />
+      {/* Vendor usage limits, one card per backend that has data here */}
+      {shows("claude") && <ClaudeUsageCard />}
+      {shows("codex") && <CodexUsageCard />}
 
       {/* System metrics */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -292,7 +302,16 @@ function subLabel(type?: string): string {
   return type;
 }
 
-function LimitBar({ lim }: { lim: UsageLimitWindow }) {
+/** What a bar needs. Codex reports no reset time on some builds, so it is
+ *  optional here and the reset line is dropped when it is missing. */
+type LimitLike = {
+  percent: number;
+  label: string;
+  severity: UsageLimitWindow["severity"];
+  resetsAt?: string;
+};
+
+function LimitBar({ lim }: { lim: LimitLike }) {
   const { t } = useI18n();
   const pct = Math.min(100, lim.percent);
   const color = barColor(lim.severity);
@@ -304,7 +323,8 @@ function LimitBar({ lim }: { lim: UsageLimitWindow }) {
     const id = setInterval(() => tick((n) => n + 1), 30_000);
     return () => clearInterval(id);
   }, []);
-  const resetsInMs = Math.max(0, new Date(lim.resetsAt).getTime() - Date.now());
+  const resetMs = lim.resetsAt ? new Date(lim.resetsAt).getTime() : NaN;
+  const resetsInMs = Number.isFinite(resetMs) ? Math.max(0, resetMs - Date.now()) : null;
 
   return (
     <div className="space-y-1.5">
@@ -320,9 +340,11 @@ function LimitBar({ lim }: { lim: UsageLimitWindow }) {
       </div>
       <div className="flex items-center justify-between text-xs">
         <span className="text-fg-faint">{t("health_used")}</span>
-        <span className={`font-medium ${resetsInMs < 600_000 ? "text-warn-fg" : "text-fg-dim"}`}>
-          {t("health_resets_in").replace("{time}", formatResets(resetsInMs))}
-        </span>
+        {resetsInMs !== null && (
+          <span className={`font-medium ${resetsInMs < 600_000 ? "text-warn-fg" : "text-fg-dim"}`}>
+            {t("health_resets_in").replace("{time}", formatResets(resetsInMs))}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -451,6 +473,68 @@ function ClaudeUsageCard() {
       )}
     </Card>
   );
+}
+
+/**
+ * Codex limits, read from codex's own session transcripts. There is nothing to
+ * refresh (no endpoint to poll), so this card has no Check now button and states
+ * how old the numbers are instead.
+ */
+function CodexUsageCard() {
+  const { t } = useI18n();
+  const [codex, setCodex] = useState<CodexUsage | null>(null);
+
+  useEffect(() => {
+    const load = () => api.codexUsage().then(setCodex).catch(() => {});
+    void load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!codex || codex.limits.length === 0) return null;
+
+  return (
+    <Card
+      title="Codex"
+      right={
+        codex.planType ? (
+          <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-medium text-accent">
+            {capFirst(codex.planType)}
+          </span>
+        ) : undefined
+      }
+    >
+      <div className="space-y-4">
+        {codex.limitReached && (
+          <div className="rounded-lg border border-warn/30 bg-warn-subtle px-3 py-2 text-xs text-warn-fg">
+            {t("codex_limit_reached").replace("{kind}", codex.limitReached)}
+          </div>
+        )}
+        <div className="grid gap-6 sm:grid-cols-2">
+          {codex.limits.map((lim) => (
+            <LimitBar key={lim.label} lim={{ ...lim, label: codexLabel(lim.label, t) }} />
+          ))}
+        </div>
+        {codex.observedAt && (
+          <div className="border-t border-line pt-3 text-xs text-fg-faint">
+            {t("codex_observed").replace("{time}", relTime(new Date(codex.observedAt).getTime()))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/** Translate a codex window label when it matches one of the known lengths. */
+function codexLabel(label: string, t: (k: TranslationKey) => string): string {
+  if (label === "5-hour") return t("limit_5h");
+  if (label === "weekly") return t("limit_weekly");
+  if (label === "monthly") return t("limit_monthly");
+  return label;
+}
+
+function capFirst(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 // ---------------------------------------------------------------------------

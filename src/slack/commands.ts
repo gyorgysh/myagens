@@ -8,6 +8,9 @@ import { fmtUptime } from "../telegram/leadBot.js";
 import { mainSettingsView } from "../core/mainSettings.js";
 import { AGENT_LANGUAGES, isValidLanguage, languageName } from "../core/languages.js";
 import { resetInstanceConversation } from "../claude/tmuxInstance.js";
+import { loadProbeResult } from "../core/usageProbe.js";
+import { readCodexUsage } from "../core/codexUsage.js";
+import { usageCardEnabled } from "../core/usageSources.js";
 import type { SlackAskQuestionManager } from "./askQuestion.js";
 import type { SlackPermissionManager } from "./permissions.js";
 import type { Autonomy } from "../session/manager.js";
@@ -309,12 +312,55 @@ const COMMANDS: CommandSpec[] = [
       const fmt = (t: typeof s.usage.total) =>
         `${t.turns} turns · $${t.costUsd.toFixed(2)} · ${t.inputTokens.toLocaleString()} in / ${t.outputTokens.toLocaleString()} out`;
       const lines = ["*Usage (this Slack chat)*", `Today: ${today ? fmt(today) : "nothing yet"}`, `All time: ${fmt(s.usage.total)}`];
+
+      // Vendor limits, for whichever backends leave them readable and are not
+      // switched off in the panel.
+      if (usageCardEnabled("claude")) {
+        const probe = loadProbeResult();
+        if (probe?.source === "oauth" && probe.limits.length > 0) {
+          lines.push("", "*Claude limits*");
+          for (const lim of probe.limits) {
+            lines.push(`${sev(lim.severity)} ${lim.label}: *${lim.percent}%* · resets in ${countdown(new Date(lim.resetsAt).getTime() - Date.now())}`);
+          }
+        }
+      }
+
+      if (usageCardEnabled("codex")) {
+        const codex = readCodexUsage();
+        if (codex && codex.limits.length > 0) {
+          lines.push("", "*Codex limits*");
+          for (const lim of codex.limits) {
+            const resets = lim.resetsAt ? ` · resets in ${countdown(new Date(lim.resetsAt).getTime() - Date.now())}` : "";
+            lines.push(`${sev(lim.severity)} ${lim.label}: *${lim.percent}%*${resets}`);
+          }
+          // Read from codex's transcripts, so state their age rather than
+          // implying they were just fetched.
+          lines.push(`_from codex's last turn (${new Date(codex.observedAt).toLocaleString()})_`);
+        }
+      }
+
       await ctx.say(lines.join("\n"));
     },
   },
 ];
 
 /** Short description of what the turn is currently blocked on, if anything. */
+/** Traffic light for a usage-limit severity. */
+function sev(severity: "normal" | "warning" | "critical"): string {
+  return severity === "critical" ? "🔴" : severity === "warning" ? "🟡" : "🟢";
+}
+
+/** Coarse "2d 4h" / "3h 10m" countdown for a duration in ms. */
+function countdown(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 function waitingOn(ctx: SlackCommandCtx): string | undefined {
   const header = ctx.asks.pendingHeader(ctx.channel);
   if (header) return `a question (*${escapeSlackMrkdwn(header)}*)`;

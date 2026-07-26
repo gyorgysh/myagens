@@ -371,6 +371,8 @@ export const en = {
   cmd_usage_header: "<b>📊 Usage</b>",
   cmd_usage_plan: "\n<b>Plan</b>  {label}",
   cmd_usage_limits_header: "\n<b>Subscription limits</b>",
+  cmd_usage_codex_header: "\n<b>Codex limits</b>",
+  cmd_usage_codex_observed: "<i>from codex's last turn ({when})</i>",
   cmd_usage_resets_in: "resets in {countdown}",
   cmd_usage_chat_header: "\n<b>This chat</b>",
   cmd_usage_today: "Today     {usage}",

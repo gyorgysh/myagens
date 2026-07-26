@@ -747,6 +747,16 @@ curl -X POST -H "$AUTH" $BASE/api/plan/report-test
 # Live OAuth usage probe (5h session + 7d weekly limits); add /run to refresh
 curl -H "$AUTH" $BASE/api/usage-probe
 curl -X POST -H "$AUTH" $BASE/api/usage-probe/run
+
+# Codex rate limits, read out of codex's own session transcripts
+curl -H "$AUTH" $BASE/api/codex-usage
+
+# Which usage-limit cards this machine can show, and whether each is switched on
+curl -H "$AUTH" $BASE/api/usage-sources
+
+# Hide one of them (PUT /api/plan; omit an id to leave it following detection)
+curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/plan \
+  -d '{ "usageCards": { "codex": false } }'
 ```
 
 ### Playbook and maintenance
@@ -859,6 +869,8 @@ A few more endpoints exist, mostly mirroring panel views:
 - `POST /api/workers/wizard`: draft a worker config from a plain-text description.
 - `POST /api/schedules/<id>/run`: fire a schedule immediately.
 - `GET /api/claude-usage`: historical activity from `~/.claude/stats-cache.json`.
+- `GET /api/usage-sources`: `{ sources: [{ id, label, detected, preference, visible }] }` — the vendors whose limits can be shown here. `detected` is whether this machine has data, `preference` the user's explicit on/off (absent = follow detection), `visible` what the Usage view acts on. Set with `usageCards` on `PUT /api/plan`.
+- `GET /api/codex-usage`: codex's rate-limit windows (`{ observedAt, planType, limits: [{ percent, windowMinutes, label, resetsAt, severity }], credits }`), read from the newest `rollout-*.jsonl` in either codex home. Needs no token and no network call, but the numbers are only as fresh as the last codex turn, hence `observedAt` and no `/run` counterpart. `limits` is empty when codex has never run here.
 - `GET /api/claude-files`, `GET|PUT /api/claude-files/content`: browse and edit on-disk `.claude/*` and `CLAUDE.md` files under known working dirs.
 - `GET /api/logs`, `GET /api/logs/dates`: live ring buffer or a dated NDJSON log file (`?date=&q=&level=&limit=`).
 - `GET /api/logs/search`: cross-file event search over every retained file (`?q=&level=&hours=72&limit=`), merged into one oldest-first timeline.

@@ -18,6 +18,8 @@ import * as git from "./git.js";
 import { escapeHtml } from "./telegram/formatting.js";
 import type { UsageStat } from "./session/store.js";
 import { loadProbeResult, runProbe } from "./core/usageProbe.js";
+import { readCodexUsage } from "./core/codexUsage.js";
+import { usageCardEnabled } from "./core/usageSources.js";
 import { getPlanSettings, billingPeriodStart, daysUntilReset } from "./core/planSettings.js";
 import { checkForUpdate, runUpdate, runRestore, isUpdating } from "./core/updateControl.js";
 import { sendReloadPrompt, reportScriptOutcome } from "./telegram/reloadFlow.js";
@@ -479,12 +481,36 @@ export function registerCommands(bot: Telegraf): void {
     }
 
     // Subscription limits — only shown when the OAuth probe has real data.
-    if (probe?.source === "oauth" && probe.limits.length > 0) {
+    if (usageCardEnabled("claude") && probe?.source === "oauth" && probe.limits.length > 0) {
       lines.push(t("cmd_usage_limits_header", lang));
       for (const lim of probe.limits) {
         const msLeft = Math.max(0, new Date(lim.resetsAt).getTime() - Date.now());
         const sev = lim.severity === "critical" ? "🔴" : lim.severity === "warning" ? "🟡" : "🟢";
         lines.push(`${sev} ${lim.label}   <b>${lim.percent}%</b>  ${fmtBar(lim.percent)}  ${t("cmd_usage_resets_in", lang, { countdown: fmtCountdown(msLeft) })}`);
+      }
+    }
+
+    // Codex limits. No probe to refresh here: these come out of codex's own
+    // session transcripts, so they are as old as its last turn — hence the
+    // timestamp instead of a countdown-only line.
+    if (usageCardEnabled("codex")) {
+      const codex = readCodexUsage();
+      if (codex && codex.limits.length > 0) {
+        lines.push(t("cmd_usage_codex_header", lang));
+        for (const lim of codex.limits) {
+          const sev = lim.severity === "critical" ? "🔴" : lim.severity === "warning" ? "🟡" : "🟢";
+          const resets = lim.resetsAt
+            ? `  ${t("cmd_usage_resets_in", lang, {
+                countdown: fmtCountdown(Math.max(0, new Date(lim.resetsAt).getTime() - Date.now())),
+              })}`
+            : "";
+          lines.push(`${sev} ${lim.label}   <b>${lim.percent}%</b>  ${fmtBar(lim.percent)}${resets}`);
+        }
+        lines.push(
+          t("cmd_usage_codex_observed", lang, {
+            when: new Date(codex.observedAt).toLocaleString(),
+          }),
+        );
       }
     }
 

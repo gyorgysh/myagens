@@ -1212,6 +1212,10 @@ export const hu: Translations = {
   plan_last_checked: "Utoljára ellenőrizve: {time}",
   plan_resets: "visszaáll {time}",
   plan_autorefresh: "Automatikus frissítés gyakorisága",
+  plan_cards_title: "Használati limitek a vezérlőpulton",
+  plan_cards_desc: "Csak a Claude és a Codex teszi olvasható helyre a limiteit. Mindegyik akkor jelenik meg, ha van hozzá adat.",
+  plan_cards_detected: "Van adat ezen a gépen",
+  plan_cards_missing: "Itt még nincs adat, nincs mit megjeleníteni",
   plan_manual: "Csomag (kézi)",
   plan_manual_desc: "Állítsd be kézzel, ha a fenti automatikus észlelés nem elérhető.",
   plan_budget_ref: "Havi költségkeret referencia ({plan})",
@@ -1283,6 +1287,15 @@ export const hu: Translations = {
   // Limit-ablak címkék (Rendszer + Használat közös)
   limit_5h: "5 órás munkamenet",
   limit_7d: "7 napos heti",
+  limit_weekly: "heti",
+  limit_monthly: "havi",
+
+  // Codex használati limitek (a codex saját munkamenet-naplóiból)
+  codex_limits_title: "Codex használati limitek",
+  codex_observed: "A codex utolsó köréből, {time}",
+  codex_limit_reached: "A codex jelezte, hogy abban a körben elérte a {kind} limitet.",
+  codex_credits: "{n} kredit maradt",
+  codex_credits_unlimited: "korlátlan kredit",
 
   // Használat nézet
   usage_failed_load: "Betöltés sikertelen: {error}",

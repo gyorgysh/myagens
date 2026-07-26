@@ -519,7 +519,10 @@ export const en = {
   setup_ready_copy: "Copy",
   setup_ready_copied: "Copied",
   setup_ready_no_bot:
-    "No bot username yet. Set TELEGRAM_BOT_TOKEN in .env and restart, then the deep-link to your bot will appear here.",
+    "You're set up — this panel is your control room. Telegram and Slack are optional extras: add one from Settings if you also want to reach your agent from your phone.",
+  setup_ways_in: "Ways in",
+  setup_surface_panel: "Web panel",
+  setup_surface_off: "off",
   settings_title: "Settings",
   // Config sections merged into the unified Settings screen
   settings_group_config: "Configuration",

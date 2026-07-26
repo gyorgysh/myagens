@@ -1,5 +1,6 @@
 import { buildSlackBot, type SlackBotInstance } from "./bot.js";
 import { resolveSlackConfig } from "../core/slackSettings.js";
+import { registerNotifyChannel, unregisterNotifyChannel } from "../core/notify.js";
 import { log } from "../logger.js";
 
 /**
@@ -25,19 +26,35 @@ class SlackSurfaceManager {
   }
 
   private async syncNow(): Promise<void> {
-    const wanted = resolveSlackConfig().configured;
+    const slack = resolveSlackConfig();
     // Always tear down first: the tokens or the allow-list may have changed,
     // and the running instance captured them when it was built.
     if (this.instance) {
       await this.instance.stop().catch(() => {});
       this.instance = undefined;
+      unregisterNotifyChannel("slack");
     }
-    if (!wanted) return;
+    if (!slack.configured) return;
     const instance = buildSlackBot();
     if (!instance) return;
     try {
       await instance.start();
       this.instance = instance;
+      // Owner notices (heartbeat alerts, task outcomes, update news) reach Slack
+      // as DMs, so a Slack-only install is as well informed as a Telegram one.
+      // Registered per start, since the client is rebuilt on every settings change.
+      registerNotifyChannel("slack", async (notice) => {
+        for (const userId of slack.allowedUserIds) {
+          await instance.app.client.chat
+            .postMessage({ channel: userId, text: notice.text })
+            .catch((err) =>
+              log.warn("Slack notice delivery failed", {
+                userId,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+        }
+      });
     } catch (err) {
       log.error("Failed to start Slack surface", {
         error: err instanceof Error ? err.message : String(err),
@@ -53,6 +70,7 @@ class SlackSurfaceManager {
   async stop(): Promise<void> {
     await this.instance?.stop().catch(() => {});
     this.instance = undefined;
+    unregisterNotifyChannel("slack");
   }
 }
 

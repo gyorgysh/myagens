@@ -1,7 +1,8 @@
-import { Markup, type Telegram } from "telegraf";
+import { Markup } from "telegraf";
 import { loadJson, saveJson } from "./jsonStore.js";
 import { getUpdateStatus } from "./updateControl.js";
 import { mainSettingsView } from "./mainSettings.js";
+import { notifyOwner } from "./notify.js";
 import { escapeHtml } from "../telegram/formatting.js";
 import { t, langForChat } from "../telegram/i18n/index.js";
 import { log } from "../logger.js";
@@ -32,12 +33,8 @@ export async function resolveUpdateNotifyCallback(chatId: number): Promise<strin
 class UpdateNotifyManager {
   private state = loadJson<UpdateNotifyState>(FILE, {});
   private timer?: ReturnType<typeof setInterval>;
-  private telegram?: Telegram;
-  private chatIds: number[] = [];
 
-  start(telegram: Telegram, chatIds: number[]): void {
-    this.telegram = telegram;
-    this.chatIds = chatIds;
+  start(): void {
     if (this.timer) return;
     this.timer = setInterval(() => void this.maybeNotify(), POLL_MS);
     this.timer.unref?.();
@@ -49,7 +46,6 @@ class UpdateNotifyManager {
   }
 
   private async maybeNotify(): Promise<void> {
-    if (!this.telegram || this.chatIds.length === 0) return;
     if (mainSettingsView().updateNotifyOptOut) return;
     const status = getUpdateStatus();
     if (!status.available || !status.latestVersion) return;
@@ -61,37 +57,34 @@ class UpdateNotifyManager {
       from: status.currentVersion,
       to: status.latestVersion,
     });
-    for (const chatId of this.chatIds) {
-      const lang = langForChat(chatId);
-      const list = status.commits
-        .slice(0, 8)
-        .map((c) => `• ${escapeHtml(c)}`)
-        .join("\n");
-      const text = t("updatenotify_available", lang, {
-        from: status.currentVersion ?? status.current,
-        to: status.latestVersion ?? status.latest ?? "",
-        list,
-      });
-      await this.telegram
-        .sendMessage(chatId, text, {
-          parse_mode: "HTML",
-          ...Markup.inlineKeyboard([
+    const from = status.currentVersion ?? status.current;
+    const to = status.latestVersion ?? status.latest ?? "";
+    const list = status.commits
+      .slice(0, 8)
+      .map((c) => `• ${escapeHtml(c)}`)
+      .join("\n");
+    // The buttons are Telegram's; other surfaces get the same news in plain
+    // text and apply the update from the panel's Updates view instead.
+    await notifyOwner({
+      text: `A new version is available: v${from} → v${to}.`,
+      telegram: {
+        i18n: { key: "updatenotify_available", params: { from, to, list } },
+        replyMarkupFor: (lang) =>
+          Markup.inlineKeyboard([
             // Reuses the exact /reload confirm action — accepting the notice
             // runs the same rescue path a manual /reload would.
             [Markup.button.callback(t("updatenotify_accept_btn", lang), "reload:yes")],
             [Markup.button.callback(t("updatenotify_reject_btn", lang), "updnotify:reject")],
-          ]),
-        })
-        .catch((err) => {
-          log.warn("Update-notify send failed", { chatId, error: err instanceof Error ? err.message : String(err) });
-        });
-    }
+          ]).reply_markup,
+      },
+      push: { title: "MyAgens update available", kind: "update", tag: "update-available", url: "/" },
+    });
   }
 }
 
 const updateNotify = new UpdateNotifyManager();
 
 /** Start the background update-bump notifier. Cheap (no network) — call once at boot. */
-export function startUpdateNotify(telegram: Telegram, chatIds: number[]): void {
-  updateNotify.start(telegram, chatIds);
+export function startUpdateNotify(): void {
+  updateNotify.start();
 }

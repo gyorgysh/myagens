@@ -1,16 +1,22 @@
 /**
- * ChatBridge — connects the panel Chat view to the live Telegram conversation.
+ * ChatBridge — the panel Chat view's window onto the President's conversation.
  *
- * The panel Chat no longer runs its own isolated Claude session. Instead it is a
- * window onto the *main* Telegram chat (the first allowed user): messages typed
- * in Telegram appear in the panel, messages sent from the panel are driven
- * through the same `handleUserPrompt` flow (same resume token, cwd, autonomy),
- * and tool approvals surface as the usual Telegram inline buttons.
+ * The panel Chat does not run its own isolated Claude session; it shares one,
+ * and *who drives it* depends on which surfaces are configured:
  *
- * The bot registers a `Runner` here at startup (capturing its `permissions` +
- * `telegram` handles); the panel `ChatManager` calls `bridge.send()` to drive a
- * turn, and `handleUserPrompt` calls the `mirror*` hooks so the panel sees the
- * conversation live.
+ * - With Telegram: the bridge is a window onto the main Telegram chat (the
+ *   first allowed user). Messages typed in Telegram appear in the panel,
+ *   messages sent from the panel run through the same `handleUserPrompt` flow
+ *   (same resume token, cwd, autonomy), and tool approvals surface as the usual
+ *   Telegram inline buttons — answerable from either side.
+ * - Without Telegram: `core/panelChatRunner.ts` attaches instead and runs the
+ *   turn natively against the `PANEL_CHAT_ID` session, with approvals and
+ *   questions going to the panel's own queues. The panel is then a complete
+ *   front end with no chat surface installed at all.
+ *
+ * Either way exactly one `Runner` is attached at startup; the panel
+ * `ChatManager` calls `bridge.send()` to drive a turn, and the running turn
+ * calls the `mirror*` hooks so the panel sees the conversation live.
  */
 
 import { config, allowedUserIds } from "../config.js";
@@ -36,9 +42,21 @@ export interface BridgeMessage {
 
 const HISTORY_CAP = 200;
 
-/** The main chat id the panel mirrors — the first allowed user. */
-export function mainChatId(): number | undefined {
-  return [...allowedUserIds][0];
+/**
+ * Session key for the President's conversation when there is no Telegram
+ * surface to borrow one from. Telegram chat ids are never 0, so this can never
+ * collide with a real chat, and using a plain session key means every part of
+ * the stack that already speaks `Session` (cwd, autonomy, resume token, the
+ * "always allow" presets) works unchanged in panel-only mode.
+ */
+export const PANEL_CHAT_ID = 0;
+
+/**
+ * The main chat id the panel mirrors — the first allowed Telegram user, or the
+ * synthetic panel session when Telegram is not configured.
+ */
+export function mainChatId(): number {
+  return [...allowedUserIds][0] ?? PANEL_CHAT_ID;
 }
 
 class ChatBridge {
@@ -63,9 +81,9 @@ class ChatBridge {
     return config.PANEL_CHAT_ENABLED;
   }
 
-  /** Whether the bridge is live (bot attached and a main chat exists). */
+  /** Whether the bridge is live (some surface has attached a turn runner). */
   get ready(): boolean {
-    return this.runner !== null && mainChatId() !== undefined;
+    return this.runner !== null;
   }
 
   history(): BridgeMessage[] {
@@ -80,16 +98,14 @@ class ChatBridge {
     // An image-only message is allowed (the model still gets something to look
     // at); otherwise require some text.
     if (!trimmed && !(images && images.length)) return { ok: false, error: "empty" };
-    const id = mainChatId();
-    if (id === undefined || !this.runner) return { ok: false, error: "no-chat" };
-    this.runner(id, trimmed, images);
+    if (!this.runner) return { ok: false, error: "no-chat" };
+    this.runner(mainChatId(), trimmed, images);
     return { ok: true };
   }
 
   /** Abort the in-flight turn on the main chat. */
   stop(): void {
-    const id = mainChatId();
-    if (id !== undefined) this.stopper?.(id);
+    this.stopper?.(mainChatId());
   }
 
   // --- mirror hooks, called from handleUserPrompt for the main chat ---

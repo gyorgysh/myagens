@@ -1,6 +1,6 @@
 import { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
-import { config, allowedUserIds } from "./config.js";
+import { config, allowedUserIds, telegramBotToken } from "./config.js";
 import { authMiddleware } from "./auth.js";
 import { registerCommands } from "./commands.js";
 import { handleInlineQuery } from "./telegram/inlineSearch.js";
@@ -10,7 +10,6 @@ import { memoryMcp } from "./mcp/memory.js";
 import { createTasksMcp } from "./mcp/tasks.js";
 import { skillsMcp } from "./mcp/skills.js";
 import { selfUpdateMcp } from "./mcp/selfUpdate.js";
-import { selfUpdate } from "./core/selfUpdate.js";
 import { createCrewMcp } from "./mcp/crew.js";
 import { buildConnectorMcps } from "./mcp/connectorsMcp.js";
 import { buildImageGenMcps } from "./mcp/imageGenMcp.js";
@@ -26,8 +25,7 @@ import { LoopDetector } from "./core/loopDetector.js";
 import { downloadIncomingFile, isViewableImage, readImageInput } from "./telegram/files.js";
 import { isGitCallback, resolveGitCallback } from "./telegram/gitFlow.js";
 import { isReloadCallback, resolveReloadCallback } from "./telegram/reloadFlow.js";
-import { startUpdateNotify, isUpdateNotifyCallback, resolveUpdateNotifyCallback } from "./core/updateNotify.js";
-import { consumeUpdateMarker, currentPackageVersion } from "./core/updateControl.js";
+import { isUpdateNotifyCallback, resolveUpdateNotifyCallback } from "./core/updateNotify.js";
 import { isTaskCallback, resolveTaskCallback, retryKeyboard } from "./telegram/taskFlow.js";
 import { isProjectCallback, resolveProjectCallback } from "./telegram/projects.js";
 import { isInboxCallback, resolveInboxCallback } from "./telegram/inboxFlow.js";
@@ -45,11 +43,7 @@ import {
 } from "./telegram/staleCachePrompt.js";
 import { transcribeAudio, voiceEnabled, voiceSetupHint } from "./telegram/voice.js";
 import { sendVoiceReply, ttsEnabled } from "./telegram/tts.js";
-import { schedules, type ScheduleRunner } from "./schedule/manager.js";
-import { heartbeat } from "./core/heartbeat.js";
 import { taskDelegator } from "./core/taskRunner.js";
-import { createTask, startRecurrenceTicker } from "./core/tasks.js";
-import { push } from "./core/push.js";
 import { fireWebhook, type WebhookSource } from "./core/webhook.js";
 import { resolveMainRunFor, mainFallbackSpec, isDryRun, dryRunDescription, DRY_RUN_TOOLS, mainSettingsView, degradedState } from "./core/mainSettings.js";
 import { listInstances, sendToInstance } from "./claude/tmuxInstance.js";
@@ -67,6 +61,7 @@ import {
 import { resolveAsk, hasPendingAsk } from "./core/crewAsk.js";
 import { reflectOnTurn } from "./core/reflect.js";
 import { chatBridge, mainChatId } from "./core/chatBridge.js";
+import type { OwnerNotice } from "./core/notify.js";
 import { isPlanningPrompt } from "./core/planningMode.js";
 import type { ImageInput, RunResult } from "./claude/runner.js";
 import type { Autonomy } from "./session/manager.js";
@@ -79,7 +74,7 @@ import { sendBusyNotice, promptPreview } from "./telegram/busy.js";
 import { guardCwd, cwdFallbackNotice } from "./core/cwdGuard.js";
 
 export function buildBot(): Telegraf {
-  const bot = new Telegraf(config.TELEGRAM_BOT_TOKEN);
+  const bot = new Telegraf(telegramBotToken());
   const permissions = new PermissionManager(bot.telegram);
   const loops = new LoopPromptManager(bot.telegram);
   const asks = new AskQuestionManager(bot.telegram);
@@ -386,177 +381,82 @@ export function buildBot(): Telegraf {
     log.error("Unhandled bot error", { updateType: ctx.updateType, error: errText(err) });
   });
 
-  // --- Scheduled prompts: run due jobs as autonomous turns, pushed to the chat ---
-  // When the chat is busy at firing time we don't drop the job: the scheduler
-  // retries it every tick (~30s) until the chat frees up. If it's still busy
-  // after this long, fall back to running it as a background Kanban task so a
-  // long-running conversation never silently swallows a scheduled run.
-  const SCHED_BUSY_FALLBACK_MS = 5 * 60_000;
-  const runScheduled: ScheduleRunner = async (s) => {
-    if (sessions.get(s.chatId).busy) {
-      const waited = s.busySince ? Date.now() - s.busySince : 0;
-      if (waited < SCHED_BUSY_FALLBACK_MS) return "busy"; // retry next tick
-      // Busy too long: move the run to a background task and report when done.
-      log.info("Scheduled task busy too long; moving to background task", {
-        chatId: s.chatId,
-        id: s.id,
-        waitedMs: waited,
-      });
-      const card = createTask({
-        title: `Scheduled: ${s.prompt.slice(0, 80)}`,
-        notes: s.prompt,
-        column: "backlog",
-        createdBy: "schedule",
-      });
-      const r = taskDelegator.delegate(card.id);
-      if (!r.ok && !r.queued && !r.blocked) {
-        // Couldn't delegate (no runner/capacity issue): keep retrying the chat.
-        log.warn("Scheduled fallback delegate failed; will retry chat", { id: s.id, error: r.error });
-        return "busy";
-      }
-      await bot.telegram
-        .sendMessage(
-          s.chatId,
-          t("bot_scheduled_deferred", langForChat(s.chatId), { prompt: escapeHtml(s.prompt) }),
-          { parse_mode: "HTML" },
-        )
-        .catch(() => {});
-      return "deferred";
-    }
-    log.info("Scheduled task firing", { chatId: s.chatId, id: s.id });
-    await bot.telegram
-      .sendMessage(s.chatId, t("bot_scheduled", langForChat(s.chatId), { prompt: escapeHtml(s.prompt) }), {
-        parse_mode: "HTML",
-      })
-      .catch(() => {});
-    runUserPrompt(permissions, loops, asks, s.chatId, s.prompt, bot.telegram, {
-      autonomous: true,
-      cwd: s.cwd,
-      webhook: s.webhookUrl
-        ? { url: s.webhookUrl, source: "schedule", title: s.prompt.slice(0, 120), id: s.id }
-        : undefined,
-    });
-    return "started";
-  };
-  schedules.start(runScheduled);
-
-  // Recurring kanban templates: spawn fresh backlog copies on each card's
-  // cadence. Runs independently of the panel; a live board refresh is pushed
-  // via onRecurrenceFire (registered by the panel server) when the panel is up.
-  startRecurrenceTicker();
-
-  // Recover kanban cards left "queued"/"running" by a crash or restart: their
-  // in-memory run state is gone, so mark them as a stale error the user can
-  // retry, rather than leaving them stuck on the board forever.
-  const recovered = taskDelegator.reconcileStuck();
-  if (recovered) log.info("Reconciled stuck tasks on boot", { count: recovered });
-
-  // --- Heartbeat: proactive host/kanban monitoring (off unless enabled) ---
-  const alertTargets = [...allowedUserIds];
-
-  // Self-update reports (build/restart of the bot's own source) go to the
-  // president — every allowed chat — as plain status messages.
-  selfUpdate.start(async (text) => {
-    for (const chatId of alertTargets) {
-      await bot.telegram
-        .sendMessage(chatId, `<i>${escapeHtml(text)}</i>`, { parse_mode: "HTML" })
-        .catch(() => {});
-    }
-  });
-  heartbeat.start({
-    notify: async (text) => {
-      // Mirror the alert to any subscribed browsers as an OS-level push.
-      void push.notify({ title: "MyAgens heartbeat", body: text, kind: "heartbeat", tag: "heartbeat" });
-      for (const chatId of alertTargets) {
+  // The background subsystems (schedules, heartbeat, task outcomes, the inbox)
+  // are wired surface-independently in core/wiring.ts. Hand it the Telegram
+  // flavour of a turn runner plus the two report enrichments only this surface
+  // can render: a formatted summary for a completed card, and a Retry button on
+  // a failed one.
+  telegramSurface = {
+    runTurn: (chatId, prompt, opts) =>
+      runUserPrompt(permissions, loops, asks, chatId, prompt, bot.telegram, {
+        autonomous: opts.autonomous,
+        cwd: opts.cwd,
+        webhook: opts.webhook as TurnOptions["webhook"],
+      }),
+    notify: async (notice) => {
+      for (const chatId of allowedUserIds) {
+        const lang = langForChat(chatId);
+        const body = notice.telegram?.i18n
+          ? t(notice.telegram.i18n.key, lang, notice.telegram.i18n.params)
+          : (notice.telegram?.html ?? `<i>${escapeHtml(notice.text)}</i>`);
+        const markup = notice.telegram?.replyMarkupFor?.(lang) ?? notice.telegram?.replyMarkup;
         await bot.telegram
-          .sendMessage(chatId, `<i>${escapeHtml(text)}</i>`, { parse_mode: "HTML" })
+          .sendMessage(chatId, body, {
+            parse_mode: "HTML",
+            ...(markup ? { reply_markup: markup } : {}),
+          })
           .catch(() => {});
       }
     },
-    runActive: async (prompt) => {
-      const chatId = alertTargets[0];
-      if (chatId === undefined || sessions.get(chatId).busy) return false;
-      runUserPrompt(permissions, loops, asks, chatId, prompt, bot.telegram, { autonomous: true });
+    reportTask: async (r) => {
+      const chatId = [...allowedUserIds][0];
+      if (chatId === undefined) return false;
+      if (r.status === "ok" && r.res) {
+        const by = r.leadName ? ` (${r.leadName})` : "";
+        await sendSummaryReport(bot.telegram, chatId, r.res, `Task${by}: ${r.title}`).catch(() => {});
+        // Also let the generic notice go out, so a Slack/panel user still hears
+        // about it — only the rich Telegram rendering is handled here.
+        return false;
+      }
+      if (r.status !== "error") return false;
+      // On a genuine failure (not a manual stop), offer a one-tap Retry button
+      // that resets the card to backlog and re-delegates.
+      const by = r.leadName ? ` (${r.leadName})` : "";
+      const lang = langForChat(chatId);
+      const notice = t("bot_task_failed", lang, { title: r.title, by, error: r.error ? `: ${r.error}` : "" });
+      await bot.telegram
+        .sendMessage(chatId, `<i>${escapeHtml(notice)}</i>`, {
+          parse_mode: "HTML",
+          reply_markup: retryKeyboard(r.taskId),
+        })
+        .catch(() => {});
       return true;
     },
-  });
-
-  // Proactive "new version detected" notice: polls the update-status cache
-  // server.ts already keeps fresh (no extra git fetch traffic) and messages
-  // the president with Accept ( == /reload) / Reject buttons on a version bump.
-  startUpdateNotify(bot.telegram, alertTargets);
-
-  // "Back online" confirmation after an update/reload/self-update restart: the
-  // update runner leaves a marker on disk before restarting, so finding a fresh
-  // one at boot means the restart completed — close the loop the "new version"
-  // notice opened instead of coming back silently.
-  const appliedUpdate = consumeUpdateMarker();
-  if (appliedUpdate) {
-    const to = currentPackageVersion() ?? "?";
-    const from = appliedUpdate.fromVersion;
-    log.info("Update restart confirmed", { mode: appliedUpdate.mode, from, to });
-    void push.notify({ title: "MyAgens updated", body: `v${to} is back online`, kind: "update", tag: "update" });
-    for (const chatId of alertTargets) {
-      const lang = langForChat(chatId);
-      const text =
-        from && from !== to
-          ? t("updatenotify_applied", lang, { from, to })
-          : t("updatenotify_applied_same", lang, { to });
-      void bot.telegram.sendMessage(chatId, text, { parse_mode: "HTML" }).catch(() => {});
-    }
-  }
-
-  // Delegated kanban cards run via runTurn (not handleUserPrompt), so they have
-  // no Telegram path of their own — report their outcome to the president here.
-  taskDelegator.onReport(async (r) => {
-    const chatId = alertTargets[0];
-    if (chatId === undefined) return;
-    const by = r.leadName ? ` (${r.leadName})` : "";
-    // Mirror the outcome to subscribed browsers as an OS-level push.
-    void push.notify({
-      title:
-        r.status === "ok" ? "Task done" : r.status === "stopped" ? "Task stopped" : "Task failed",
-      body: `${r.title}${by}${r.status === "error" && r.error ? `: ${r.error}` : ""}`,
-      kind: "task",
-      tag: `task-${r.taskId}`,
-      url: "/tasks",
-    });
-    if (r.status === "ok" && r.res) {
-      await sendSummaryReport(bot.telegram, chatId, r.res, `Task${by}: ${r.title}`).catch(() => {});
-      return;
-    }
-    const lang = langForChat(chatId);
-    const notice =
-      r.status === "stopped"
-        ? t("bot_task_stopped", lang, { title: r.title, by })
-        : t("bot_task_failed", lang, { title: r.title, by, error: r.error ? `: ${r.error}` : "" });
-    // On a genuine failure (not a manual stop), offer a one-tap Retry button
-    // that resets the card to backlog and re-delegates.
-    await bot.telegram
-      .sendMessage(chatId, `<i>${escapeHtml(notice)}</i>`, {
-        parse_mode: "HTML",
-        ...(r.status === "error" ? { reply_markup: retryKeyboard(r.taskId) } : {}),
-      })
-      .catch(() => {});
-  });
-
-  // New inbox suggestion filed by an agent — give the president a light ping so
-  // nothing waits unseen (the full triage/decision still happens via /inbox).
-  suggestions.onAdd(async (s) => {
-    const n = suggestions.pendingCount();
-    const cat = s.category ? ` [${s.category}]` : "";
-    for (const chatId of alertTargets) {
-      const text = t("bot_inbox_suggestion", langForChat(chatId), {
-        agent: escapeHtml(s.fromAgentName),
-        category: escapeHtml(cat),
-        title: escapeHtml(s.title),
-        count: n,
-      });
-      await bot.telegram.sendMessage(chatId, text, { parse_mode: "HTML" }).catch(() => {});
-    }
-  });
+  };
 
   return bot;
+}
+
+/**
+ * The Telegram surface's hooks, captured by `buildBot()` and read by `app.ts`.
+ * Null until (and unless) the bot is built — a panel-only install never sets it.
+ */
+export interface TelegramSurface {
+  runTurn: (
+    chatId: number,
+    prompt: string,
+    opts: { autonomous?: boolean; cwd?: string; webhook?: unknown },
+  ) => void;
+  notify: (notice: OwnerNotice) => Promise<void>;
+  reportTask: (report: TaskReport) => Promise<boolean>;
+}
+
+type TaskReport = Parameters<Parameters<typeof taskDelegator.onReport>[0]>[0];
+
+let telegramSurface: TelegramSurface | null = null;
+
+export function getTelegramSurface(): TelegramSurface | null {
+  return telegramSurface;
 }
 
 // Per-chat turn rate limit (SEC): cap how many new user-initiated turns a single

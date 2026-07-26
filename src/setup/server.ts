@@ -216,6 +216,18 @@ export async function startSetupServer(): Promise<void> {
     return { ok: true };
   });
 
+  // Telegram is optional too. The panel is a complete front end on its own, so
+  // an install that only wants the web UI (or only Slack) skips this step, and
+  // the two vars stay commented out in .env exactly as .env.example has them.
+  app.post("/setup/api/telegram/skip", async () => {
+    session.poller?.stop();
+    session.poller = undefined;
+    session.botToken = undefined;
+    session.botInfo = undefined;
+    session.confirmedUser = undefined;
+    return { ok: true };
+  });
+
   // ---------------------------------------------------------------- slack ---
   // Optional. Slack's own setup is the rough part (two lookalike tokens on
   // different admin pages, plus a member id), so the wizard proves each token
@@ -332,24 +344,33 @@ export async function startSetupServer(): Promise<void> {
 
   // --------------------------------------------------------------- finish ---
   app.post("/setup/api/finish", async (req, reply) => {
-    if (!session.botToken || !session.botInfo) return reply.code(400).send({ error: "bot token not verified" });
-    if (!session.confirmedUser) return reply.code(400).send({ error: "owner not confirmed" });
+    // Telegram is half-configured only if the token was verified but the owner
+    // never confirmed — a wizard state the user must resolve either way (finish
+    // the step, or skip it). Skipping clears both, so neither is set.
+    const telegramReady = Boolean(session.botToken && session.botInfo && session.confirmedUser);
+    if (session.botToken && !telegramReady) {
+      return reply.code(400).send({ error: "owner not confirmed" });
+    }
     // Claude must be connected here — there is no panel UI to add it later, so a
-    // skipped connection would ship a bot that fails every turn. The wizard has
-    // no Skip button; this guards a direct/stale POST from finishing brain-less.
+    // skipped connection would ship an agent that fails every turn. The wizard
+    // has no Skip button; this guards a direct/stale POST from finishing brain-less.
     if (session.claudeMethod === "none") return reply.code(400).send({ error: "connect Claude before finishing" });
     const rawModel = String((req.body as { model?: unknown })?.model ?? DEFAULT_MODEL).trim();
     const model = MODEL_CHOICES.has(rawModel) ? rawModel : DEFAULT_MODEL;
 
     const panelToken = randomBytes(24).toString("base64url");
+    // The panel is always written: it is the one front end that always exists,
+    // and the only one that can add or change the others later.
     const values: Record<string, string> = {
-      TELEGRAM_BOT_TOKEN: session.botToken,
-      ALLOWED_USER_IDS: String(session.confirmedUser.id),
       CLAUDE_MODEL: model,
       PANEL_ENABLED: "true",
       PANEL_PORT: String(port),
       PANEL_TOKEN: panelToken,
     };
+    if (telegramReady && session.botToken && session.confirmedUser) {
+      values.TELEGRAM_BOT_TOKEN = session.botToken;
+      values.ALLOWED_USER_IDS = String(session.confirmedUser.id);
+    }
     if (session.claudeMethod === "apikey" && session.apiKey) values.ANTHROPIC_API_KEY = session.apiKey;
     // Slack is optional: only written when the user completed that step, so a
     // skipped one leaves the three vars commented out as .env.example has them.
@@ -360,14 +381,21 @@ export async function startSetupServer(): Promise<void> {
     }
     writeEnvValues(join(repoRoot, ".env"), values);
     session.finished = true;
-    log.info("Setup: configuration written, handing off", { bot: `@${session.botInfo.username}`, model });
+    log.info("Setup: configuration written, handing off", {
+      surfaces: ["panel", telegramReady ? "telegram" : null, session.slack?.userIds.length ? "slack" : null]
+        .filter(Boolean)
+        .join(","),
+      model,
+    });
 
     const panelUrl = `http://127.0.0.1:${port}/?token=${panelToken}`;
-    void sendMessage(
-      session.botToken,
-      session.confirmedUser.id,
-      `🎉 Setup complete! I'm starting up now — say hi in a minute.\n\nYour control panel (works on the computer I run on):\n${panelUrl}`,
-    ).catch(() => {});
+    if (telegramReady && session.botToken && session.confirmedUser) {
+      void sendMessage(
+        session.botToken,
+        session.confirmedUser.id,
+        `🎉 Setup complete! I'm starting up now — say hi in a minute.\n\nYour control panel (works on the computer I run on):\n${panelUrl}`,
+      ).catch(() => {});
+    }
 
     // Respond first, then tear down: the success page needs this reply, and the
     // panel needs this port. Under an installer (MYAGENS_SETUP_HANDOFF=exit) the

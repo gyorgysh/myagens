@@ -19,6 +19,7 @@ import { ShortcutsModal } from "./components/ShortcutsModal.tsx";
 import { StatusStrip } from "./components/StatusStrip.tsx";
 import { useActiveRuns } from "./lib/useActiveRuns.ts";
 import { useSuggestionEvents } from "./lib/useSuggestionEvents.ts";
+import { useNoticeEvents } from "./lib/useNoticeEvents.ts";
 // Lazy — loaded on first visit to that tab.
 const CrewView       = lazy(() => import("./components/Crew.tsx").then((m) => ({ default: m.CrewView })));
 const StatusView     = lazy(() => import("./components/Status.tsx").then((m) => ({ default: m.StatusView })));
@@ -111,6 +112,9 @@ export function App() {
   useSuggestionEvents((list) =>
     setInboxPending(list.filter((s) => s.status === "pending").length),
   );
+  // Background alerts (heartbeat, task outcomes, update news) as toasts. On a
+  // panel-only install this is the only place they surface.
+  useNoticeEvents();
 
   // Switch tab and reflect it in the URL (so a refresh reloads the same view).
   const select = (t: Tab | "settings") => {

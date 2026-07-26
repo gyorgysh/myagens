@@ -31,9 +31,10 @@ export class AgentAskManager {
   /**
    * Ask all questions in an AskUserQuestion tool input and return a formatted
    * answer string suitable for handing back to the model as the tool result.
-   * `agentId` scopes the question to that agent's own chat pane.
+   * `agentId` scopes the question to that agent's own chat pane; pass undefined
+   * for the President's main chat, which is where an unscoped question renders.
    */
-  async ask(agentId: string, input: unknown): Promise<string> {
+  async ask(agentId: string | undefined, input: unknown): Promise<string> {
     const questions = parseAskInput(input);
     if (questions.length === 0) {
       return "The user was not shown any question (the tool input had no questions).";
@@ -47,7 +48,7 @@ export class AgentAskManager {
   }
 
   /** Mirror one question into the panel's ask queue and await its resolution. */
-  private askOne(agentId: string, question: AskQuestion): Promise<string> {
+  private askOne(agentId: string | undefined, question: AskQuestion): Promise<string> {
     return new Promise<string>((resolve) => {
       const id = randomBytes(4).toString("hex");
       const timeout = setTimeout(() => {

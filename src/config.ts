@@ -31,9 +31,16 @@ const csvIds = z
       .map((x) => Number(x)),
   )
   // z.number().int() rejects NaN (from non-numeric ids), giving a clean error.
-  .pipe(z.array(z.number().int()).min(1, "ALLOWED_USER_IDS must contain at least one valid id"));
+  .pipe(z.array(z.number().int()));
 
-/** Comma-separated string IDs (e.g. Slack member IDs like U0123456789). */
+/**
+ * Comma-separated string IDs (e.g. Slack member IDs like U0123456789).
+ *
+ * An empty list is allowed rather than an error: a blank `SLACK_ALLOWED_USER_IDS=`
+ * line in .env means "Slack not configured", exactly like the var being absent,
+ * and must not take the whole process down. Whether the list is usable is
+ * decided by `resolveSlackConfig().configured`, not here.
+ */
 const csvStrings = z
   .string()
   .transform((s) =>
@@ -42,11 +49,16 @@ const csvStrings = z
       .map((x) => x.trim())
       .filter(Boolean),
   )
-  .pipe(z.array(z.string().min(1)).min(1, "List must contain at least one valid id"));
+  .pipe(z.array(z.string().min(1)));
 
 const schema = z.object({
-  TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
-  ALLOWED_USER_IDS: csvIds,
+  // --- Telegram chat surface (optional) ---
+  // MyAgens began as a Telegram bot, so these used to be required. They are not
+  // any more: the management panel is a complete front end on its own, and both
+  // chat surfaces (Telegram, Slack) are optional add-ons. Both vars must be set
+  // together for the Telegram surface to boot — see `telegramConfigured` below.
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  ALLOWED_USER_IDS: csvIds.default(""),
   WORKDIR: z.string().min(1).default(defaultWorkdir),
   // Where per-chat session + usage state is persisted (JSON). Survives restarts.
   STATE_FILE: z.string().min(1).default(defaultStateFile),
@@ -274,6 +286,35 @@ const schema = z.object({
 
 // Fail closed: a panel with host access must never run without a token.
 const refined = schema.superRefine((cfg, ctx) => {
+  // At least one way in. The panel is a complete front end on its own, so a
+  // panel-only install is valid; so is panel + Telegram, panel + Slack, or a
+  // chat surface with no panel. Nothing configured at all would boot a process
+  // nobody can talk to, which is always a mistake rather than a choice.
+  const telegram = Boolean(cfg.TELEGRAM_BOT_TOKEN) && cfg.ALLOWED_USER_IDS.length > 0;
+  const slack =
+    Boolean(cfg.SLACK_BOT_TOKEN) &&
+    Boolean(cfg.SLACK_APP_TOKEN) &&
+    (cfg.SLACK_ALLOWED_USER_IDS ?? []).length > 0;
+  if (!cfg.PANEL_ENABLED && !telegram && !slack) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["PANEL_ENABLED"],
+      message:
+        "no way to reach the agent: set PANEL_ENABLED=true (web panel), or configure " +
+        "TELEGRAM_BOT_TOKEN + ALLOWED_USER_IDS, or the SLACK_* trio",
+    });
+  }
+  // Half-configured Telegram is a typo, not a choice: a token with nobody
+  // allowed answers no one, and an allow-list with no token cannot connect.
+  if (Boolean(cfg.TELEGRAM_BOT_TOKEN) !== cfg.ALLOWED_USER_IDS.length > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: cfg.TELEGRAM_BOT_TOKEN ? ["ALLOWED_USER_IDS"] : ["TELEGRAM_BOT_TOKEN"],
+      message:
+        "TELEGRAM_BOT_TOKEN and ALLOWED_USER_IDS must be set together (or both left empty " +
+        "to run without the Telegram surface)",
+    });
+  }
   if (cfg.PANEL_ENABLED && !cfg.PANEL_TOKEN) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -384,6 +425,29 @@ export function normalizeModelId(model: string): string {
 }
 
 export const allowedUserIds = new Set<number>(config.ALLOWED_USER_IDS);
+
+/**
+ * Whether the Telegram chat surface should boot at all.
+ *
+ * Both halves are needed: the token to connect, and at least one allow-listed
+ * id to answer. When this is false the process runs without a Telegraf
+ * instance — the panel (and Slack, if configured) are the front ends, and
+ * every owner notification routes through `core/notify.ts` instead of a DM.
+ */
+export const telegramConfigured =
+  Boolean(config.TELEGRAM_BOT_TOKEN) && allowedUserIds.size > 0;
+
+/**
+ * The Telegram bot token, for the surface-specific code that only runs when
+ * `telegramConfigured` is true. Throws rather than connecting with an empty
+ * string, so a missed guard fails loudly at the call site instead of turning
+ * into a confusing 401 from Telegram.
+ */
+export function telegramBotToken(): string {
+  const token = config.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error("Telegram is not configured (no TELEGRAM_BOT_TOKEN)");
+  return token;
+}
 
 // The Slack surface reads its tokens and allow-list through
 // `resolveSlackConfig()` (src/core/slackSettings.ts) instead of a snapshot

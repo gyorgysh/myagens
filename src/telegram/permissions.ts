@@ -425,7 +425,10 @@ export class PermissionManager {
 const MAX_DESC = 350;
 
 /** Produce a concise human-readable summary of a tool's input. */
-function describeInput(toolName: string, input: unknown): string {
+/** One-line summary of a tool call, shown in the approval prompt and the panel's
+ *  Approvals queue. Exported so the panel-only approval path (no Telegram bot to
+ *  build the prompt) renders exactly the same text. */
+export function describeInput(toolName: string, input: unknown): string {
   const obj = (input ?? {}) as Record<string, unknown>;
   if (toolName === "Bash" && typeof obj.command === "string") return clamp(obj.command);
   if ((toolName === "Write" || toolName === "Edit") && typeof obj.file_path === "string") {

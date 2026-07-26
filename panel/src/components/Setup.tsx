@@ -94,6 +94,27 @@ export function SetupView({
 
       {/* 2. Access control */}
       <SetupStep n={2} title={t("setup_access")} desc={t("setup_access_desc")}>
+        {/* Which ways in exist. The panel always counts; Telegram and Slack are
+            optional add-ons, so a panel-only install is a normal state here,
+            not a misconfiguration. */}
+        <Fact
+          label={t("setup_ways_in")}
+          value={
+            me ? (
+              <span className="flex flex-wrap gap-1">
+                <Badge tone="green">{t("setup_surface_panel")}</Badge>
+                <Badge tone={me.telegramConfigured ? "green" : "zinc"}>
+                  Telegram{me.telegramConfigured ? "" : ` — ${t("setup_surface_off")}`}
+                </Badge>
+                <Badge tone={me.slackConfigured ? "green" : "zinc"}>
+                  Slack{me.slackConfigured ? "" : ` — ${t("setup_surface_off")}`}
+                </Badge>
+              </span>
+            ) : (
+              "…"
+            )
+          }
+        />
         <Fact
           label={t("setup_allowed_users")}
           value={

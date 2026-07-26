@@ -46,6 +46,9 @@ MIN_NODE=20
 
 PANEL_PORT_CHOSEN=""
 PANEL_TOKEN_CHOSEN=""
+# Set by configure_env: 1 when a usable Telegram pair was entered. When 0 the
+# panel is the only remaining way in, so configure_panel stops offering to skip it.
+TELEGRAM_ON=1
 SERVICE_MODE=""   # "1" once the bot is installed as a running service
 
 # Open a URL in the user's default browser, best-effort. Returns:
@@ -487,7 +490,10 @@ configure_env() {
   cp "$APP_DIR/.env.example" "$env"
 
   local token ids key botuser="" rc hit uid uname
-  token="${MYAGENS_TOKEN:-$(ask "Telegram bot token (from @BotFather)" "")}"
+  # Telegram is optional: the web panel (configured further down) is a complete
+  # front end on its own. Leave the token blank to run panel-only.
+  printf '\n%s\n' "${B}Telegram${R} ${DIM}(optional — the web panel is set up either way)${R}" >"${TTY:-/dev/stdout}"
+  token="${MYAGENS_TOKEN:-$(ask "Telegram bot token from @BotFather (blank = skip Telegram)" "")}"
 
   # Validate against Telegram while the user is still at the prompt — a typo'd
   # token is otherwise only discovered at first boot, long after the wizard.
@@ -526,15 +532,29 @@ configure_env() {
       warn "No message arrived in time — you can enter your id manually."
     fi
   fi
-  [ -n "$ids" ] || ids="$(ask "Allowed Telegram user id(s), comma-separated (from @userinfobot)" "")"
+  if [ -n "$token" ] && [ -z "$ids" ]; then
+    ids="$(ask "Allowed Telegram user id(s), comma-separated (from @userinfobot)" "")"
+  fi
 
   key="${MYAGENS_API_KEY:-}"
   if [ -z "$key" ] && ! command -v claude >/dev/null 2>&1; then
     key="$(ask "Anthropic API key, pay-as-you-go, not your Pro/Max plan (blank = sign in with a subscription instead)" "")"
   fi
 
-  [ -n "$token" ] || warn "No bot token entered — edit $env before starting."
-  [ -n "$ids" ]   || warn "No user ids entered — edit $env before starting."
+  # A half-configured Telegram (one of the two) is rejected at startup, so drop
+  # both rather than writing a pair that cannot boot. TELEGRAM_ON tells
+  # configure_panel that the panel is now the only way in.
+  if [ -n "$token" ] && [ -z "$ids" ]; then
+    warn "No user id entered, so Telegram is skipped (a bot with an empty allow-list answers nobody)."
+    token=""
+  elif [ -z "$token" ] && [ -n "$ids" ]; then
+    warn "No bot token entered, so Telegram is skipped."
+    ids=""
+  fi
+  if [ -n "$token" ]; then TELEGRAM_ON=1; else
+    TELEGRAM_ON=0
+    ok "Skipping Telegram — the web panel will be your way in. Add Telegram later in .env."
+  fi
 
   # Default model — offer a short pick list rather than free-text so nobody has
   # to remember an exact id, and make clear it's not a permanent choice.
@@ -554,8 +574,10 @@ configure_env() {
     esac
   fi
 
-  set_env "$env" TELEGRAM_BOT_TOKEN "$token"
-  set_env "$env" ALLOWED_USER_IDS "$ids"
+  if [ "$TELEGRAM_ON" = 1 ]; then
+    set_env "$env" TELEGRAM_BOT_TOKEN "$token"
+    set_env "$env" ALLOWED_USER_IDS "$ids"
+  fi
   [ -n "$key" ] && set_env "$env" ANTHROPIC_API_KEY "$key"
   set_env "$env" CLAUDE_MODEL "$model"
   ok "Wrote $env."
@@ -633,7 +655,12 @@ configure_panel() {
   local choice="${MYAGENS_PANEL:-}"
 
   printf '\n' >"${TTY:-/dev/stdout}"
-  if [ -z "$choice" ]; then
+  if [ "$TELEGRAM_ON" != 1 ]; then
+    # Nothing else is configured, so the panel is not optional here: skipping it
+    # would leave an install nobody can reach, which startup rejects anyway.
+    say "Setting up the web panel — with Telegram skipped it is your way in."
+    choice=y
+  elif [ -z "$choice" ]; then
     printf '%s\n' "${B}MyAgens Panel${R} ${DIM}(embedded web dashboard — health, sessions, tasks, memory, vault, and more)${R}" >"${TTY:-/dev/stdout}"
     if confirm "Enable the panel? (recommended)" "Y"; then choice=y; else choice=n; fi
   fi
@@ -887,8 +914,10 @@ install_vosk_model() {
 # user in the moment it comes up.
 browser_setup() {
   local env="$APP_DIR/.env"
-  if [ -f "$env" ] && grep -q '^TELEGRAM_BOT_TOKEN=..*' "$env" \
-      && ! grep -q 'ABC-your-token-here' "$env"; then
+  # PANEL_TOKEN, not the bot token: the wizard always writes the panel vars but
+  # Telegram is a step the user may legitimately skip, so a Telegram-less .env
+  # is a finished one.
+  if [ -f "$env" ] && grep -q '^PANEL_TOKEN=..*' "$env"; then
     ok "Already configured — skipping the browser wizard."
   else
     printf '\n%s\n%s\n\n' \
@@ -911,7 +940,7 @@ browser_setup() {
       die "Setup was interrupted before it finished. Run the installer again to retry."
     fi
     [ -n "$keepalive_pid" ] && kill "$keepalive_pid" 2>/dev/null || true
-    grep -q '^TELEGRAM_BOT_TOKEN=..*' "$env" \
+    grep -q '^PANEL_TOKEN=..*' "$env" \
       || die "Setup didn't finish. Run the installer again to retry."
     ok "Configuration saved."
   fi

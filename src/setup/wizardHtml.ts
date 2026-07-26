@@ -287,10 +287,10 @@ const PAGE = `<!doctype html>
   // ---- step 1: bot token --------------------------------------------------
   function showBotStep(){
     markStep(0);
-    voice('First I need a Telegram body to live in. It takes about a minute to make one.');
+    voice('Want me on Telegram? It takes about a minute. Or skip it and use the web panel.');
     stage(
-      '<h2>Create your bot</h2>' +
-      '<p class="why">Your agent talks to you through its own Telegram bot. Telegram’s official BotFather creates one for free.</p>' +
+      '<h2>Chat on Telegram <span class="why" style="font-weight:400">(optional)</span></h2>' +
+      '<p class="why">You always get the web panel, a full control room with chat, tasks and settings. Telegram is an extra way in, from your phone, through your own bot. Telegram’s official BotFather creates one for free.</p>' +
       '<ol class="how">' +
         '<li>Open <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> in Telegram</li>' +
         '<li>Send <a href="https://t.me/BotFather" target="_blank" rel="noopener">/newbot</a> and follow the two questions (any name works)</li>' +
@@ -302,8 +302,15 @@ const PAGE = `<!doctype html>
         '<input id="botToken" type="password" autocomplete="off" spellcheck="false" placeholder="123456789:AbCd…">' +
         '<button id="botVerify">Verify</button>' +
       '</div>' +
-      '<p class="err" id="botErr"></p>'
+      '<p class="err" id="botErr"></p>' +
+      '<button id="botSkip" class="ghost btn-wide" style="margin-top:12px">Skip Telegram, use the web panel</button>'
     );
+    el('botSkip').addEventListener('click', function(){
+      stopPolling();
+      api('telegram/skip', {}).catch(function(){});
+      receipt('Telegram skipped, the web panel is your control room');
+      showClaudeStep();
+    });
     var input = el('botToken');
     input.focus();
     function go(){
@@ -735,7 +742,7 @@ const PAGE = `<!doctype html>
       '<div class="waiting"><span class="dot"></span> <span id="bootMsg">Waiting for the agent to come online…</span></div>' +
       '<label style="margin-top:18px">Your panel login link, save it</label>' +
       '<div class="keybox" id="panelLink">' + esc(panelUrl) + '<button class="copy" id="copyLink" type="button">copy</button></div>' +
-      '<p class="why" style="margin-top:10px">Also sent to you on Telegram. It only works on this computer.</p>'
+      '<p class="why" style="margin-top:10px">' + (state.bot ? 'Also sent to you on Telegram. It only works on this computer.' : 'Save this link: it is how you sign in, and it only works on this computer.') + '</p>'
     );
     el('copyLink').addEventListener('click', function(){
       navigator.clipboard && navigator.clipboard.writeText(panelUrl);
@@ -746,7 +753,7 @@ const PAGE = `<!doctype html>
       fetch('/api/me', { headers: { Authorization: 'Bearer ' + token } }).then(function(res){
         if (res.ok) {
           clearInterval(t);
-          voice('I’m online. See you inside, and on Telegram.');
+          voice(state.bot ? 'I’m online. See you inside, and on Telegram.' : 'I’m online. See you inside.');
           el('bootMsg').textContent = 'Online! Redirecting…';
           setTimeout(function(){ location.href = panelPath; }, 900);
         }

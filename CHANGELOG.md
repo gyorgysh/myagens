@@ -3,6 +3,22 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [Unreleased]
+
+### Changed
+- **Telegram is optional now.** MyAgens started life as a Telegram bot, so a Telegram bot token and a user ID were required to start at all, even for people who only ever wanted the web panel. They are not any more. The panel, Telegram, and Slack are three interchangeable front ends, and you need any one of them. A panel-only install is a first-class setup: the Chat view drives Atlas directly, with the same shared session (working directory, autonomy level, always-allow presets, conversation history), the same tool approvals, and the same clarifying questions you would get in a chat app.
+
+  Startup now refuses only when *nothing* is configured, and tells you the three ways to fix it. It also catches a half-configured Telegram, a token with an empty allow-list or an allow-list with no token, which used to boot into a bot that could never answer anyone.
+
+  The first-run wizard has a **Skip Telegram** button next to the existing Skip for Slack, and its Telegram step now says plainly that the web panel is included either way. The panel's Setup view shows which ways in you actually have.
+
+- **Background alerts reach whichever surfaces you run.** Heartbeat breaches, finished and failed tasks, agent reports, inbox pings, "a new version is available", and the remote-access password all used to be sent by Telegram and only by Telegram, which meant a Slack user never saw them and a panel-only user could not have existed. They now go to one place that fans out to every live surface: a Telegram DM, a Slack DM, an in-panel toast, and a browser push, plus the log always. Telegram messages stay in each recipient's own language and keep their inline buttons (the task Retry button, the update Accept/Reject pair).
+
+  The same is true of the work behind those alerts: schedules, the heartbeat, recurring cards, delegated-card outcomes and update notices used to exist only when a Telegram bot did, so skipping Telegram would have quietly switched off half the product. They are started once at boot regardless of surface.
+
+### Fixed
+- **A blank `SLACK_ALLOWED_USER_IDS=` line in `.env` killed startup** with a confusing "List must contain at least one valid id". An empty list now means "Slack not configured", the same as leaving the line out.
+
 ## [0.6.14] - 2026-07-26
 
 ### Added

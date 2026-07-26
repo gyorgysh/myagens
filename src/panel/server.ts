@@ -5,7 +5,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
-import { config, repoRoot, allowedUserIds } from "../config.js";
+import { config, repoRoot, allowedUserIds, telegramConfigured } from "../config.js";
 import { schedules, parseWhen } from "../schedule/manager.js";
 import { maintenance } from "../core/maintenance.js";
 import { getClaudeUsage } from "../core/claudeUsage.js";
@@ -70,6 +70,8 @@ import { workers, describeWorkerSchedule, type Worker } from "../core/workers.js
 import { leadBots } from "../telegram/leadBotManager.js";
 import { readRunLog } from "../core/runLog.js";
 import { chat } from "../core/chat.js";
+import { mainChatId } from "../core/chatBridge.js";
+import { registerNotifyChannel, unregisterNotifyChannel } from "../core/notify.js";
 import { agentChat } from "../core/agentChat.js";
 import { sanitizeChatImages } from "../core/chatImages.js";
 import { memory, type MemoryEntry } from "../core/memory.js";
@@ -264,6 +266,13 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
   // Stream live log lines to every panel client.
   const unsubLog = onLog((entry) => hub.broadcast({ type: "log", entry }));
 
+  // Owner notices (heartbeat alerts, task outcomes, update news) as an in-panel
+  // toast. Without this the panel is the only surface that would NOT hear about
+  // them, which is exactly backwards for a panel-only install.
+  registerNotifyChannel("panel", async (notice) => {
+    hub.broadcast({ type: "notice", text: notice.text, ts: Date.now() });
+  });
+
   // Refresh the "update available" status in the background so the nav badge is
   // reasonably fresh: once shortly after boot, then every 6 hours.
   setTimeout(() => void checkForUpdate(), 10_000).unref();
@@ -418,6 +427,7 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
 
   return async () => {
     unsubLog();
+    unregisterNotifyChannel("panel");
     await stopSlackDetector();
     clearInterval(updateTimer);
     workers.stop();
@@ -712,6 +722,10 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     // Read-only deployment facts for the Setup view (all .env-sourced; not
     // editable from the panel by design — see SEC notes in CLAUDE.md).
     allowedUserCount: allowedUserIds.size,
+    // Which chat surfaces are configured. Both are optional add-ons to the
+    // panel, so the Setup view can say plainly which ways in exist today.
+    telegramConfigured,
+    slackConfigured: resolveSlackConfig().configured,
     panelHost: config.PANEL_HOST,
     panelPort: config.PANEL_PORT,
     tunnelEnabled: config.PANEL_TUNNEL_ENABLED,
@@ -855,8 +869,10 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
     if (!spec) return reply.code(400).send({ error: "invalid schedule (use 30m, 2h, 1d, or HH:MM)" });
     if (webhookUrl?.trim() && !(await isValidWebhookUrl(webhookUrl)))
       return reply.code(400).send({ error: "invalid or blocked webhook URL" });
-    const target = chatId ?? [...allowedUserIds][0];
-    if (target === undefined) return reply.code(400).send({ error: "no allowed user to own the schedule" });
+    // Falls back to the President's session — the first allowed Telegram user,
+    // or the panel-only session when Telegram is not configured. Either way a
+    // schedule always has an owner, so this can no longer 400.
+    const target = chatId ?? mainChatId();
     schedules.add(target, cwd?.trim() || config.WORKDIR, cleanPrompt, spec, webhookUrl);
     return { schedules: listSchedules() };
   });

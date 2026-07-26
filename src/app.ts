@@ -1,8 +1,11 @@
 import { mkdirSync } from "node:fs";
 import { format } from "node:util";
 import createDebug from "debug";
-import { config, allowedUserIds, regeneratedPanelToken } from "./config.js";
-import { buildBot } from "./bot.js";
+import { config, allowedUserIds, regeneratedPanelToken, telegramConfigured } from "./config.js";
+import { buildBot, getTelegramSurface } from "./bot.js";
+import { startBackgroundWiring } from "./core/wiring.js";
+import { notifyOwner, registerNotifyChannel } from "./core/notify.js";
+import { attachPanelChatRunner, runPanelTurn } from "./core/panelChatRunner.js";
 import { sessions } from "./session/manager.js";
 import { schedules } from "./schedule/manager.js";
 import { heartbeat } from "./core/heartbeat.js";
@@ -20,6 +23,7 @@ import { embeddingsEnabled, autoProbeEmbeddings } from "./core/embeddings.js";
 import { autoDetectLocalProviders } from "./core/providers.js";
 import { leadBots } from "./telegram/leadBotManager.js";
 import { slackSurface } from "./slack/manager.js";
+import { escapeHtml } from "./telegram/formatting.js";
 import { log } from "./logger.js";
 import { registerIdleGate, whenSettled } from "./core/activity.js";
 import { acquireInstanceLock } from "./core/singleton.js";
@@ -69,17 +73,37 @@ async function main(): Promise<void> {
   // exit, then takes over — or refuses to start if it won't yield.
   const releaseLock = await acquireInstanceLock();
 
-  const bot = buildBot();
+  // Telegram is an optional surface. Without it the panel (and Slack, when
+  // configured) are the front ends, and everything below that used to assume a
+  // bot instance goes through the notify hub or the panel turn runner instead.
+  const bot = telegramConfigured ? buildBot() : null;
+  const surface = getTelegramSurface();
+  if (bot && surface) {
+    registerNotifyChannel("telegram", surface.notify);
+  } else {
+    log.info("Telegram surface not configured — running without it");
+  }
 
-  // Let the tunnel manager DM a freshly auto-generated Basic Auth password to the
-  // owner (it fires when the relay is enabled while the user isn't on the form).
-  // Wired before startPanel(), since that's where tunnelManager.start() runs.
+  // Background subsystems (schedules, heartbeat, task outcomes, update notices,
+  // the suggestion inbox). Surface-independent: the turn runner is Telegram's
+  // when there is a bot, and the panel's otherwise.
+  if (!bot) attachPanelChatRunner();
+  startBackgroundWiring({
+    runTurn: surface
+      ? surface.runTurn
+      : (chatId, prompt, opts) => {
+          void runPanelTurn(chatId, prompt, { autonomous: opts.autonomous, cwd: opts.cwd });
+        },
+    reportTask: surface?.reportTask,
+  });
+
+  // Let the tunnel manager surface a freshly auto-generated Basic Auth password
+  // to the owner (it fires when the relay is enabled while the user isn't on
+  // the form). Wired before startPanel(), since that's where tunnelManager.start() runs.
   tunnelManager.setNotifier((text) => {
-    for (const id of allowedUserIds) {
-      void bot.telegram
-        .sendMessage(id, text, { parse_mode: "Markdown" })
-        .catch((err) => log.warn("Failed to DM remote-access password", { id, error: errText(err) }));
-    }
+    // Plain text, not the default italic wrap: this carries a password the user
+    // has to read and copy exactly.
+    void notifyOwner({ text, telegram: { html: escapeHtml(text) } });
   });
 
   // A chat turn stays session.busy through its post-stream tail (quote/summary
@@ -155,20 +179,29 @@ async function main(): Promise<void> {
         }),
     });
 
-  const me = await retryTelegram(() => bot.telegram.getMe(), "getMe");
-  // Record the main bot's @username so the panel Crew view can show Atlas's
-  // t.me link (mirrors how Lead bots capture theirs via setBotUsername).
-  if (me.username) setMainBotUsername(me.username);
-  log.info("Configuration loaded", {
-    bot: `@${me.username}`,
-    allowedUsers: allowedUserIds.size,
-    workdir: config.WORKDIR,
-    model: config.CLAUDE_MODEL,
-    streamMode: config.STREAM_MODE,
-    auth: config.ANTHROPIC_API_KEY ? "api-key" : "cli-login",
-  });
+  if (bot) {
+    const me = await retryTelegram(() => bot.telegram.getMe(), "getMe");
+    // Record the main bot's @username so the panel Crew view can show Atlas's
+    // t.me link (mirrors how Lead bots capture theirs via setBotUsername).
+    if (me.username) setMainBotUsername(me.username);
+    log.info("Configuration loaded", {
+      bot: `@${me.username}`,
+      allowedUsers: allowedUserIds.size,
+      workdir: config.WORKDIR,
+      model: config.CLAUDE_MODEL,
+      streamMode: config.STREAM_MODE,
+      auth: config.ANTHROPIC_API_KEY ? "api-key" : "cli-login",
+    });
+  } else {
+    log.info("Configuration loaded", {
+      surfaces: [config.PANEL_ENABLED ? "panel" : null, "slack-if-configured"].filter(Boolean).join(","),
+      workdir: config.WORKDIR,
+      model: config.CLAUDE_MODEL,
+      auth: config.ANTHROPIC_API_KEY ? "api-key" : "cli-login",
+    });
+  }
 
-  await retryTelegram(() => bot.telegram.setMyCommands([
+  if (bot) await retryTelegram(() => bot.telegram.setMyCommands([
     { command: "new", description: "Start a fresh conversation" },
     { command: "context", description: "How full the context window is" },
     { command: "compact", description: "Summarise history to shrink the context" },
@@ -224,7 +257,7 @@ async function main(): Promise<void> {
     // be running — we drain those below before actually exiting.
     sessions.flush();
     void stopPanel?.();
-    bot.stop(signal);
+    bot?.stop(signal);
     void slackSurface.stop();
     leadBots.stopAll(signal);
     // Kill the tunnel relay child (cloudflared/ngrok). Without this it outlives
@@ -286,24 +319,25 @@ async function main(): Promise<void> {
   process.once("exit", () => releaseLock());
 
   // If the panel token was auto-healed at startup (missing or shorter than the
-  // 16-char minimum), DM the new secret to every allowed user so they can log
-  // back into the panel — the old one no longer works.
+  // 16-char minimum), surface the new secret so the user can log back into the
+  // panel — the old one no longer works. With no chat surface at all this is
+  // the one notice that MUST reach the terminal too, since a locked-out user
+  // cannot read it from the panel they can no longer sign in to.
   if (regeneratedPanelToken) {
     const text =
-      "🔐 *Panel security update*\n\n" +
-      "Your `PANEL_TOKEN` was missing or too short (the panel now requires at " +
+      "🔐 Panel security update\n\n" +
+      "Your PANEL_TOKEN was missing or too short (the panel now requires at " +
       "least 16 characters), so I generated a new strong one and saved it to " +
-      "`.env`.\n\nUse this to sign in to the panel from now on:\n\n" +
-      `\`${regeneratedPanelToken}\`\n\n` +
+      ".env.\n\nUse this to sign in to the panel from now on:\n\n" +
+      `${regeneratedPanelToken}\n\n` +
       "The previous token no longer works. Keep this secret.";
-    for (const id of allowedUserIds) {
-      try {
-        await bot.telegram.sendMessage(id, text, { parse_mode: "Markdown" });
-      } catch (err) {
-        log.warn("Failed to DM regenerated panel token", { id, error: errText(err) });
-      }
-    }
-    log.warn("Regenerated PANEL_TOKEN and notified allowed users");
+    await notifyOwner({
+      text,
+      telegram: { html: `<b>🔐 Panel security update</b>\n\n${escapeHtml(text.split("\n\n").slice(1).join("\n\n"))}` },
+    });
+    // eslint-disable-next-line no-console
+    console.warn(`\n${text}\n`);
+    log.warn("Regenerated PANEL_TOKEN and notified the owner");
   }
 
   // Loud warning when the panel terminal inherits the bot's full environment.
@@ -318,20 +352,14 @@ async function main(): Promise<void> {
         "via `env`. Set PANEL_TERMINAL_INHERIT_ENV=false unless you fully trust everyone with panel access.",
     );
     const text =
-      "⚠️ *Security warning*\n\n" +
-      "`PANEL_TERMINAL_INHERIT_ENV=true` is set while the panel terminal is enabled.\n\n" +
-      "The terminal shell inherits the bot's *full* environment, so anyone with panel " +
-      "access can run `env` and read every secret loaded from `.env` " +
-      "(`TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `PANEL_TOKEN`, API keys, …).\n\n" +
-      "Set `PANEL_TERMINAL_INHERIT_ENV=false` and restart unless you fully trust " +
+      "⚠️ Security warning\n\n" +
+      "PANEL_TERMINAL_INHERIT_ENV=true is set while the panel terminal is enabled.\n\n" +
+      "The terminal shell inherits the bot's full environment, so anyone with panel " +
+      "access can run `env` and read every secret loaded from .env " +
+      "(TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY, PANEL_TOKEN, API keys, …).\n\n" +
+      "Set PANEL_TERMINAL_INHERIT_ENV=false and restart unless you fully trust " +
       "everyone who can reach the panel.";
-    for (const id of allowedUserIds) {
-      try {
-        await bot.telegram.sendMessage(id, text, { parse_mode: "Markdown" });
-      } catch (err) {
-        log.warn("Failed to DM terminal-env security warning", { id, error: errText(err) });
-      }
-    }
+    await notifyOwner({ text, telegram: { html: escapeHtml(text) } });
   }
 
   // launch() resolves cleanly when polling is stopped intentionally (our own
@@ -349,6 +377,7 @@ async function main(): Promise<void> {
   let pollAttempt = 0;
 
   const startPolling = () => {
+    if (!bot) return;
     log.info(pollAttempt === 0 ? "Bot starting (long polling)…" : "Bot retrying polling…", {
       attempt: pollAttempt,
     });
@@ -406,6 +435,7 @@ async function main(): Promise<void> {
   let livenessAlerted = false;
 
   const checkLiveness = async () => {
+    if (!bot) return;
     try {
       await Promise.race([
         bot.telegram.getMe(),
@@ -438,8 +468,10 @@ async function main(): Promise<void> {
     }
   };
 
-  livenessTimer = setInterval(() => void checkLiveness(), LIVENESS_INTERVAL_MS);
-  livenessTimer.unref();
+  if (bot) {
+    livenessTimer = setInterval(() => void checkLiveness(), LIVENESS_INTERVAL_MS);
+    livenessTimer.unref();
+  }
 }
 
 function errText(err: unknown): string {

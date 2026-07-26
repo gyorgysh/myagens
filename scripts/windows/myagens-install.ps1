@@ -412,11 +412,23 @@ function Configure-Env {
     }
 
     Title "Configuration"
-    Write-Host "  You will need a Telegram bot token and your Telegram user ID."
+    Write-Host "  Telegram is optional: the web panel, set up further down, is a complete"
+    Write-Host "  front end on its own. Leave the token blank to run panel-only."
     Write-Host "  Tutorial: $Tutorial`n"
 
-    $token   = if ($env:MYAGENS_TOKEN)    { $env:MYAGENS_TOKEN }    else { Ask "Telegram bot token (from @BotFather)" }
-    $userIds = if ($env:MYAGENS_USER_IDS) { $env:MYAGENS_USER_IDS } else { Ask "Your Telegram user ID(s), comma-separated" }
+    $token   = if ($env:MYAGENS_TOKEN)    { $env:MYAGENS_TOKEN }    else { Ask "Telegram bot token from @BotFather (blank = skip Telegram)" "" }
+    $userIds = if ($env:MYAGENS_USER_IDS) { $env:MYAGENS_USER_IDS } elseif ($token) { Ask "Your Telegram user ID(s), comma-separated" } else { "" }
+
+    # A half-configured Telegram is rejected at startup, so drop both rather
+    # than writing a pair that cannot boot.
+    if ($token -and -not $userIds) {
+        Warn "No user ID entered, so Telegram is skipped (a bot with an empty allow-list answers nobody)."
+        $token = ""
+    } elseif ($userIds -and -not $token) {
+        Warn "No bot token entered, so Telegram is skipped."
+        $userIds = ""
+    }
+    if (-not $token) { Ok "Skipping Telegram — the web panel will be your way in." }
     $apiKey  = if ($env:MYAGENS_API_KEY)  { $env:MYAGENS_API_KEY }  else { Ask "Anthropic API key, pay-as-you-go, not your Pro/Max plan (blank = sign in with a subscription instead)" "" }
 
     if ($env:MYAGENS_MODEL) {
@@ -443,7 +455,12 @@ function Configure-Env {
     Title "MyAgens Panel"
     Write-Host "  Optional embedded web dashboard — health, sessions, tasks, memory, vault, and more."
     $panelChoice = if ($env:MYAGENS_PANEL) { $env:MYAGENS_PANEL } else { "" }
-    $panelEnabled = if ($panelChoice -eq "y") { $true } elseif ($panelChoice -eq "n") { $false } else {
+    # With Telegram skipped the panel is not optional: skipping it too would
+    # leave an install nobody can reach, which startup rejects anyway.
+    $panelEnabled = if (-not $token) {
+        Write-Host "  With Telegram skipped, the panel is your way in." -ForegroundColor DarkGray
+        $true
+    } elseif ($panelChoice -eq "y") { $true } elseif ($panelChoice -eq "n") { $false } else {
         Confirm "Enable the panel? (recommended)" $true
     }
 
@@ -496,9 +513,10 @@ function Configure-Env {
         Write-Host "  (Also saved to .env — keep it private.)" -ForegroundColor DarkGray
     }
 
-    Write-Env @{
-        TELEGRAM_BOT_TOKEN = $token
-        ALLOWED_USER_IDS   = $userIds
+    # Telegram vars are added only as a configured pair, so a skipped Telegram
+    # leaves them out of .env entirely rather than writing a half-pair that
+    # startup would reject.
+    $envValues = @{
         ANTHROPIC_API_KEY  = $apiKey
         CLAUDE_MODEL       = $model
         WORKDIR            = $workdir
@@ -507,6 +525,11 @@ function Configure-Env {
         PANEL_TOKEN        = $panelToken
         PANEL_PORT         = $panelPort
     }
+    if ($token) {
+        $envValues.TELEGRAM_BOT_TOKEN = $token
+        $envValues.ALLOWED_USER_IDS   = $userIds
+    }
+    Write-Env $envValues
 }
 
 # ---------------------------------------------------------------------------
@@ -858,9 +881,11 @@ function Open-Panel {
 # which polls the panel port — signs the user in the moment it comes up.
 function Browser-Setup {
     $envPath = Join-Path $InstallDir ".env"
+    # PANEL_TOKEN, not the bot token: the wizard always writes the panel vars but
+    # Telegram is a step the user may legitimately skip, so a Telegram-less .env
+    # is a finished one.
     $configured = (Test-Path $envPath) -and
-        (Select-String -Path $envPath -Pattern "^TELEGRAM_BOT_TOKEN=.+" -Quiet) -and
-        -not (Select-String -Path $envPath -Pattern "ABC-your-token-here" -Quiet)
+        (Select-String -Path $envPath -Pattern "^PANEL_TOKEN=.+" -Quiet)
     if ($configured) {
         Ok "Already configured — skipping the browser wizard."
     } else {
@@ -880,7 +905,7 @@ function Browser-Setup {
             Pop-Location
         }
         if ($setupExit -ne 0) { Die "Setup was interrupted before it finished. Run the installer again to retry." }
-        if (-not ((Test-Path $envPath) -and (Select-String -Path $envPath -Pattern "^TELEGRAM_BOT_TOKEN=.+" -Quiet))) {
+        if (-not ((Test-Path $envPath) -and (Select-String -Path $envPath -Pattern "^PANEL_TOKEN=.+" -Quiet))) {
             Die "Setup didn't finish. Run the installer again to retry."
         }
         Ok "Configuration saved."

@@ -7,13 +7,23 @@
   <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey">
 </p>
 
-**Your personal AI that lives on your own machine.** Talk to it over Telegram or Slack from anywhere, or drive it from a private web dashboard. It reads your files, runs your code, checks your services, and reports back, asking for your approval before anything risky runs. Atlas is your central coordinator: he runs day-to-day operations, remembers everything, learns your workflows, and commands a team of specialized Leads. Each Lead owns a domain and can have its own Telegram bot.
+**A multi-agent operations platform that runs on your own machine.** Not a chatbot with tools bolted on: a small organisation of real coding agents that share one memory, one skills library, one task board and one set of connectors, and that you run and watch from a private web panel.
 
-Free and open-source under the GNU GPLv3. Built on real **Claude Code** agents (the same agent that runs in your terminal), so every agent can read files, run commands, edit code, check services, and ship things. Replies stream back live and risky actions are gated behind your approval. There is no MyAgens service in the loop. It runs as a process on your own hardware, and the only network calls it makes are the ones you configure: your model provider and any connector you explicitly turn on.
+Every agent can read your files, run your code, check your services and ship things, pausing for your approval before anything risky runs. **Atlas** coordinates: he handles day-to-day work, remembers what he learns, and commands a team of specialised Leads, each owning a domain.
+
+What makes it a platform rather than a bot:
+
+- **Many backends, one fleet.** Each agent independently runs on Claude Code, OpenAI's Codex CLI, Google's Antigravity, Cursor's CLI, xAI's Grok, or a local model through Ollama. They all get the same MyAgens tools, the same playbook and the same approval gate, so the backend is an implementation detail, not a different product.
+- **Failover that actually fails over.** Every agent carries its own fallback backend and model. Hit a rate limit and the turn retries elsewhere, mid-flight, and tells you. Background work moves to the fallback *before* you hit the wall.
+- **Shared memory and skills.** A tiered fact store every agent writes to and recalls from, plus a skills library that grows as procedures prove themselves. What one agent learns, the fleet knows.
+- **Work that runs itself.** A kanban board whose cards can be delegated to autonomous runs, a scheduler, recurring templates, proactive host monitoring, and inbound webhooks that file and start work on their own.
+- **Three ways in, all optional except one.** A local **web panel** (the full control room), **Telegram**, and **Slack**. Pick any combination. The panel alone is a complete setup; the chat surfaces are add-ons for reaching your fleet from a phone.
+
+Free and open-source under the GNU GPLv3. There is no MyAgens service in the loop: it is a process on your own hardware, and the only network calls it makes are the ones you configure, your model provider and any connector you explicitly turn on.
 
 ![MyAgens Panel dashboard: live system health, Claude usage, per-core load, and filesystems](images/dashboard.webp)
 
-*22 live connectors · 30 languages · AES-256 encrypted vault · full audit log · works fully offline*
+*6 agent backends · 22 live connectors · 30 languages · AES-256 encrypted vault · full audit log · works fully offline*
 
 <details>
 <summary><strong>Table of contents</strong></summary>
@@ -21,10 +31,10 @@ Free and open-source under the GNU GPLv3. Built on real **Claude Code** agents (
 - [Security & Privacy, By Design](#security--privacy-by-design)
 - [FAQ](#faq)
 - [The Command Structure](#the-command-structure)
-- [Two Ways In](#two-ways-in)
+- [Three Ways In](#three-ways-in)
 - [Quick Install](#quick-install)
 - [The Panel](#the-panel)
-- [In Telegram](#in-telegram)
+- [In Telegram (optional)](#in-telegram-optional)
 - [What Makes It a Fleet, Not Just a Bot](#what-makes-it-a-fleet-not-just-a-bot)
 - [Bring Your Own Model](#bring-your-own-model)
 - [Setup (manual)](#setup-manual)
@@ -44,10 +54,10 @@ Free and open-source under the GNU GPLv3. Built on real **Claude Code** agents (
 
 ## Security & Privacy, By Design
 
-**These agents can read files, run commands, and edit code on the machine they run on.** That is the whole point: real Claude Code agents, not a sandboxed toy. It deserves a plain account of what keeps it safe:
+**These agents can read files, run commands, and edit code on the machine they run on.** That is the whole point: real coding agents, not a sandboxed toy. It deserves a plain account of what keeps it safe:
 
 - **Nothing risky runs without you.** Every non-read-only tool call (Bash, Write, Edit, a connector write) pauses for an inline **Approve / Deny / Always-allow** prompt before it executes. Read-only tools run freely; everything else waits on you.
-- **Access is a hard allow-list.** Only the Telegram user IDs in `ALLOWED_USER_IDS` can talk to the bot at all. Everyone else is silently ignored, no exceptions.
+- **Access is a hard allow-list, per surface.** The panel needs a long random token and locks out an IP after 10 failed attempts. Telegram answers only the user IDs in `ALLOWED_USER_IDS`; Slack only the member IDs in `SLACK_ALLOWED_USER_IDS`, and only in DMs. Everyone else is silently ignored, no exceptions. Surfaces you do not configure do not exist.
 - **It never phones home.** MyAgens is self-hosted software, not a SaaS product. There is no telemetry, no analytics, and no usage tracking. The only outbound calls are the ones you configure: your model provider and any connector you turn on.
 - **Secrets are actually encrypted.** The vault is AES-256-GCM, keyed to your OS Keychain (or a locked-down `0600` file on Linux), with key rotation and passphrase-protected backup. Nothing comes back out in plaintext, not even over the API.
 - **Every action is logged.** A full, searchable audit trail of everything every agent has ever done, plus deterministic anomaly detection watching for delete bursts, off-hours access, and new privileged grants.
@@ -59,6 +69,12 @@ That is the short version. The full list (SSRF guards, DNS-rebinding protection,
 
 **Does my data ever leave my machine?**
 Not unless you tell it to. MyAgens runs as a process on hardware you control; there is no cloud service in the middle. The only outbound calls are the ones you configure: your model provider (Anthropic, or any OpenAI-compatible/local endpoint) and any connector you explicitly enable. Point it at a local model via Ollama or LM Studio and nothing ever touches the cloud.
+
+**Do I have to install Telegram?**
+No. The web panel is the primary front end and a complete one: chat, crew, board, memory, skills, connectors, schedules, logs, settings. Telegram and Slack are optional add-ons for reaching your fleet from a phone, and you can add either later from the panel without reinstalling anything. The first-run wizard lets you skip both.
+
+**Is this just Claude Code in a chat window?**
+No. Claude Code is one of six interchangeable agent backends (alongside Codex, Antigravity, Cursor, Grok, and local models via Ollama), and agents on different backends coexist in the same fleet sharing one memory, one skills library, one task board and one set of connectors. The parts that make it useful, the crew hierarchy, delegation, the kanban board, the scheduler, monitoring, the vault, the audit log, cross-backend failover, are MyAgens, not the underlying CLI.
 
 **Is it actually free?**
 Yes. It's free and open-source under the GNU GPLv3, with no seat limits, no telemetry, and no commercial tier. Use it, study it, fork it, and contribute back; the only condition is that any distributed version stays open under the same license (see [License](#license)).
@@ -86,19 +102,23 @@ Atlas  (chief coordinator, runs everything day-to-day)
 
 **You** set direction and make final calls. **Atlas** coordinates the team, handles whatever you send him, and knows his Leads' portfolios. **Leads** own their domain. They run specialized autonomous turns, have their own memory and session, and optionally appear as a separate Telegram bot you can message directly. **Assistants** are sub-agents scoped to a Lead.
 
-## Two Ways In
+## Three Ways In
 
-The same agents, two front doors:
+The same fleet, three front doors. Configure any combination, as long as you have at least one.
 
-**Telegram**: message Atlas from your phone. The usual loop for touching a server (open a terminal, SSH in, run something, close it) becomes a chat with an agent already living on that server. When a service falls over at 2 am, you get a ping and can fix it from your phone, no SSH client required. Your Leads have their own bots, so you can message your DevOps Lead directly without going through Atlas.
+**MyAgens Panel** (the default): a web dashboard served in the same process, on loopback. Chat with Atlas or any Lead in the browser, see the full crew hierarchy, watch live system health, run and schedule agents, delegate task-board cards to autonomous runs, browse memory and skills, manage secrets, and tune proactive monitoring. Everything, including adding the other two surfaces, is configured from here. **This is enough on its own.** You never have to install a chat app.
 
-**MyAgens Panel**: an optional web dashboard served in the same process. Chat with Atlas in the browser, see your full crew hierarchy, watch live system health, run and schedule agents, delegate task-board cards to autonomous runs, browse memory and skills, manage secrets, and tune proactive monitoring.
+**Telegram** (optional): message Atlas from your phone. The usual loop for touching a server (open a terminal, SSH in, run something, close it) becomes a chat with an agent already living on that server. When a service falls over at 2 am you get a ping and can fix it from your phone, no SSH client required. Your Leads can have their own bots, so you can message your DevOps Lead directly without going through Atlas.
+
+**Slack** (optional): the same conversation as a DM in your workspace, with the same streaming replies, approval buttons and commands. Set it up from the panel and it starts without a restart.
+
+Approvals and questions are shared, not duplicated: a tool call waiting on you appears in every surface you have, and answering in one settles it everywhere. Background alerts (heartbeat breaches, finished or failed tasks, new releases) fan out the same way, so nothing is only visible in the surface you happen not to be looking at.
 
 ## Quick Install
 
 ### Linux / macOS — browser setup (recommended)
 
-One command in the terminal, everything else in your browser. The terminal part installs the prerequisites (Node 20+, git, the Claude CLI), clones, and builds — no questions asked. Then a local setup page opens where you create your bot, prove it's you (press START in Telegram and you appear on the page — no user IDs to look up), and connect Claude, with every value verified live before it's saved. It finishes signed in to the panel.
+One command in the terminal, everything else in your browser. The terminal part installs the prerequisites (Node 20+, git, the Claude CLI), clones, and builds, no questions asked. Then a local setup page opens where you connect Claude and, if you want them, add Telegram and Slack. Both chat steps have a Skip button: skip them and you get the web panel, which is a complete setup. Every value is verified live before it is saved, and the wizard finishes signed in to the panel.
 
 ```bash
 curl -fsSL https://myagens.com/install.sh | bash -s -- --browser
@@ -136,7 +156,7 @@ After one Windows password prompt (for the background service) the rest happens 
 
 If you run it **without** administrator rights, the installer prints these same steps and waits for a keypress before closing, so the window won't vanish on you.
 
-With the browser setup you only need a [bot token](#setup-manual) — your user id is detected when you press START in the bot's chat. The terminal wizard verifies the token against Telegram as you type it and offers the same press-START id detection, with manual entry as fallback. Prefer to read before you run? The scripts are [`scripts/myagens-install.sh`](scripts/myagens-install.sh) and [`scripts/windows/myagens-install.ps1`](scripts/windows/myagens-install.ps1).
+If you do add Telegram, all you need is a [bot token](#setup-manual): your user id is detected when you press START in the bot's chat. The terminal wizard verifies the token against Telegram as you type it and offers the same press-START id detection, with manual entry as fallback. Prefer to read before you run? The scripts are [`scripts/myagens-install.sh`](scripts/myagens-install.sh) and [`scripts/windows/myagens-install.ps1`](scripts/windows/myagens-install.ps1).
 
 > For an unattended run, set `MYAGENS_TOKEN`, `MYAGENS_USER_IDS`, and `MYAGENS_MODE=service|manual` (and `MYAGENS_YES=1`) in the environment before running.
 
@@ -149,7 +169,7 @@ With the browser setup you only need a [bot token](#setup-manual) — your user 
 | ![Agents panel: the worker roster with run, edit, and delete](images/agents.webp) | ![Tasks panel: Kanban board with delegate-to-agent and a live run log](images/tasks.webp) |
 | **Agents**: manage your crew, with the main agent pinned on top (Edit jumps to its settings). Each Lead can run a one-shot turn, get its own Telegram bot (with its own streaming mode), or be delegated work by Atlas by name. Add agents with an easy or advanced flow. | **Tasks**: a Kanban board with drag-and-drop, priority, WIP limits, custom columns, and a Delegate button (with a per-card Lead picker when more than one Lead is enabled) that hands a card to an autonomous agent run. Watch the live log as it works. |
 | ![Heartbeat panel: proactive monitoring thresholds and recent alerts](images/heartbeat.webp) | ![Schedules panel: timed autonomous prompts](images/schedules.webp) |
-| **Heartbeat**: proactive monitoring. Set CPU/mem/swap/disk and stale-card thresholds, mute individual signals, set quiet hours; Atlas pings Telegram on breach, or runs an autonomous turn to investigate and act first. | **Schedules**: create timed autonomous prompts (`30m`, `2h`, `HH:MM`) from the panel or via `/schedule` in chat, each in its own cwd, with results pushed back to Telegram or a webhook. |
+| **Heartbeat**: proactive monitoring. Set CPU/mem/swap/disk and stale-card thresholds, mute individual signals, set quiet hours; Atlas pings every surface you run on breach, or runs an autonomous turn to investigate and act first. | **Schedules**: create timed autonomous prompts (`30m`, `2h`, `HH:MM`) from the panel or via `/schedule` in chat, each in its own cwd, with results pushed back to your surfaces or a webhook. |
 | ![Memory panel: tier-based fact store with hot/warm/cold recall](images/memory.webp) | ![Connectors panel: live Notion, Google, Apple, Slack, and database integrations](images/connectors.webp) |
 | **Memory**: a tier-based fact store (hot/warm/cold) that agents write to and recall from automatically, with optional semantic search. Search, edit, promote, demote, and delete entries from the panel, or export/import the whole store as portable JSON to migrate between machines. | **Connectors**: attach a vaulted credential and toggle read/write scope to give the fleet live Notion, Google Calendar/Gmail/Drive, Apple Calendar/Mail, Slack, GitHub, Unreal, Unity, PostgreSQL, SQLite, Jira, and Linear tools, plus social platforms (Bluesky, Mastodon, Discord, Reddit, X, YouTube, Facebook Pages — multiple accounts each, so different agents can manage different profiles) and image generation (Replicate, fal.ai, local Automatic1111). Track an optional credential expiry per connector with an ok/expiring/expired badge. |
 | ![Inbox panel: agent suggestions to park, delegate, or dismiss](images/inbox.webp) | ![Logs panel: live human-readable activity feed with diffs](images/logs.webp) |
@@ -163,9 +183,9 @@ With the browser setup you only need a [bot token](#setup-manual) — your user 
 
 **Status**: the public Claude service status with no API key required, plus live reachability, auth, and model lists for the Anthropic API, every configured provider, and any local model server (LM Studio, Ollama) that's running. See [Bring Your Own Model](#bring-your-own-model).
 
-Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (tier-based fact store with hot/warm/cold recall plus optional semantic search and JSON export/import), **Vault** (AES-256-GCM secrets), **Skills** (reusable workflows), **Templates** (reusable prompts with `{{variable}}` slots, quick-picked from the chat composer or listed with `/templates`), **Prompt** (playbook editor), **Logs** (a human-readable activity feed, raw searchable history with 72h rotation, and usage analytics), **Terminal** (a live shell session in the browser, off by default), **Connectors** (live Notion, Google Calendar, Gmail, Google Drive, Apple Calendar, Apple Mail, Slack, GitHub, Unreal Engine, Unity, PostgreSQL, SQLite, Jira Cloud, Linear, Bluesky, Mastodon, Discord, Reddit, X, YouTube, and Facebook Pages integrations with per-connector read/write scope — the social platforms with multiple named accounts each — plus a local Browser Sketchpad for visual verification, custom webhook tools, and inbound webhook triggers), **Gallery** (images generated via Replicate, fal.ai, or local Automatic1111), **Updates** (check, apply, and roll back versions in place, with a "What's new" changelog of newer releases), **Remote Access** (expose the panel over a secure tunnel for phone access), **Approvals** (pending tool-call approvals queued from any chat, resolvable from the browser instead of Telegram), **Web Push** (browser push notifications for tool approvals, task failures, and test pings, using a VAPID keypair that is auto-generated and stored in the vault), **Feedback** (send a bug report or suggestion straight from the dashboard), **Settings** (main agent, plan and budget tracker, language, model providers with live local-backend status), and more. A sticky connection banner warns when the backend goes away and the dashboard reloads itself once it recovers. On first visit, a **guided setup wizard** helps you pick a quick-start scenario or walk through full crew creation step by step.
+Also inside: **System** (live CPU per-core, memory, swap, disk I/O), **Status** (Claude service status + provider/local-backend probes), **Memory** (tier-based fact store with hot/warm/cold recall plus optional semantic search and JSON export/import), **Vault** (AES-256-GCM secrets), **Skills** (reusable workflows), **Templates** (reusable prompts with `{{variable}}` slots, quick-picked from the chat composer or listed with `/templates`), **Prompt** (playbook editor), **Logs** (a human-readable activity feed, raw searchable history with 72h rotation, and usage analytics), **Terminal** (a live shell session in the browser, off by default), **Connectors** (live Notion, Google Calendar, Gmail, Google Drive, Apple Calendar, Apple Mail, Slack, GitHub, Unreal Engine, Unity, PostgreSQL, SQLite, Jira Cloud, Linear, Bluesky, Mastodon, Discord, Reddit, X, YouTube, and Facebook Pages integrations with per-connector read/write scope — the social platforms with multiple named accounts each — plus a local Browser Sketchpad for visual verification, custom webhook tools, and inbound webhook triggers), **Gallery** (images generated via Replicate, fal.ai, or local Automatic1111), **Updates** (check, apply, and roll back versions in place, with a "What's new" changelog of newer releases), **Remote Access** (expose the panel over a secure tunnel for phone access), **Approvals** (pending tool-call approvals from any surface, resolvable right in the browser), **Web Push** (browser push notifications for tool approvals, task failures, and test pings, using a VAPID keypair that is auto-generated and stored in the vault), **Feedback** (send a bug report or suggestion straight from the dashboard), **Settings** (main agent, plan and budget tracker, language, model providers with live local-backend status), and more. A sticky connection banner warns when the backend goes away and the dashboard reloads itself once it recovers. On first visit, a **guided setup wizard** helps you pick a quick-start scenario or walk through full crew creation step by step.
 
-## In Telegram
+## In Telegram (optional)
 
 | | |
 | --- | --- |
@@ -228,13 +248,14 @@ Add a provider once (base URL + token, with LM Studio / Ollama prefill presets),
 
 > No background services installed: full functionality is available. Install as a service later without touching your checkout or data.
 
-1. **Create a bot**: message [@BotFather](https://t.me/BotFather), run `/newbot`, copy the token.
-2. **Find your user id**: message [@userinfobot](https://t.me/userinfobot).
-3. **Configure**:
+1. **Configure at least one front end.** The panel alone is enough:
    ```bash
    cp .env.example .env
-   # edit .env: TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, WORKDIR
+   # edit .env: PANEL_ENABLED=true, PANEL_TOKEN=<16+ random chars>, WORKDIR
    ```
+   Startup fails with a printed list if nothing is configured, or if a surface is only half configured.
+2. **Optional, add Telegram**: message [@BotFather](https://t.me/BotFather), run `/newbot`, copy the token; get your user id from [@userinfobot](https://t.me/userinfobot); set `TELEGRAM_BOT_TOKEN` and `ALLOWED_USER_IDS` together.
+3. **Optional, add Slack**: easiest from the panel (Settings → Slack), which verifies both tokens and detects your member id from a DM. The `SLACK_*` env vars are the fallback.
 4. **Install and run**:
    ```bash
    npm install
@@ -274,15 +295,15 @@ On Windows (elevated PowerShell):
 
 ## Configuration
 
-Two variables get you running; everything else has a sane default.
+One front end gets you running, everything else has a sane default. `PANEL_ENABLED=true` plus a `PANEL_TOKEN` is the shortest path; Telegram and Slack are additive.
 
 <details>
 <summary><strong>Full environment variable reference</strong></summary>
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `TELEGRAM_BOT_TOKEN` | yes | Token from @BotFather (Atlas's bot) |
-| `ALLOWED_USER_IDS` | yes | Comma-separated numeric Telegram user ids |
+| `TELEGRAM_BOT_TOKEN` | with `ALLOWED_USER_IDS` | Token from @BotFather (Atlas's bot). Leave both unset to run without Telegram |
+| `ALLOWED_USER_IDS` | with `TELEGRAM_BOT_TOKEN` | Comma-separated numeric Telegram user ids allowed to talk to the bot |
 | `WORKDIR` | no | Directory Atlas starts in (default: `~/MyAgens-Workspace`, auto-created on first run) |
 | `STATE_FILE` | no | Session + usage persistence path (default `data/state.json`) |
 | `CLAUDE_MODEL` | no | Default model id (default `claude-opus-5`). Retired ids (`claude-sonnet-4-5`, `claude-sonnet-4-6`) are silently upgraded to `claude-sonnet-5` |
@@ -374,7 +395,7 @@ If a spoken reply fails to synthesize or send (a provider needing one-time terms
 
 ## Enabling the Panel
 
-The panel is served **in the same process** as the bot (no extra service). Off by default because it has the same reach as the bot.
+The panel is served **in the same process** as the agents (no extra service). It is the primary front end, and the only one that can configure the others, but it is off unless you enable it because it has the same reach as the agents themselves.
 
 ```bash
 PANEL_ENABLED=true
@@ -425,7 +446,7 @@ Everything the panel does is a REST call you can script. Auth is the same `PANEL
 
 ## Permissions
 
-Nothing runs without your say-so. For every non-read-only tool call you get an inline prompt showing exactly what is about to happen:
+Nothing runs without your say-so. For every non-read-only tool call you get a prompt showing exactly what is about to happen, in whichever surfaces you run. The same request appears in the panel, in Telegram and in Slack at once, and answering in one settles it everywhere:
 
 **Approve**: run it once.
 **Deny**: refuse it.
@@ -446,8 +467,11 @@ The condensed pitch is above; this is everything, including the security hardeni
 <details>
 <summary><strong>Expand for the full list (60+ items)</strong></summary>
 
+- **Optional chat surfaces**: the web panel is the primary front end and a complete one. Telegram and Slack are add-ons: configure either, both, or neither. Startup only refuses if *nothing* is configured, or if one surface is half configured (a Telegram token with no allow-list, say). The first-run wizard has a Skip button on both chat steps, and the panel's Setup view shows which ways in currently exist.
+- **One conversation, every surface**: the President's chat is a single shared session (resume token, cwd, autonomy, always-allow presets). Type in Telegram and it appears in the panel; type in the panel and Telegram sees it. With no chat surface at all, the panel drives the same session natively, with the same tool gating, loop detection and stale-session recovery.
+- **Notifications that follow you**: heartbeat alerts, delegated-task outcomes, agent reports, inbox pings and new-release notices go to one hub that fans out to every live surface (Telegram DM, Slack DM, an in-panel toast, a browser push) and always to the audit log, so an alert is never stranded in a surface you did not install.
 - **Crew hierarchy**: President, Atlas, Leads, Assistants. Each level knows the one above it. Leads have portfolios, their own sessions, and optionally their own Telegram bots. Each Lead bot keeps its own conversation in `data/lead-<id>-state.json` (the same resume-token store as the main session), so a Lead chat survives a restart or update; the gitignored `data/` directory is left untouched by `update.sh`.
-- **Council votes**: `/council <idea>` calls every enabled Lead plus Atlas himself, gets a SUPPORT/OPPOSE vote with domain reasoning from each, and delivers a tally to Telegram. Votes are **relevance-weighted**: each voter counts in proportion to how relevant the proposal is to their domain (everyone counts equally when embeddings are off). The decision rule is configurable: simple majority (default), supermajority (≥2/3), or unanimous. Requires at least one enabled Lead; otherwise returns `noQuorum` and shows an amber banner in the panel. Full history in the panel Crew tab; individual sessions can be deleted (`DELETE /api/council/:id`).
+- **Council votes**: `/council <idea>` calls every enabled Lead plus Atlas himself, gets a SUPPORT/OPPOSE vote with domain reasoning from each, and delivers a tally. Votes are **relevance-weighted**: each voter counts in proportion to how relevant the proposal is to their domain (everyone counts equally when embeddings are off). The decision rule is configurable: simple majority (default), supermajority (≥2/3), or unanimous. Requires at least one enabled Lead; otherwise returns `noQuorum` and shows an amber banner in the panel. Full history in the panel Crew tab; individual sessions can be deleted (`DELETE /api/council/:id`).
 - **Inter-agent crew tools**: `crew_delegate` (hand a task to a Lead and get their output back), `crew_report` (log a summary and optionally notify the president), `crew_ask_president` (pause until the user replies, then continue), `crew_suggest` (file a non-urgent idea to the president's persistent suggestion inbox). `crew_delegate` no longer lets a caller escalate privilege through the delegation chain: the child run's autonomy is capped at the caller's (only `full`/`auto_until_error` callers grant bypass), and a planning turn files the delegation to the inbox for explicit approval instead of firing real work. From Telegram `/inbox` or the panel Crew tab, triage each suggestion: **Park** (create a backlog card), **Delegate** (create and immediately route to a Lead), or **Dismiss** (archive).
 - **Suggestion inbox** (`/inbox`): a persistent queue of non-urgent proposals from agents. Accepts `Park`, `Delegate`, and `Dismiss` actions with inline buttons in Telegram; panel Crew tab shows the same digest. Routes: `GET /api/suggestions`, `POST /api/suggestions/:id/accept|delegate|dismiss`.
 - **Memory tiers**: hot (every turn), warm (keyword-recalled), cold (panel-only). Auto-decay and promote/demote controls in the panel.
@@ -460,12 +484,12 @@ The condensed pitch is above; this is everything, including the security hardeni
 - **Remote Control**: a sub-toggle of Tmux mode — the persistent instance launches with Claude Code Remote Control, so the live session can be watched and steered from claude.ai/code or the Claude mobile app under the agent's own name, and restarts try to resume the same claude.ai session instead of spawning new ones. Toggle from the panel or with `/rc on|off` in Telegram; needs a Claude subscription sign-in.
 - **Language**: 30 languages for agent responses; global default from Settings; per-agent override on each Lead; per-chat `/lang` command. Panel interface available in English and Hungarian.
 - **Branding overrides**: `ATLAS_NAME` and `BRAND_NAME` rename the agent and product for self-hosted deployments. **White-label** goes further: a panel surface (Settings → Whitelabel) to override the panel title, logo, favicon, colours, and email footer. Free to use — saved values apply immediately, and a Reset-to-defaults button restores the stock look. A **Custom CSS** drop-in re-skins the whole panel by overriding its theme variables (`--accent`, `--page`, `--surface`, …) — describe the look you want in plain language and a one-shot Haiku pass drafts light + dark theme CSS for review before you save.
-- **Daily digest**: `/digest` posts a tight summary of the last 24 hours of fleet activity to Telegram: tasks completed, autonomous runs that succeeded or errored, memories written, skills saved, and the day's cost.
+- **Daily digest**: `/digest` posts a tight summary of the last 24 hours of fleet activity: tasks completed, autonomous runs that succeeded or errored, memories written, skills saved, and the day's cost.
 - **Conversation search**: one panel search box over everything you've said and every autonomous run transcript on disk, ranked by meaning (the same hybrid cosine + keyword search as memory) with a snippet around the match.
 - **Custom webhook tools**: register any HTTP endpoint in the panel and it becomes a callable agent tool (`webhook_<name>`); the agent fills in the declared query/header/body/path params and the call goes out through the SSRF-guarded fetch. Auth headers can reference a vaulted secret so tokens stay encrypted.
 - **Inbound webhook triggers**: give an external service (a GitHub push, a Stripe event, an uptime ping) a public URL that fires an autonomous run. Each trigger has its own secret and authenticates callers with an HMAC-SHA256 signature over the request body; no panel token is needed. A fired trigger files a task card, delegates it, and feeds the incoming payload into the prompt, reusing the full delegation path (transcript, retry, completion webhook).
-- **Live streaming**: Telegram Rich Messages (Bot API 10.1) and message drafts (Bot API 9.3): replies animate as previews and land as clean, structured messages.
-- **Proactive monitoring**: optional heartbeat watches host health (CPU/mem/swap/disk) and stalled task cards, pinging Telegram on breach, or running an autonomous turn to investigate first. Individual signal types (cpu, mem, swap, disk, stale) can be muted from the panel without disabling the whole heartbeat.
+- **Live streaming**: replies stream as they are written in every surface. Telegram uses Rich Messages (Bot API 10.1) and message drafts (Bot API 9.3) so replies animate as previews and land as clean, structured messages; Slack edits one message per segment; the panel streams over its WebSocket.
+- **Proactive monitoring**: optional heartbeat watches host health (CPU/mem/swap/disk) and stalled task cards, pinging every surface you run on breach, or running an autonomous turn to investigate first. Individual signal types (cpu, mem, swap, disk, stale) can be muted from the panel without disabling the whole heartbeat.
 - **Secret vault**: AES-256-GCM encrypted secrets with the master key in the macOS Keychain (file fallback on Linux). Reference secrets anywhere as `vault:<id>`. The panel Vault view shows **usage badges** on each secret so you can see at a glance whether a secret is in use before deleting it. **Key rotation** (`POST /api/vault/rotate`) re-encrypts all secrets under a fresh key in one atomic operation. **Encrypted backup** (`POST /api/vault/export`) produces a portable passphrase-protected blob you can import on another machine; `POST /api/vault/import-backup` additively restores without touching existing entries.
 - **Multi-agent task delegation**: task board cards can be delegated to an autonomous run. The agent can break cards into subtasks, complete them, and move the card to Done. When a delegated run breaks a card into subtasks, the parent card is auto-archived to keep the backlog clean. A global concurrency queue (`maxConcurrent`, default 3) prevents simultaneous delegation pile-ups; excess runs show a "queued" status in amber until a slot opens. Failed cards can be retried with one click from the panel or from the inline 🔁 button in Telegram; retry resumes the previous Claude session so context is not lost. Per-run transcripts are stored in `data/runs/` and viewable in the panel via `GET /api/runs/:runId/log`. **Blocked-by dependencies**: set `blockedBy` on a card to list prerequisite card ids; a delegated run won't start until all prerequisites have reached the Done column, preventing agents from working on things out of order.
 - **Tasks board ergonomics**: an "+ Add card" button at the top of each column so you can prepend without scrolling. Bulk select mode lets you select multiple cards and Delete, Delegate, or "Run as one task" (combines their titles and notes into a single delegated run) in one shot; the bulk Delegate action includes a Lead picker so the selected cards run under a chosen Lead (or auto-routed). Cards with long or multi-line markdown notes get an inline expand/collapse toggle so you can read the full note without opening the edit form. Columns auto-archive cards once they exceed 20 items.
@@ -481,7 +505,7 @@ The condensed pitch is above; this is everything, including the security hardeni
 - **Context-window awareness with cost guards**: `/context` shows how full the window is against the **200k premium-pricing cliff** (above which Claude's long-context rates roughly double input cost), and `/compact` summarises the conversation to shrink it — native in the persistent TUI under Tmux mode, routed through the turn pipeline otherwise. A one-shot nudge fires when a turn crosses the cliff. Separately, a **stale-cache guard** offers *Continue vs Start fresh* before reloading a large conversation whose prompt cache has gone cold (idle past `CACHE_TTL_MS`, default 1h), so you don't silently pay to re-cache a 100k+ context. Thresholds are tunable (`CONTEXT_WARN_TOKENS`, `CONTEXT_WINDOW_TOKENS`, `CACHE_RECACHE_WARN_TOKENS`).
 - **Git review from chat**: `/diff` shows the diff with inline Commit / Discard buttons; `/commit <message>` stages and commits.
 - **Voice notes**: transcribed and run as prompts via OpenAI-compatible API (OpenAI, Groq), fully local Vosk, or xAI's `/v1/stt`. `/voice on` adds a spoken reply (OpenAI TTS, fully local Piper, or xAI's `/v1/tts`) whenever *you* send a voice message, alongside the usual text answer; typed messages stay text-only. Engine, provider, model, and credentials for both directions are configurable from the panel (Settings → Voice) as well as `.env`, with an optional vault-backed key per engine.
-- **Multi-backend agents**: beyond swapping Claude models/providers, an individual Lead/worker (or Atlas) can run on **xAI's Grok CLI** or **OpenAI's Codex CLI** instead of the Claude Agent SDK. Each wraps that provider's own agentic CLI product, tool belt and sandboxing included, rather than reimplementing one. A fourth backend, **Ollama (local chat)**, talks straight to a local Ollama server's chat API instead of a CLI, giving a small local model (14-24B) a tiny hand-built prompt and a single approval-gated `Bash` tool so it stays fast and fully Anthropic-independent. This is an advanced option (`/model <backendId>` in Telegram, or a selector in the panel); Claude remains the default everywhere unless you opt in, and picking a non-Claude backend hides the now-irrelevant Provider/Model fields to prevent an invalid pairing.
+- **Multi-backend agents**: six interchangeable backends behind one registry. Beyond swapping Claude models and providers, an individual Lead/worker (or Atlas) can run on **OpenAI's Codex CLI**, **Google's Antigravity** (`agy`), **Cursor's CLI**, or **xAI's Grok CLI** instead of the Claude Agent SDK. Each wraps that provider's own agentic CLI product, tool belt and sandboxing included, rather than reimplementing one, and Codex, Antigravity and Cursor are wired in deeply enough to get your MyAgens tools, persona, playbook and real Approve/Deny gating, so they behave like your agents rather than stock CLIs. A sixth, **Ollama (local chat)**, talks straight to a local Ollama server's chat API instead of a CLI, giving a small local model (14-24B) a tiny hand-built prompt and a single approval-gated `Bash` tool so it stays fast and fully Anthropic-independent. Mix freely: different agents in one fleet can be on different backends at the same time, sharing the same memory, skills and board. Claude remains the default everywhere unless you opt in.
 - **Web Push notifications**: the panel registers browser subscriptions (VAPID keypair auto-generated and stored in the vault) and pushes real-time notifications (pending approvals, task failures, test pings) even when the tab is closed. Manage subscriptions and send a test ping via `GET|POST /api/push`.
 - **Panel approval queue**: pending tool-call approvals from any Telegram chat are mirrored to the panel (`GET /api/approvals`, `POST /api/approvals/:id/resolve`). Resolve them from the browser without touching your phone.
 - **Local model support**: point Atlas or any Lead at LM Studio, Ollama, or any Anthropic-compatible proxy, switchable live from the Settings tab.
@@ -554,19 +578,24 @@ Anything Atlas asks for can also be answered by typing instead of clicking: a qu
 
 ## Architecture
 
-Built on [`telegraf`](https://github.com/telegraf/telegraf) and [`@anthropic-ai/claude-agent-sdk`](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk); the panel uses [`fastify`](https://fastify.dev) + [`systeminformation`](https://systeminformation.io) on the server and React + Vite + Tailwind on the client.
+One Node process hosts everything: the agent backends, the shared stores (memory, skills, tasks, vault), the schedulers, and every front end you enabled.
+
+Agents run behind an `AgentBackend` registry, so Claude ([`@anthropic-ai/claude-agent-sdk`](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)), Codex, Antigravity, Cursor, Grok and Ollama are all interchangeable at the call site. Chat surfaces are equally pluggable: Telegram uses [`telegraf`](https://github.com/telegraf/telegraf), Slack uses [`@slack/bolt`](https://tools.slack.dev/bolt-js/) in Socket Mode, and both are optional. The panel is [`fastify`](https://fastify.dev) + [`systeminformation`](https://systeminformation.io) on the server with React + Vite + Tailwind on the client.
+
+Background work (schedules, the heartbeat, delegated cards, update notices) is wired independently of any surface and reports through one notification hub that fans out to whichever front ends are live, so the same install behaves identically with three surfaces or with none but the panel.
 
 <details>
 <summary><strong>Full source tree</strong></summary>
 
 ```
 src/
-  index.ts            entry: load config, build Atlas bot, start Lead bots, launch
+  index.ts            entry: pick first-run setup mode or the real app
+  app.ts              boot: optional Telegram bot, Slack surface, panel, background wiring
   config.ts           env parse + validation (zod)
   auth.ts             allow-list middleware (silently drops non-admins)
   logger.ts           structured logger (LOG_LEVEL)
   prompt.ts           Atlas personality + persona + language + work.md + crew roster (per turn)
-  bot.ts              Telegraf wiring + per-turn orchestration
+  bot.ts              Telegraf wiring + per-turn orchestration (only when Telegram is configured)
   commands.ts         /new /cd /pwd /status /projects /diff /commit /usage /allow
                       /schedule /stop /mode /lang /council /inbox /digest /templates /help
   git.ts              shell-free git helpers (status, diff, commit, restore)
@@ -596,14 +625,19 @@ src/
     customization.ts  Per-turn .cursor/ hook + MCP config in the project (merge, restore, refcount)
     toolMap.ts        Cursor hook tool names -> canonical Bash/Read/Write/Grep
     prompt.ts         Cursor's runtime paragraph for the shared CLI system prompt
-  core/               telegraf-free layer shared by all agents and the panel
-    backends.ts       AgentBackend registry (claude-agent-sdk default, grok-cli, codex-cli, agy-cli, cursor-cli)
+  core/               surface-free layer shared by all agents and every front end
+    backends.ts       AgentBackend registry (claude-agent-sdk default, grok-cli, codex-cli, agy-cli, cursor-cli, ollama)
+    notify.ts         owner-notification hub: fans an alert out to whichever surfaces are live
+    wiring.ts         background subsystems (schedules, heartbeat, task outcomes, inbox), surface-independent
     cliBridge.ts      loopback control plane shared by CLI-wrapping backends: republishes our MCP tools, gates the CLI's own tools
     cliPrompt.ts      shared system-prompt builder for CLI-wrapping backends (full block once per conversation)
     health.ts         system-health snapshot (CPU/mem/swap/disk/IO)
     status.ts         public Claude status + provider/local-backend probes
     snapshot.ts       read-only session/usage views
-    chat.ts           the panel's dedicated Claude chat session (Atlas)
+    chat.ts           the President's chat, as the panel sees it
+    chatBridge.ts     the one shared conversation, driven by Telegram or by the panel
+    panelChatRunner.ts  runs Atlas turns natively when there is no chat surface
+    panelApprovals.ts   tool approvals when the panel is the only place to answer them
     agentChat.ts      per-worker/Lead interactive chat sessions
     agentUsage.ts     per-agent cost + token attribution and daily-by-role rollup
     memory.ts         tiered fact store (hot/warm/cold, decay, recall)

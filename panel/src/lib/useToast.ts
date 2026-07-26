@@ -111,7 +111,8 @@ function push(variant: ToastVariant, message: string, opts: PushOpts = {}): numb
 export const toast = {
   success: (message: string) => push("success", message),
   error: (message: string) => push("error", message),
-  info: (message: string) => push("info", message),
+  /** `durationMs` overrides the default dwell — background alerts stay longer. */
+  info: (message: string, opts: { durationMs?: number } = {}) => push("info", message, opts),
   /**
    * Show an undoable toast: the visual change should already be applied
    * optimistically by the caller. `onCommit` runs once the undo window closes

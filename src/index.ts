@@ -1,12 +1,12 @@
 /**
  * Entry point. Chooses between the real app and first-run setup mode.
  *
- * A fresh install has no TELEGRAM_BOT_TOKEN / ALLOWED_USER_IDS yet; instead of
- * exiting with a printed config error (which only helps terminal users), boot a
- * loopback-only browser wizard that collects and validates the required values,
- * writes .env, and hands off to the real app. Both branches are dynamic imports
- * on purpose: app.ts pulls in config.ts, whose module-load parse process.exit(1)s
- * on invalid config, so the decision must happen before that module is evaluated.
+ * A fresh install has no configured front end yet; instead of exiting with a
+ * printed config error (which only helps terminal users), boot a loopback-only
+ * browser wizard that collects and validates what it needs, writes .env, and
+ * hands off to the real app. Both branches are dynamic imports on purpose:
+ * app.ts pulls in config.ts, whose module-load parse process.exit(1)s on
+ * invalid config, so the decision must happen before that module is evaluated.
  *
  * MYAGENS_SETUP=off restores the old fail-fast behaviour (CI, headless installs
  * that prefer the printed issue list).
@@ -50,16 +50,37 @@ function sanitizeAnthropicEnv(dotenvKeys: Record<string, string>): void {
   }
 }
 
+/**
+ * True when there is no configured way to reach the agent at all.
+ *
+ * Any one of the three front ends is enough: the web panel, Telegram, or
+ * Slack. Telegram is no longer special — an install that only ever wants the
+ * panel boots straight into it, and a half-configured Telegram (a token with
+ * no allow-list, or the untouched .env.example placeholder) is treated as not
+ * configured rather than as a reason to block the other surfaces.
+ */
 function needsSetup(): boolean {
   if (process.env.MYAGENS_SETUP === "off") return false;
+
+  const panel =
+    process.env.PANEL_ENABLED === "true" && (process.env.PANEL_TOKEN ?? "").trim().length > 0;
+
   const token = (process.env.TELEGRAM_BOT_TOKEN ?? "").trim();
-  if (!token || token === EXAMPLE_TOKEN) return true;
   const ids = (process.env.ALLOWED_USER_IDS ?? "").trim();
-  const hasValidId = ids
-    .split(",")
-    .map((x) => Number(x.trim()))
-    .some((n) => Number.isInteger(n) && n > 0);
-  return !hasValidId;
+  const telegram =
+    Boolean(token) &&
+    token !== EXAMPLE_TOKEN &&
+    ids
+      .split(",")
+      .map((x) => Number(x.trim()))
+      .some((n) => Number.isInteger(n) && n > 0);
+
+  const slack =
+    Boolean((process.env.SLACK_BOT_TOKEN ?? "").trim()) &&
+    Boolean((process.env.SLACK_APP_TOKEN ?? "").trim()) &&
+    Boolean((process.env.SLACK_ALLOWED_USER_IDS ?? "").trim());
+
+  return !panel && !telegram && !slack;
 }
 
 if (needsSetup()) {

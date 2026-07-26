@@ -13,11 +13,12 @@ export type ChatMessage = BridgeMessage;
 type Broadcaster = (msg: unknown) => void;
 
 /**
- * Panel Chat is a window onto the *main* Telegram conversation (the first
- * allowed user's session). It no longer keeps its own isolated Claude session:
+ * Panel Chat is the President's conversation with Atlas. When Telegram is
+ * configured it is a window onto that chat (the first allowed user's session):
  * messages typed in Telegram show up here, messages sent from the panel are
  * driven through the same turn flow (shared resume token, cwd, autonomy), and
- * tool approvals surface as the usual Telegram inline buttons.
+ * tool approvals surface as the usual Telegram inline buttons. When it is not,
+ * the same session is driven natively from the panel instead — see chatBridge.
  *
  * This class is a thin facade over `chatBridge` (the live mirror) + the main
  * `Session`, preserving the REST surface the panel server already speaks.
@@ -31,10 +32,9 @@ export class ChatManager {
     return config.PANEL_CHAT_ENABLED;
   }
 
-  /** The main Telegram session, or undefined if no allowed user is configured. */
+  /** The President's session — the Telegram one, or the panel-only session. */
   private mainSession() {
-    const id = mainChatId();
-    return id === undefined ? undefined : sessions.get(id);
+    return sessions.get(mainChatId());
   }
 
   /** Panel-facing snapshot. */
@@ -94,11 +94,8 @@ export class ChatManager {
   /** Start a fresh conversation (drop resume token + mirrored history). */
   clear(): void {
     const id = mainChatId();
-    if (id !== undefined) {
-      const s = sessions.get(id);
-      s.abort?.abort();
-      sessions.reset(id);
-    }
+    sessions.get(id).abort?.abort();
+    sessions.reset(id);
     // Tmux mode: the conversation also lives in the persistent TUI — drop its
     // resume tokens too, or the old thread would just be resumed next turn.
     void resetInstanceConversation("atlas").catch(() => {});

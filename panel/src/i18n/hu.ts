@@ -520,7 +520,10 @@ export const hu: Translations = {
   setup_ready_copy: "Másolás",
   setup_ready_copied: "Másolva",
   setup_ready_no_bot:
-    "Még nincs bot-felhasználónév. Állítsd be a TELEGRAM_BOT_TOKEN értéket a .env fájlban, indítsd újra, és itt megjelenik a botod hivatkozása.",
+    "Készen állsz: mindent ebből a panelből irányíthatsz. A Telegram és a Slack csak opcionális extra: állíts be egyet a Beállításokban, ha a telefonodról is el akarod érni az ügynöködet.",
+  setup_ways_in: "Elérési módok",
+  setup_surface_panel: "Webes panel",
+  setup_surface_off: "kikapcsolva",
   settings_title: "Beállítások",
   // Az egységes Beállítások képernyőbe vont konfigurációs szakaszok
   settings_group_config: "Konfiguráció",

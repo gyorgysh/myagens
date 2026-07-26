@@ -260,10 +260,21 @@ async function handleSlackPrompt(
 
   const loopDetector = new LoopDetector(config.LOOP_THRESHOLD);
 
+  // Captured, not read off the session: the stop command clears session.abort
+  // after aborting, and a tool call can still land a second later (the backend
+  // takes a moment to wind down). Without this the turn would post a question
+  // or an approval *after* the user was told it stopped.
+  const abortSignal = session.abort.signal;
+
   const canUseTool = async (
     toolName: string,
     input: Record<string, unknown>,
   ): Promise<PermissionResult> => {
+    if (abortSignal.aborted) {
+      log.info("Tool call refused — turn already stopped (Slack)", { userId, tool: toolName });
+      return { behavior: "deny", message: "The user stopped this turn." };
+    }
+
     // AskUserQuestion has a TUI-native picker with no Slack equivalent, so we
     // intercept it: render the questions as Block Kit buttons (with a
     // free-text fallback), then hand the collected answers back to the model

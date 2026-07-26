@@ -4,6 +4,10 @@ import { log } from "../logger.js";
 
 const SLACK_EDIT_INTERVAL_MS = 1500;
 const SLACK_MAX_CHARS = 3800;
+/** How often the placeholder repaints while the model has produced nothing. */
+const IDLE_TICK_MS = 15_000;
+/** Don't start showing elapsed time until a turn is slow enough to look stuck. */
+const IDLE_SHOW_AFTER_MS = 20_000;
 
 export class SlackStreamer {
   private content = "";
@@ -14,6 +18,9 @@ export class SlackStreamer {
   private flushing = false;
   private dirty = false;
   private lastRendered = "";
+  private startedAt = Date.now();
+  private initialText = "_Working on it..._";
+  private idleTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private web: WebClient,
@@ -21,16 +28,37 @@ export class SlackStreamer {
   ) {}
 
   async start(initialText?: string): Promise<void> {
+    this.startedAt = Date.now();
+    this.initialText = initialText ?? this.initialText;
     try {
       const res = await this.web.chat.postMessage({
         channel: this.channel,
-        text: initialText ?? "_Working on it..._",
+        text: this.initialText,
       });
       if (res.ts) {
         this.ts = res.ts;
       }
     } catch (err) {
       log.error("SlackStreamer start failed", { error: err instanceof Error ? err.message : String(err) });
+    }
+    // A turn can spend minutes between "accepted" and its first output. With a
+    // static placeholder that is indistinguishable from a hang, so tick the
+    // elapsed time until something real arrives.
+    this.idleTimer = setInterval(() => this.idleTick(), IDLE_TICK_MS);
+    this.idleTimer.unref?.();
+  }
+
+  /** Repaint the placeholder with elapsed time while nothing has streamed yet. */
+  private idleTick(): void {
+    if (this.content || this.ts === undefined) return;
+    if (Date.now() - this.startedAt < IDLE_SHOW_AFTER_MS) return;
+    this.scheduleFlush();
+  }
+
+  private stopIdleTick(): void {
+    if (this.idleTimer) {
+      clearInterval(this.idleTimer);
+      this.idleTimer = null;
     }
   }
 
@@ -65,8 +93,13 @@ export class SlackStreamer {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.stopIdleTick();
     this.status = "";
-    if (this.ts && this.dirty) {
+    if (this.ts && !this.content) {
+      // Nothing streamed into this message, so sealing it would leave a stray
+      // "Working on it…" sitting above the prompt forever. Take it away.
+      await this.web.chat.delete({ channel: this.channel, ts: this.ts }).catch(() => {});
+    } else if (this.ts && this.dirty) {
       const text = this.render(true);
       if (text !== this.lastRendered) {
         await this.web.chat.update({ channel: this.channel, ts: this.ts, text }).catch(() => {});
@@ -107,7 +140,15 @@ export class SlackStreamer {
       out += (out ? "\n\n" : "") + `_${this.footer}_`;
     }
 
-    return out.trim() || "_..._";
+    out = out.trim();
+    if (out) return out;
+
+    // Nothing has streamed yet. Show the ack with elapsed time rather than a
+    // bare "…", so a slow turn reads as working instead of wedged.
+    const elapsed = Date.now() - this.startedAt;
+    return elapsed >= IDLE_SHOW_AFTER_MS
+      ? `${this.initialText} _(${fmtElapsed(elapsed)})_`
+      : this.initialText;
   }
 
   private async flush(): Promise<void> {
@@ -150,6 +191,7 @@ export class SlackStreamer {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.stopIdleTick();
     this.status = "";
     if (footer) {
       this.footer = footer;
@@ -169,11 +211,16 @@ export class SlackStreamer {
     // sealed the last segment and nothing reopened it, post a fresh one so the
     // final content/footer isn't silently dropped.
     if (chunks.length === 1) {
-      const text = chunks[0] || "_..._";
+      const text = chunks[0];
       try {
         if (this.ts) {
-          await this.web.chat.update({ channel: this.channel, ts: this.ts, text });
-        } else {
+          // Nothing was ever streamed (an aborted or tool-only turn): remove the
+          // placeholder rather than leaving a bare "…" behind.
+          if (text) await this.web.chat.update({ channel: this.channel, ts: this.ts, text });
+          else await this.web.chat.delete({ channel: this.channel, ts: this.ts });
+        } else if (text) {
+          // breakForInterrupt() sealed the last segment and nothing reopened it
+          // — post the final content so it isn't silently dropped.
           await this.web.chat.postMessage({ channel: this.channel, text });
         }
       } catch (err) {
@@ -206,4 +253,12 @@ export class SlackStreamer {
       }
     }
   }
+}
+
+/** "45s" / "2m 10s" — short enough to sit inside the working-on-it line. */
+function fmtElapsed(ms: number): string {
+  const total = Math.round(ms / 1000);
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }

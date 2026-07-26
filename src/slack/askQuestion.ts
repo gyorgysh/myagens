@@ -352,14 +352,19 @@ export class SlackAskQuestionManager {
     return true;
   }
 
-  /** Clear the buttons, post a confirmation, and resolve the question promise. */
+  /** Resolve the question promise, then clear the buttons and show the answer. */
   private async finalize(id: string, answer: string): Promise<void> {
     const entry = this.pending.get(id);
     if (!entry) return;
     clearTimeout(entry.timeout);
     this.pending.delete(id);
     askQueue.remove(id);
-    await this.web.chat
+    // Resolve FIRST. Redrawing the message is cosmetic, but it is a Slack API
+    // call: awaiting it before resolving means a slow or rate-limited
+    // chat.update holds the whole turn hostage after the user has already
+    // answered — the exact "I picked one and nothing happened" failure.
+    entry.resolve(answer);
+    void this.web.chat
       .update({
         channel: entry.channel,
         ts: entry.ts,
@@ -372,7 +377,6 @@ export class SlackAskQuestionManager {
         ],
       })
       .catch(() => {});
-    entry.resolve(answer);
   }
 }
 

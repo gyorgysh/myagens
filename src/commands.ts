@@ -20,7 +20,7 @@ import type { UsageStat } from "./session/store.js";
 import { loadProbeResult, runProbe } from "./core/usageProbe.js";
 import { getPlanSettings, billingPeriodStart, daysUntilReset } from "./core/planSettings.js";
 import { checkForUpdate, runUpdate, runRestore, isUpdating } from "./core/updateControl.js";
-import { sendReloadPrompt } from "./telegram/reloadFlow.js";
+import { sendReloadPrompt, reportScriptOutcome } from "./telegram/reloadFlow.js";
 import { isActive } from "./core/activity.js";
 import { serviceInstalled } from "./core/agentControl.js";
 import { listProviders } from "./core/providers.js";
@@ -662,10 +662,7 @@ export function registerCommands(bot: Telegraf): void {
     log.warn("Update triggered from Telegram", { chatId: ctx.chat.id });
     // Fire-and-forget: on a serviced host this process is replaced mid-run.
     void runUpdate((line) => log.info(`[update] ${line}`)).then(async (r) => {
-      // This only reaches the user on non-serviced hosts (we survive the run).
-      if (!serviceInstalled()) {
-        await ctx.reply(r.ok ? t("cmd_update_done", lang) : t("cmd_update_failed", lang)).catch(() => {});
-      }
+      await reportScriptOutcome(ctx.telegram, ctx.chat.id, lang, r, "Update", t("cmd_update_done", lang));
     }).catch(() => {});
   });
 
@@ -693,9 +690,7 @@ export function registerCommands(bot: Telegraf): void {
     log.warn("Restore triggered from Telegram", { chatId: ctx.chat.id });
     // Fire-and-forget: on a serviced host this process is replaced mid-run.
     void runRestore((line) => log.info(`[restore] ${line}`)).then(async (r) => {
-      if (!serviceInstalled()) {
-        await ctx.reply(r.ok ? t("cmd_restore_done", lang) : t("cmd_restore_failed", lang)).catch(() => {});
-      }
+      await reportScriptOutcome(ctx.telegram, ctx.chat.id, lang, r, "Restore", t("cmd_restore_done", lang));
     }).catch(() => {});
   });
 

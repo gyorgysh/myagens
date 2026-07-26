@@ -1,8 +1,42 @@
 import { Markup, type Telegram } from "telegraf";
 import { log } from "../logger.js";
 import { t, langForChat } from "./i18n/index.js";
-import { runRestore, isUpdating } from "../core/updateControl.js";
+import { runRestore, isUpdating, type RunScriptResult } from "../core/updateControl.js";
 import { serviceInstalled } from "../core/agentControl.js";
+import { escapeHtml } from "./formatting.js";
+
+/**
+ * Report how an update/restore/reload script ended.
+ *
+ * A success on a serviced host usually never gets here — the restart kills this
+ * process mid-run, and the "back online" restart marker (consumed in bot.ts at
+ * boot) closes that loop instead. A FAILURE is the opposite: the script bails
+ * before the restart step, so we are still alive and the user hears nothing
+ * unless we speak. This used to be gated on `!serviceInstalled()`, which meant a
+ * failed update on the hosts that matter most was completely silent — you saw
+ * "Reloading…" and then nothing, forever.
+ */
+export async function reportScriptOutcome(
+  tg: Telegram,
+  chatId: number,
+  lang: string,
+  result: RunScriptResult,
+  what: string,
+  doneText: string,
+): Promise<void> {
+  if (result.ok) {
+    // On a serviced host the restart message is the more accurate one, and the
+    // marker announces the new version once it is actually back.
+    if (!serviceInstalled()) await tg.sendMessage(chatId, doneText).catch(() => {});
+    return;
+  }
+  const tail = result.tail.join("\n").slice(-1500) || "(no output)";
+  await tg
+    .sendMessage(chatId, t("update_run_failed", lang, { what, tail: escapeHtml(tail) }), {
+      parse_mode: "HTML",
+    })
+    .catch(() => {});
+}
 
 /**
  * `/reload`: the rescue/self-heal path, identical on Atlas and every Lead bot.
@@ -70,11 +104,7 @@ export async function resolveReloadCallback(
   // Fire-and-forget: on a serviced host this process is replaced mid-run.
   void runRestore((line) => log.info(`[reload] ${line}`))
     .then(async (r) => {
-      if (!serviceInstalled()) {
-        await tg
-          .sendMessage(chatId, r.ok ? t("reload_done", lang) : t("reload_failed", lang))
-          .catch(() => {});
-      }
+      await reportScriptOutcome(tg, chatId, lang, r, "Reload", t("reload_done", lang));
     })
     .catch(() => {});
   return t("reload_started_toast", lang);

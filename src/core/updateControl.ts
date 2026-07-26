@@ -15,8 +15,13 @@ const FILE = "update.json";
 const MARKER_FILE = "update-pending.json";
 // A marker older than this is a run that never restarted (build failed on a
 // non-serviced host, service stuck) — don't announce "update successful" for
-// an unrelated restart hours later.
-const MARKER_MAX_AGE_MS = 30 * 60_000;
+// an unrelated restart hours later. Generous, because the window has to cover
+// the slowest real update: `npm install` plus a Vite panel build on a small
+// ARM box takes far longer than it does on a laptop, and dropping the marker
+// costs the user the one message that tells them the update landed.
+const MARKER_MAX_AGE_MS = 4 * 60 * 60_000;
+/** Output lines kept from an update run, to quote back on failure. */
+const TAIL_LINES = 12;
 
 export interface UpdateStatus {
   /** Branch this checkout tracks. */
@@ -102,7 +107,15 @@ export function consumeUpdateMarker(): UpdateMarker | undefined {
   const marker = loadJson<UpdateMarker | null>(MARKER_FILE, null);
   if (!marker) return undefined;
   clearUpdateMarker();
-  if (typeof marker.at !== "number" || Date.now() - marker.at > MARKER_MAX_AGE_MS) return undefined;
+  if (typeof marker.at !== "number" || Date.now() - marker.at > MARKER_MAX_AGE_MS) {
+    // Logged, not silent: "the update ran but I never heard back" is otherwise
+    // indistinguishable from "the marker was never written".
+    log.warn("Update restart marker dropped as stale", {
+      mode: marker.mode,
+      ageMin: typeof marker.at === "number" ? Math.round((Date.now() - marker.at) / 60_000) : undefined,
+    });
+    return undefined;
+  }
   return marker;
 }
 
@@ -168,7 +181,7 @@ export function isUpdating(): boolean {
  * is killed near the end (the restart is handed to systemd/launchd, which
  * completes it). Spawned detached so the build survives our death.
  */
-export async function runUpdate(onLine: (line: string) => void): Promise<{ ok: boolean }> {
+export async function runUpdate(onLine: (line: string) => void): Promise<RunScriptResult> {
   return runScript(onLine, "update");
 }
 
@@ -181,17 +194,23 @@ export async function runUpdate(onLine: (line: string) => void): Promise<{ ok: b
  * config survive and only the code is reset. Available regardless of whether an
  * update is "available" (the whole point is to discard broken local edits).
  */
-export async function runRestore(onLine: (line: string) => void): Promise<{ ok: boolean }> {
+export async function runRestore(onLine: (line: string) => void): Promise<RunScriptResult> {
   return runScript(onLine, "restore");
+}
+
+export interface RunScriptResult {
+  ok: boolean;
+  /** Last few output lines, so a failure can be quoted back instead of "check the logs". */
+  tail: string[];
 }
 
 async function runScript(
   onLine: (line: string) => void,
   mode: "update" | "restore",
-): Promise<{ ok: boolean }> {
+): Promise<RunScriptResult> {
   if (updating) {
     onLine(`An ${mode} is already in progress.`);
-    return { ok: false };
+    return { ok: false, tail: [`An ${mode} is already in progress.`] };
   }
   updating = true;
   audit(mode === "restore" ? "update.restore" : "update.run", {});
@@ -228,9 +247,16 @@ async function runScript(
         })
       : spawn("bash", [UPDATE_SH], { cwd: repoRoot, detached: true });
     if (!isWin) child.unref();
+    const tail: string[] = [];
     const handle = (buf: Buffer) => {
       for (const line of buf.toString().split("\n")) {
-        if (line.length) onLine(line);
+        if (!line.length) continue;
+        onLine(line);
+        // Kept so a failure can say *what* failed. The process is often killed
+        // by the restart before anyone reads the logs, and on a serviced host
+        // the user only ever sees what we manage to send them.
+        tail.push(line.trimEnd());
+        if (tail.length > TAIL_LINES) tail.shift();
       }
     };
     child.stdout.on("data", handle);
@@ -239,14 +265,15 @@ async function runScript(
       onLine(`Error: ${e.message}`);
       updating = false;
       clearUpdateMarker();
-      resolve({ ok: false });
+      resolve({ ok: false, tail: [`Error: ${e.message}`] });
     });
     child.on("close", (code) => {
       updating = false;
       const ok = code === 0;
       if (!ok) clearUpdateMarker();
       onLine(ok ? "✓ Update complete." : `Update exited with code ${code}.`);
-      resolve({ ok });
+      if (!ok) log.error(`${mode} script failed`, { code, tail: tail.join(" | ").slice(0, 800) });
+      resolve({ ok, tail });
       // On Windows the script no longer restarts the service itself (the service
       // account can't), so trigger the relaunch here: restartService() exits the
       // process and NSSM/the task brings it back up with the freshly built code.

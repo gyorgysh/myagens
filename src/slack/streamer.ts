@@ -50,6 +50,34 @@ export class SlackStreamer {
     return this.ts;
   }
 
+  /**
+   * Seal the current message so it stops receiving edits, and arm the
+   * streamer to open a fresh message for whatever comes next. Call this right
+   * before posting a permission or AskUserQuestion prompt: without it, that
+   * prompt appears once and then sits there while the *original* message
+   * keeps getting edited underneath it (or above it, depending on scroll),
+   * making it hard to tell where the turn actually is. Breaking the segment
+   * here means the channel reads top-to-bottom: streamed content so far,
+   * then the prompt, then a new bubble for whatever comes after it's answered.
+   */
+  async breakForInterrupt(): Promise<void> {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.status = "";
+    if (this.ts && this.dirty) {
+      const text = this.render(true);
+      if (text !== this.lastRendered) {
+        await this.web.chat.update({ channel: this.channel, ts: this.ts, text }).catch(() => {});
+      }
+    }
+    this.dirty = false;
+    this.ts = undefined;
+    this.content = "";
+    this.lastRendered = "";
+  }
+
   private scheduleFlush(): void {
     this.dirty = true;
     if (this.timer) return;
@@ -87,15 +115,22 @@ export class SlackStreamer {
       this.scheduleFlush();
       return;
     }
-    if (!this.dirty || !this.ts) return;
-    
+    if (!this.dirty) return;
+
     this.flushing = true;
     this.dirty = false;
 
     const text = this.render(true);
 
     try {
-      if (text !== this.lastRendered) {
+      if (this.ts === undefined) {
+        // breakForInterrupt() sealed the previous message — open a new one.
+        const res = await this.web.chat.postMessage({ channel: this.channel, text });
+        if (res.ts) {
+          this.ts = res.ts;
+          this.lastRendered = text;
+        }
+      } else if (text !== this.lastRendered) {
         await this.web.chat.update({
           channel: this.channel,
           ts: this.ts,
@@ -130,18 +165,19 @@ export class SlackStreamer {
       chunks[chunks.length - 1] += (chunks[chunks.length - 1] ? "\n\n" : "") + `_${this.footer}_`;
     }
 
-    // If fits in one message, just update the original one last time
+    // If fits in one message, update the open one — or, if breakForInterrupt()
+    // sealed the last segment and nothing reopened it, post a fresh one so the
+    // final content/footer isn't silently dropped.
     if (chunks.length === 1) {
-      if (this.ts) {
-        try {
-          await this.web.chat.update({
-            channel: this.channel,
-            ts: this.ts,
-            text: chunks[0] || "_..._",
-          });
-        } catch (err) {
-          log.error("SlackStreamer finalize update failed", { error: err instanceof Error ? err.message : String(err) });
+      const text = chunks[0] || "_..._";
+      try {
+        if (this.ts) {
+          await this.web.chat.update({ channel: this.channel, ts: this.ts, text });
+        } else {
+          await this.web.chat.postMessage({ channel: this.channel, text });
         }
+      } catch (err) {
+        log.error("SlackStreamer finalize update failed", { error: err instanceof Error ? err.message : String(err) });
       }
       return;
     }

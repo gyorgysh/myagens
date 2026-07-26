@@ -219,6 +219,7 @@ async function handleSlackPrompt(
     // as the tool result via a deny message. Runs in every autonomy mode.
     if (toolName === "AskUserQuestion") {
       log.info("AskUserQuestion intercepted — prompting user (Slack)", { userId });
+      await streamer.breakForInterrupt();
       const answer = await asks.ask(channel, input);
       return { behavior: "deny", message: answer };
     }
@@ -263,6 +264,7 @@ async function handleSlackPrompt(
     }
 
     log.info("Slack approval requested", { userId, tool: toolName });
+    await streamer.breakForInterrupt();
     const choice = await permissions.request(channel, toolName, input);
     log.info("Slack approval resolved", { userId, tool: toolName, choice });
 

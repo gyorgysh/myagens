@@ -107,6 +107,14 @@ interface MainSettings {
   /** Usage percent (any window) at/above which fallback engages (default 95). */
   fallbackThreshold?: number;
   /**
+   * When the account can keep going past the threshold on billed overage (the
+   * usage probe's `extraUsageEnabled`), stay on primary Claude instead of
+   * switching. Off by default: crossing the threshold always engages the
+   * fallback, even if overage billing would have covered it, to avoid
+   * unexpected extra charges.
+   */
+  fallbackAllowOverage?: boolean;
+  /**
    * Named directory shortcuts injected into the system prompt so the agent
    * knows where key folders are without the user repeating it. Each entry is
    * a { label, path } pair, e.g. { label: "Projects", path: "/Users/me/dev" }.
@@ -187,6 +195,7 @@ export function mainSettingsView() {
     fallbackBackendId: s.fallbackBackendId ?? "",
     fallbackModel: s.fallbackModel ?? "",
     fallbackThreshold: s.fallbackThreshold ?? DEFAULT_FALLBACK_THRESHOLD,
+    fallbackAllowOverage: s.fallbackAllowOverage === true,
     degraded: degradedState(),
     botUsername: botUsername ?? "",
     knownPaths: s.knownPaths ?? [],
@@ -210,6 +219,7 @@ export function setMainSettings(patch: {
   fallbackBackendId?: string;
   fallbackModel?: string;
   fallbackThreshold?: number;
+  fallbackAllowOverage?: boolean;
   knownPaths?: Array<{ label: string; path: string }>;
   updateNotifyOptOut?: boolean;
   promptExclude?: string[];
@@ -237,6 +247,8 @@ export function setMainSettings(patch: {
     const n = Math.round(patch.fallbackThreshold);
     s.fallbackThreshold = Number.isFinite(n) ? Math.min(100, Math.max(50, n)) : undefined;
   }
+  if (patch.fallbackAllowOverage !== undefined)
+    s.fallbackAllowOverage = patch.fallbackAllowOverage || undefined;
   if (patch.knownPaths !== undefined) {
     // Sanitise: keep only entries with non-empty label and path.
     const clean = patch.knownPaths
@@ -358,24 +370,44 @@ export function degradedState(): { active: boolean; since?: string; reason?: str
 }
 
 /** True if the cached usage probe shows any window at/above `threshold` percent. */
-function overUsageLimit(threshold: number): { over: boolean; label?: string; percent?: number } {
+function overUsageLimit(threshold: number): {
+  over: boolean;
+  label?: string;
+  percent?: number;
+  extraUsageEnabled?: boolean;
+} {
   const probe = loadProbeResult();
   if (!probe || !probe.limits.length) return { over: false };
+  const now = Date.now();
   let worst: { label: string; percent: number } | undefined;
   for (const lim of probe.limits) {
     if (lim.percent >= threshold && (!worst || lim.percent > worst.percent)) {
+      // If the limit reset timestamp has passed, this cached threshold is expired.
+      if (lim.resetsAt) {
+        const resetTime = new Date(lim.resetsAt).getTime();
+        if (!isNaN(resetTime) && now >= resetTime) {
+          log.info("Limit reset time passed — ignoring stale cached limit", { label: lim.label, resetsAt: lim.resetsAt });
+          continue;
+        }
+      }
       worst = { label: lim.label, percent: lim.percent };
     }
   }
-  return worst ? { over: true, label: worst.label, percent: worst.percent } : { over: false };
+  return worst
+    ? { over: true, label: worst.label, percent: worst.percent, extraUsageEnabled: probe.extraUsageEnabled }
+    : { over: false };
 }
 
 /**
- * Resolve a main run, honouring rate-limit auto-fallback for autonomous turns.
- * When `autonomous` and a fallback provider is configured and the cached usage
- * probe shows we're at/over the threshold, swap to the fallback provider/model
- * (typically a local model) so background work keeps running; otherwise this is
- * exactly `resolveMainRun()`. Updates the degraded-mode flag as a side effect.
+ * Resolve a main run, honouring rate-limit auto-fallback. When a fallback target
+ * is configured and the cached usage probe shows the primary (Claude) plan is
+ * at/over the threshold, swap to the fallback provider/backend/model so the turn
+ * keeps running — for autonomous/background turns and interactive chat turns
+ * (Telegram, Slack) alike, no need to wait for an actual failure. Only applies
+ * while the primary backend is Claude; a turn already pinned to a different
+ * backend ignores Claude usage entirely. Updates the degraded-mode flag as a
+ * side effect. `runTurnWithFallback` (core/fallback.ts) remains as a reactive
+ * backstop for a genuine mid-turn error this probe-based check didn't catch.
  */
 export function resolveMainRunFor(opts: {
   autonomous: boolean;
@@ -384,16 +416,23 @@ export function resolveMainRunFor(opts: {
 }): ReturnType<typeof resolveMainRun> {
   const base = resolveMainRun({ interactive: opts.interactive });
   const s = load();
-  // Only autonomous turns fail over via the usage probe, and only when a fallback
-  // target (a provider and/or a backend switch) is configured. Interactive turns
-  // never change degraded state (it tracks background work); their usage-limit
-  // failover is error-driven instead (see core/fallback.ts).
-  if (!opts.autonomous || (!s.fallbackProviderId && !s.fallbackBackendId)) return base;
+  if (!s.fallbackProviderId && !s.fallbackBackendId) return base;
+  // Claude usage is meaningless once the primary is already a different backend.
+  const primaryIsClaude = !base.backendId || base.backendId === "claude-agent-sdk";
+  if (!primaryIsClaude) return base;
   const threshold = s.fallbackThreshold ?? DEFAULT_FALLBACK_THRESHOLD;
-  const { over, label, percent } = overUsageLimit(threshold);
+  const { over, label, percent, extraUsageEnabled } = overUsageLimit(threshold);
   if (!over) {
     if (degraded.active) {
       log.info("Rate-limit fallback cleared — back on primary model");
+      degraded = { active: false };
+    }
+    return base;
+  }
+  // Opt-in: let the account keep going on billed overage instead of switching.
+  if (s.fallbackAllowOverage && extraUsageEnabled) {
+    if (degraded.active) {
+      log.info("Rate-limit fallback cleared — staying on primary (overage billing allowed)");
       degraded = { active: false };
     }
     return base;

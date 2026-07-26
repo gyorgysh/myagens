@@ -33,6 +33,17 @@ const csvIds = z
   // z.number().int() rejects NaN (from non-numeric ids), giving a clean error.
   .pipe(z.array(z.number().int()).min(1, "ALLOWED_USER_IDS must contain at least one valid id"));
 
+/** Comma-separated string IDs (e.g. Slack member IDs like U0123456789). */
+const csvStrings = z
+  .string()
+  .transform((s) =>
+    s
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+  )
+  .pipe(z.array(z.string().min(1)).min(1, "List must contain at least one valid id"));
+
 const schema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
   ALLOWED_USER_IDS: csvIds,
@@ -253,6 +264,12 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  // --- Slack chat surface (optional second front end alongside Telegram) ---
+  // DM-only: the bot responds to direct messages from allowed Slack users.
+  // All three must be set for the Slack surface to boot.
+  SLACK_BOT_TOKEN: z.string().optional(),
+  SLACK_APP_TOKEN: z.string().optional(),
+  SLACK_ALLOWED_USER_IDS: csvStrings.optional(),
 });
 
 // Fail closed: a panel with host access must never run without a token.
@@ -367,3 +384,13 @@ export function normalizeModelId(model: string): string {
 }
 
 export const allowedUserIds = new Set<number>(config.ALLOWED_USER_IDS);
+
+/** Slack member IDs allowed to interact with the Slack surface. Empty when
+ *  the Slack surface is not configured. */
+export const slackAllowedUserIds = new Set<string>(config.SLACK_ALLOWED_USER_IDS ?? []);
+
+/** True when all three Slack env vars are present and the surface can boot. */
+export const slackConfigured =
+  Boolean(config.SLACK_BOT_TOKEN) &&
+  Boolean(config.SLACK_APP_TOKEN) &&
+  slackAllowedUserIds.size > 0;

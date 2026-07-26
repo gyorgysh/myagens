@@ -491,6 +491,7 @@ export async function runProbe(opts?: { force?: boolean }): Promise<ProbeResult>
     lastAttemptAt: now,
     cooldownUntil: rateLimited ? now + RATE_LIMIT_COOLDOWN_MS : undefined,
   });
+  scheduleResetTimer(result);
   return result;
 }
 
@@ -499,6 +500,45 @@ export async function runProbe(opts?: { force?: boolean }): Promise<ProbeResult>
 // ---------------------------------------------------------------------------
 
 let timer: ReturnType<typeof setInterval> | undefined;
+let resetTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleResetTimer(result?: ProbeResult): void {
+  if (resetTimer) {
+    clearTimeout(resetTimer);
+    resetTimer = undefined;
+  }
+  if (!result || !result.limits || !result.limits.length) return;
+
+  const now = Date.now();
+  let earliestResetMs: number | undefined;
+
+  for (const lim of result.limits) {
+    if (!lim.resetsAt) continue;
+    const resetTime = new Date(lim.resetsAt).getTime();
+    if (isNaN(resetTime)) continue;
+    const targetMs = resetTime + 30_000;
+    if (targetMs > now) {
+      if (earliestResetMs === undefined || targetMs < earliestResetMs) {
+        earliestResetMs = targetMs;
+      }
+    }
+  }
+
+  if (earliestResetMs !== undefined) {
+    const delayMs = earliestResetMs - now;
+    log.info("Scheduling targeted probe reset timer", {
+      resetAt: new Date(earliestResetMs - 30_000).toISOString(),
+      probeAt: new Date(earliestResetMs).toISOString(),
+      delayMs,
+    });
+    resetTimer = setTimeout(() => {
+      resetTimer = undefined;
+      log.info("Targeted reset timer fired — fetching fresh usage probe");
+      void runProbe({ force: true }).catch(() => {});
+    }, delayMs);
+    resetTimer.unref?.();
+  }
+}
 
 export function startProbeScheduler(intervalMs: number): void {
   if (timer) clearInterval(timer);
@@ -508,6 +548,9 @@ export function startProbeScheduler(intervalMs: number): void {
   // rate-limit cooldown — frequent restarts would otherwise hammer the OAuth
   // endpoint and trip its rate limit.
   const file = loadFile();
+  if (file.result) {
+    scheduleResetTimer(file.result);
+  }
   const ageMs = file.result?.probedAt
     ? Date.now() - new Date(file.result.probedAt).getTime()
     : Infinity;
@@ -528,5 +571,7 @@ export function startProbeScheduler(intervalMs: number): void {
 
 export function stopProbeScheduler(): void {
   if (timer) clearInterval(timer);
+  if (resetTimer) clearTimeout(resetTimer);
   timer = undefined;
+  resetTimer = undefined;
 }

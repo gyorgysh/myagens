@@ -736,6 +736,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       fallbackBackendId,
       fallbackModel,
       fallbackThreshold,
+      fallbackAllowOverage,
       knownPaths,
       updateNotifyOptOut,
       promptExclude,
@@ -754,6 +755,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       fallbackBackendId?: string;
       fallbackModel?: string;
       fallbackThreshold?: number;
+      fallbackAllowOverage?: boolean;
       knownPaths?: Array<{ label: string; path: string }>;
       updateNotifyOptOut?: boolean;
       promptExclude?: string[];
@@ -774,6 +776,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       fallbackBackendId,
       fallbackModel,
       fallbackThreshold,
+      fallbackAllowOverage,
       knownPaths,
       updateNotifyOptOut,
       promptExclude,

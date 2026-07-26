@@ -1,6 +1,6 @@
 {
   "name": "myagens",
-  "version": "0.6.13",
+  "version": "0.6.14",
   "description": "Remote access to Claude Code over Telegram — stream a real Claude Code agent to your phone.",
   "license": "GPL-3.0-only",
   "type": "module",
@@ -23,6 +23,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
     "@fastify/static": "^9.1.3",
     "@fastify/websocket": "^11.2.0",
+    "@slack/bolt": "^5.0.0",
     "debug": "^4.4.3",
     "dotenv": "^16.4.5",
     "fastify": "^5.8.5",

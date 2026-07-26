@@ -13,7 +13,7 @@ export const APPROVAL_ACTIONS: ReadonlySet<string> = new Set<ApprovalChoice>([
 /** Serializable snapshot of one pending approval, safe to send over the wire. */
 export interface ApprovalView {
   id: string;
-  chatId: number;
+  chatId: number | string;
   toolName: string;
   preview: string;
   lead?: string;

@@ -972,7 +972,10 @@ export interface MainAgent {
   fallbackModel: string;
   /** Usage percent at/above which fallback engages. */
   fallbackThreshold: number;
-  /** Live degraded-mode state when autonomous turns are running on the fallback. */
+  /** When on, stay on primary Claude past the threshold if the account can bill
+   *  overage instead of switching to the fallback. Off by default. */
+  fallbackAllowOverage: boolean;
+  /** Live degraded-mode state when turns are running on the fallback. */
   degraded: { active: boolean; since?: string; reason?: string; provider?: string };
   /** The main bot's @username (from getMe), for a t.me link. */
   botUsername?: string;
@@ -1296,7 +1299,7 @@ export const api = {
       `/api/agent-instances/${agentId}/restart`,
       remoteControl === undefined ? undefined : { remoteControl },
     ),
-  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; tmuxMode?: boolean; remoteControl?: boolean; cursorTools?: boolean; fallbackProviderId?: string; fallbackBackendId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean; promptExclude?: PromptExcludeKey[] }) =>
+  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; tmuxMode?: boolean; remoteControl?: boolean; cursorTools?: boolean; fallbackProviderId?: string; fallbackBackendId?: string; fallbackModel?: string; fallbackThreshold?: number; fallbackAllowOverage?: boolean; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean; promptExclude?: PromptExcludeKey[] }) =>
     req<MainAgent>("PUT", "/api/agent", s),
   resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),

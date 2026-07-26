@@ -19,6 +19,7 @@ import { memory } from "./core/memory.js";
 import { embeddingsEnabled, autoProbeEmbeddings } from "./core/embeddings.js";
 import { autoDetectLocalProviders } from "./core/providers.js";
 import { leadBots } from "./telegram/leadBotManager.js";
+import { buildSlackBot } from "./slack/bot.js";
 import { log } from "./logger.js";
 import { registerIdleGate, whenSettled } from "./core/activity.js";
 import { acquireInstanceLock } from "./core/singleton.js";
@@ -224,6 +225,7 @@ async function main(): Promise<void> {
     sessions.flush();
     void stopPanel?.();
     bot.stop(signal);
+    void slackBot?.stop();
     leadBots.stopAll(signal);
     // Kill the tunnel relay child (cloudflared/ngrok). Without this it outlives
     // the process; on the next restart a fresh relay spawns with a new public URL
@@ -385,7 +387,15 @@ async function main(): Promise<void> {
       });
   };
 
+  const slackBot = buildSlackBot();
+
   startPolling();
+
+  if (slackBot) {
+    void slackBot.start().catch((err) => {
+      log.error("Failed to start Slack surface", { error: err instanceof Error ? err.message : String(err) });
+    });
+  }
 
   // Liveness heartbeat: Telegraf retries ordinary long-poll network errors
   // forever, silently (only visible via the debug pipe above), so a real

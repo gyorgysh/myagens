@@ -57,6 +57,7 @@ export const en = {
   bot_nothing_running: "Nothing is running.",
   bot_session_expired_retrying: "⚠️ Previous session no longer exists — starting a fresh conversation now.",
   bot_fallback_engaged: "⚠️ Usage limit on the primary model, retrying via {name}…",
+  bot_fallback_proactive: "ℹ️ Primary model usage is over the threshold, switching to {name} for this turn…",
 
   // --- ping / crew status ---
   bot_ping_idle: "🟢 <b>Online</b> · idle and ready · up {uptime}",

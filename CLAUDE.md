@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Telegram bot that exposes a real Claude Code agent over chat. A user messages the bot; the bot drives the Claude Agent SDK on the host machine, streams the reply back live, and gates risky tool calls behind inline approval buttons. **The bot can read/write/run anything on the host**, the only access control is the `ALLOWED_USER_IDS` allow-list enforced in `src/auth.ts`.
+A Telegram and Slack bot that exposes a real Claude Code agent over chat. A user messages the bot; the bot drives the Claude Agent SDK on the host machine, streams the reply back live, and gates risky tool calls behind inline approval buttons. **The bot can read/write/run anything on the host**, the only access control is the allow-lists (`ALLOWED_USER_IDS` for Telegram, `SLACK_ALLOWED_USER_IDS` for Slack) enforced in `src/auth.ts` / `src/slack/bot.ts`.
 
 ## Commands
 

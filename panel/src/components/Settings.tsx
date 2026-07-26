@@ -537,6 +537,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const [fallbackBackendId, setFallbackBackendId] = useState("");
   const [fallbackModel, setFallbackModel] = useState("");
   const [fallbackThreshold, setFallbackThreshold] = useState(95);
+  const [fallbackAllowOverage, setFallbackAllowOverage] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = () =>
@@ -559,6 +560,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         setFallbackBackendId(a.fallbackBackendId ?? "");
         setFallbackModel(a.fallbackModel ?? "");
         setFallbackThreshold(a.fallbackThreshold ?? 95);
+        setFallbackAllowOverage(a.fallbackAllowOverage === true);
       })
       .catch((e) => e instanceof AuthError && onAuthError());
 
@@ -590,7 +592,8 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
       fallbackProviderId !== (agent.fallbackProviderId ?? "") ||
       fallbackBackendId !== (agent.fallbackBackendId ?? "") ||
       fallbackModel !== (agent.fallbackModel ?? "") ||
-      fallbackThreshold !== (agent.fallbackThreshold ?? 95));
+      fallbackThreshold !== (agent.fallbackThreshold ?? 95) ||
+      fallbackAllowOverage !== (agent.fallbackAllowOverage === true));
 
   // Warn before leaving (tab close / reload) while there are unsaved edits.
   useEffect(() => {
@@ -659,6 +662,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         fallbackBackendId,
         fallbackModel,
         fallbackThreshold,
+        fallbackAllowOverage,
       });
       setAgent(next);
       toast.success(t("saved"));
@@ -1139,6 +1143,18 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
                   className="max-w-[7rem]"
                 />
                 <p className="mt-0.5 text-xs text-fg-dim">{t("settings_fallback_threshold_desc")}</p>
+                <label className="mt-3 flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={fallbackAllowOverage}
+                    onChange={(e) => setFallbackAllowOverage(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <span>
+                    <span className="text-sm font-medium text-fg">{t("settings_fallback_allow_overage")}</span>
+                    <span className="block text-xs text-fg-dim">{t("settings_fallback_allow_overage_desc")}</span>
+                  </span>
+                </label>
               </div>
             )}
           </div>

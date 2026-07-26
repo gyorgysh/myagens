@@ -51,7 +51,7 @@ import { taskDelegator } from "./core/taskRunner.js";
 import { createTask, startRecurrenceTicker } from "./core/tasks.js";
 import { push } from "./core/push.js";
 import { fireWebhook, type WebhookSource } from "./core/webhook.js";
-import { resolveMainRunFor, mainFallbackSpec, isDryRun, dryRunDescription, DRY_RUN_TOOLS, mainSettingsView } from "./core/mainSettings.js";
+import { resolveMainRunFor, mainFallbackSpec, isDryRun, dryRunDescription, DRY_RUN_TOOLS, mainSettingsView, degradedState } from "./core/mainSettings.js";
 import { listInstances, sendToInstance } from "./claude/tmuxInstance.js";
 import { runTurnWithFallback } from "./core/fallback.js";
 import { TokenBucketLimiter } from "./core/rateLimiter.js";
@@ -671,7 +671,18 @@ async function handleUserPrompt(
   session.abort = new AbortController();
   let retryStale = false;
 
-  const ack = await tg.sendMessage(chatId, t("bot_working", langForChat(chatId))).catch(() => undefined);
+  // Turns fail over to a configured fallback provider/backend while the primary
+  // (Claude) plan is at/over its usage threshold — autonomous/background turns
+  // and this chat turn alike (Feature: rate-limit auto-fallback).
+  // interactive: these turns belong to the user's conversation, so a Tmux-mode
+  // Atlas routes them onto its persistent instance (claude-tmux backend).
+  const mainRun = resolveMainRunFor({ autonomous: Boolean(autonomous), interactive: true });
+
+  const workingText = mainRun.fallbackBackendActive
+    ? t("bot_fallback_proactive", langForChat(chatId), { name: degradedState().provider ?? "the fallback model" })
+    : t("bot_working", langForChat(chatId));
+
+  const ack = await tg.sendMessage(chatId, workingText).catch(() => undefined);
   let placeholderId: number | undefined;
 
   // Parked-on-user predicate, shared by the typing loop and the draft keepalive:
@@ -695,7 +706,7 @@ async function handleUserPrompt(
   } else if (ack) {
     streamer = new TelegramStreamer(tg, chatId, ack.message_id);
   } else {
-    const placeholder = await tg.sendMessage(chatId, t("bot_working", langForChat(chatId)));
+    const placeholder = await tg.sendMessage(chatId, workingText);
     streamer = new TelegramStreamer(tg, chatId, placeholder.message_id);
   }
 
@@ -822,11 +833,7 @@ async function handleUserPrompt(
     return { behavior: "deny", message: "User denied this action." };
   };
 
-  // Autonomous/background turns fail over to a configured local provider while
-  // the Anthropic plan is rate-limited (Feature: rate-limit auto-fallback).
-  // interactive: these turns belong to the user's conversation, so a Tmux-mode
-  // Atlas routes them onto its persistent instance (claude-tmux backend).
-  const mainRun = resolveMainRunFor({ autonomous: Boolean(autonomous), interactive: true });
+
 
   const leads = workers.list().filter((w) => w.role === "lead" && w.enabled);
   const crew =

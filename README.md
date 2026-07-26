@@ -7,7 +7,7 @@
   <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey">
 </p>
 
-**Your personal AI that lives on your own machine.** Talk to it over Telegram from anywhere, or drive it from a private web dashboard. It reads your files, runs your code, checks your services, and reports back, asking for your approval before anything risky runs. Atlas is your central coordinator: he runs day-to-day operations, remembers everything, learns your workflows, and commands a team of specialized Leads. Each Lead owns a domain and can have its own Telegram bot.
+**Your personal AI that lives on your own machine.** Talk to it over Telegram or Slack from anywhere, or drive it from a private web dashboard. It reads your files, runs your code, checks your services, and reports back, asking for your approval before anything risky runs. Atlas is your central coordinator: he runs day-to-day operations, remembers everything, learns your workflows, and commands a team of specialized Leads. Each Lead owns a domain and can have its own Telegram bot.
 
 Free and open-source under the GNU GPLv3. Built on real **Claude Code** agents (the same agent that runs in your terminal), so every agent can read files, run commands, edit code, check services, and ship things. Replies stream back live and risky actions are gated behind your approval. There is no MyAgens service in the loop. It runs as a process on your own hardware, and the only network calls it makes are the ones you configure: your model provider and any connector you explicitly turn on.
 

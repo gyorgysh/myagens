@@ -3,6 +3,11 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.6.14] - 2026-07-26
+
+### Added
+- **Slack surface for Atlas.** A second direct-message chat surface alongside Telegram. When `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, and `SLACK_ALLOWED_USER_IDS` are configured, Atlas connects to Slack in Socket Mode. Allowed users can chat with Atlas via direct messages, receiving live streamed replies, Block Kit tool-approval buttons tied to the shared approval queue, and Block Kit question prompts when Atlas asks a clarifying question.
+
 ## [0.6.13] - 2026-07-26
 
 ### Added

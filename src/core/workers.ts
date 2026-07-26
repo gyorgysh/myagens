@@ -75,6 +75,14 @@ export interface Worker {
    * Without tmuxMode it has no effect (RC only works in the interactive TUI).
    */
   remoteControl?: boolean;
+  /**
+   * Cursor backend only: run cursor-agent as a full MyAgens agent (our MCP
+   * tools plus a real Approve/Deny gate). **`undefined` means enabled** — only
+   * an explicit `false` turns it off, so a worker saved before this existed
+   * keeps the capable path. See src/cursor/customization.ts for what the
+   * capable path writes into the project directory.
+   */
+  cursorTools?: boolean;
   /** Extra persona instructions appended to the system prompt. */
   systemPrompt?: string;
   /** Optional skill whose body augments the system prompt. */
@@ -266,6 +274,8 @@ export class WorkerManager {
       fallbackModel: input.fallbackModel?.trim() || undefined,
       tmuxMode: input.tmuxMode || undefined,
       remoteControl: input.remoteControl || undefined,
+      // Default-on flag, so only an explicit false is stored (see Worker.cursorTools).
+      cursorTools: input.cursorTools === false ? false : undefined,
       systemPrompt: input.systemPrompt?.trim() || undefined,
       skillId: input.skillId || undefined,
       schedule: parseSchedule(input.when),
@@ -304,6 +314,7 @@ export class WorkerManager {
     if (input.fallbackModel !== undefined) w.fallbackModel = input.fallbackModel.trim() || undefined;
     if (input.tmuxMode !== undefined) w.tmuxMode = input.tmuxMode || undefined;
     if (input.remoteControl !== undefined) w.remoteControl = input.remoteControl || undefined;
+    if (input.cursorTools !== undefined) w.cursorTools = input.cursorTools === false ? false : undefined;
     if (input.systemPrompt !== undefined) w.systemPrompt = input.systemPrompt.trim() || undefined;
     if (input.skillId !== undefined) w.skillId = input.skillId || undefined;
     if (input.enabled !== undefined) w.enabled = input.enabled;
@@ -479,6 +490,7 @@ export class WorkerManager {
         persona: w.persona,
         language: w.language,
         promptExclude: w.promptExclude,
+        cursorTools: w.cursorTools,
         permissionMode,
         // Load full project context (CLAUDE.md, settings) in the worker's cwd, so
         // it operates like a real Claude Code session. (The earlier "exit 1" this
@@ -608,6 +620,7 @@ export interface WorkerInput {
   fallbackModel?: string;
   tmuxMode?: boolean;
   remoteControl?: boolean;
+  cursorTools?: boolean;
   systemPrompt?: string;
   skillId?: string;
   /** Schedule token: "30m", "2h", "HH:MM", or "" / undefined for manual-only. */

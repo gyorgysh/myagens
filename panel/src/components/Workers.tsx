@@ -54,6 +54,7 @@ const emptyForm = {
   fallbackModel: "",
   tmuxMode: false,
   remoteControl: false,
+  cursorTools: true,
   systemPrompt: "",
   skillId: "",
   when: "",
@@ -608,6 +609,7 @@ function WorkerRow({
               fallbackModel: worker.fallbackModel ?? "",
               tmuxMode: worker.tmuxMode === true,
               remoteControl: worker.remoteControl === true,
+              cursorTools: worker.cursorTools !== false,
               systemPrompt: worker.systemPrompt,
               skillId: worker.skillId,
               when: worker.when,
@@ -849,6 +851,7 @@ function WorkerWizard({
         fallbackModel: "",
         tmuxMode: false,
         remoteControl: false,
+        cursorTools: true,
         systemPrompt: String(c.systemPrompt ?? ""),
         skillId: String(c.skillId ?? ""),
         when: String(c.when ?? answers.schedule ?? ""),
@@ -1711,6 +1714,22 @@ function WorkerForm({
               )}
             </div>
           </>
+        )}
+        {form.backendId === "cursor-cli" && (
+          <div className="sm:col-span-2">
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={form.cursorTools}
+                onChange={(e) => setForm({ ...form, cursorTools: e.target.checked })}
+                className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+              />
+              <span>
+                <span className="text-sm font-medium text-fg">{t("settings_cursor_tools")}</span>
+                <span className="block text-xs text-fg-dim">{t("settings_cursor_tools_desc")}</span>
+              </span>
+            </label>
+          </div>
         )}
         {!form.backendId && (
           // Claude backend only: the persistent TUI (and --remote-control)

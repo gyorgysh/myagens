@@ -54,6 +54,16 @@ interface MainSettings {
    */
   remoteControl?: boolean;
   /**
+   * Cursor backend only: run cursor-agent as a full MyAgens agent (our MCP
+   * tools plus a real Approve/Deny gate). **`undefined` means enabled** — only
+   * an explicit `false` turns it off, so an existing config with no such field
+   * keeps the capable path. The opt-out exists because cursor-agent reads hooks
+   * and MCP config from `<cwd>/.cursor/` only, i.e. from the user's own project
+   * directory (see src/cursor/customization.ts); switching it off runs the
+   * plain CLI and touches nothing.
+   */
+  cursorTools?: boolean;
+  /**
    * Character and tone override for Atlas. If set, injected into the system
    * prompt after the base personality block. Separate from systemPrompt (domain
    * knowledge). Example: "formal and precise, no jokes".
@@ -171,6 +181,8 @@ export function mainSettingsView() {
     dryRun: s.dryRun === true,
     tmuxMode: s.tmuxMode === true,
     remoteControl: s.remoteControl === true,
+    // Default-on: anything but an explicit false is enabled.
+    cursorTools: s.cursorTools !== false,
     fallbackProviderId: s.fallbackProviderId ?? "",
     fallbackBackendId: s.fallbackBackendId ?? "",
     fallbackModel: s.fallbackModel ?? "",
@@ -193,6 +205,7 @@ export function setMainSettings(patch: {
   dryRun?: boolean;
   tmuxMode?: boolean;
   remoteControl?: boolean;
+  cursorTools?: boolean;
   fallbackProviderId?: string;
   fallbackBackendId?: string;
   fallbackModel?: string;
@@ -212,6 +225,9 @@ export function setMainSettings(patch: {
   if (patch.dryRun !== undefined) s.dryRun = patch.dryRun || undefined;
   if (patch.tmuxMode !== undefined) s.tmuxMode = patch.tmuxMode || undefined;
   if (patch.remoteControl !== undefined) s.remoteControl = patch.remoteControl || undefined;
+  // Inverted on purpose: this one defaults to ON, so only a false is worth
+  // storing and a true means "back to the default", i.e. no field at all.
+  if (patch.cursorTools !== undefined) s.cursorTools = patch.cursorTools === false ? false : undefined;
   if (patch.fallbackProviderId !== undefined)
     s.fallbackProviderId = patch.fallbackProviderId || undefined;
   if (patch.fallbackBackendId !== undefined)
@@ -272,6 +288,9 @@ export function resolveMainRun(opts?: { interactive?: boolean }): {
   knownPaths?: Array<{ label: string; path: string }>;
   /** Per-agent prompt-slimming keys (see MainSettings.promptExclude). */
   promptExclude?: string[];
+  /** Only ever false: the cursor backend's MyAgens tools were opted out of.
+   *  Undefined (the usual case) leaves the default, which is on. */
+  cursorTools?: boolean;
   /** True when the resolved run switched to a *different* backend than the
    *  primary via the threshold fallback below — the caller must then drop the
    *  session resume token (a resume handle is meaningless on the other backend). */
@@ -316,6 +335,7 @@ export function resolveMainRun(opts?: { interactive?: boolean }): {
     defaultLanguage: s.defaultLanguage || undefined,
     knownPaths: s.knownPaths?.length ? s.knownPaths : undefined,
     promptExclude: s.promptExclude?.length ? s.promptExclude : undefined,
+    cursorTools: s.cursorTools === false ? false : undefined,
   };
 }
 

@@ -570,6 +570,8 @@ export const hu: Translations = {
   settings_dryrun_desc: "A módosító eszközök (Bash, Write, Edit) csak visszajeleznek, de nem futnak le. Az ügynök elmondja, mit tenne, anélkül hogy hozzányúlna a géphez.",
   settings_remote_control: "Távirányítás (claude.ai)",
   settings_remote_control_desc: "Az állandó példány tükrözése a claude.ai/code oldalra és a Claude mobilappba, így az élő munkamenet bárhonnan figyelhető és irányítható. Csak Tmux módban érvényes; Claude-előfizetéses bejelentkezés kell hozzá. A módosítás a példány újraindításakor lép életbe.",
+  settings_cursor_tools: "MyAgens eszközök és jóváhagyások a Cursorban",
+  settings_cursor_tools_desc: "A cursor-agent megkapja a MyAgens eszközöket (memória, kanban, csapat, összekötők) és valódi Jóváhagyás/Elutasítás gombokat a saját eszközhívásaihoz. A Cursor ezt a beállítást csak abból a projektből olvassa, amelyben dolgozol, ezért egy hook és egy MCP bejegyzés a projekt .cursor/ mappájába kerül a kör idejére, utána visszaáll az eredeti állapot. Kikapcsolva a sima Cursor CLI fut, és a projekt érintetlen marad.",
   settings_tmux_mode: "Állandó példány (tmux)",
   settings_tmux_mode_desc: "Az ügynök beszélgetése egyetlen hosszú életű Claude Code TUI-ban fut egy nevesített tmux munkamenetben, üzenetenkénti friss headless futás helyett. A beszélgetés túléli a bot újraindítását, és bármely terminálból, erről a panelről vagy (Távirányítással) a Claude appból figyelhető és átvehető. Jogosultság-kihagyással fut.",
   settings_tmux_requires_full: "Teljes autonómia szükséges — az állandó TUI nem tud eszköz-jóváhagyásokat továbbítani.",

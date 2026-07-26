@@ -528,6 +528,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const [dryRun, setDryRun] = useState(false);
   const [tmuxMode, setTmuxMode] = useState(false);
   const [remoteControl, setRemoteControl] = useState(false);
+  const [cursorTools, setCursorTools] = useState(true);
   const [instances, setInstances] = useState<AgentInstance[]>([]);
   const [showAgentTerm, setShowAgentTerm] = useState(false);
   const [updateNotifyOptOut, setUpdateNotifyOptOut] = useState(false);
@@ -551,6 +552,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         setDryRun(a.dryRun === true);
         setTmuxMode(a.tmuxMode === true);
         setRemoteControl(a.remoteControl === true);
+        setCursorTools(a.cursorTools !== false);
         setUpdateNotifyOptOut(a.updateNotifyOptOut === true);
         setPromptExclude(a.promptExclude ?? []);
         setFallbackProviderId(a.fallbackProviderId ?? "");
@@ -582,6 +584,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
       dryRun !== (agent.dryRun === true) ||
       tmuxMode !== (agent.tmuxMode === true) ||
       remoteControl !== (agent.remoteControl === true) ||
+      cursorTools !== (agent.cursorTools !== false) ||
       updateNotifyOptOut !== (agent.updateNotifyOptOut === true) ||
       !sameExclude(promptExclude, agent.promptExclude ?? []) ||
       fallbackProviderId !== (agent.fallbackProviderId ?? "") ||
@@ -649,6 +652,7 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         dryRun,
         tmuxMode,
         remoteControl,
+        cursorTools,
         updateNotifyOptOut,
         promptExclude,
         fallbackProviderId,
@@ -879,6 +883,23 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
               </p>
             )}
           </div>
+
+          {backendId === "cursor-cli" && (
+            <div className="mt-4 border-t border-line pt-4">
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={cursorTools}
+                  onChange={(e) => setCursorTools(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                />
+                <span>
+                  <span className="text-sm font-medium text-fg">{t("settings_cursor_tools")}</span>
+                  <span className="block text-xs text-fg-dim">{t("settings_cursor_tools_desc")}</span>
+                </span>
+              </label>
+            </div>
+          )}
 
           {!backendId && (() => {
             // Claude backend only: the persistent TUI (and --remote-control)

@@ -37,6 +37,14 @@ export interface CliRunSpec {
   mapTool: (tool: string, args: Record<string, unknown>) => MappedTool | null;
   /** Short label used only in log messages, e.g. "agy". */
   backend: string;
+  /**
+   * Set when the backend reports the outcome of its OWN tools from its event
+   * stream (cursor does; a denied call still shows up there as a failure). The
+   * bridge then stays quiet about those outcomes, including a deny, so one
+   * refused call is not counted as two failures. MCP calls are unaffected: they
+   * are answered here and nowhere else.
+   */
+  toolResultsFromStream?: boolean;
 }
 
 /** Handle for a registered turn; `dispose()` must run in the caller's finally. */
@@ -343,7 +351,7 @@ class BridgeSession {
       // The refusal IS this call's result; drop the step so the PostToolUse
       // hook the CLI still fires for it doesn't report a second, clean one.
       if (stepIdx !== undefined) this.steps.delete(stepIdx);
-      this.spec.onToolResult?.(true);
+      if (!this.spec.toolResultsFromStream) this.spec.onToolResult?.(true);
       return { decision: "deny", reason: decision.message };
     }
     // An approved-with-edits result (e.g. a rewritten Bash command) is pushed

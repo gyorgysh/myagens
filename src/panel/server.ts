@@ -613,6 +613,8 @@ function workerView(w: Worker) {
     fallbackModel: w.fallbackModel ?? "",
     tmuxMode: w.tmuxMode === true,
     remoteControl: w.remoteControl === true,
+    // Default-on: anything but an explicit false is enabled.
+    cursorTools: w.cursorTools !== false,
     systemPrompt: w.systemPrompt ?? "",
     skillId: w.skillId ?? "",
     schedule: describeWorkerSchedule(w),
@@ -729,6 +731,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       dryRun,
       tmuxMode,
       remoteControl,
+      cursorTools,
       fallbackProviderId,
       fallbackBackendId,
       fallbackModel,
@@ -746,6 +749,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       dryRun?: boolean;
       tmuxMode?: boolean;
       remoteControl?: boolean;
+      cursorTools?: boolean;
       fallbackProviderId?: string;
       fallbackBackendId?: string;
       fallbackModel?: string;
@@ -765,6 +769,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       dryRun,
       tmuxMode,
       remoteControl,
+      cursorTools,
       fallbackProviderId,
       fallbackBackendId,
       fallbackModel,

@@ -253,6 +253,7 @@ export class AgentChatManager {
         persona: w.persona,
         language: w.language,
         promptExclude: w.promptExclude,
+        cursorTools: w.cursorTools,
         tmux: agentRun.tmux,
         // The President is driving from the trusted panel, so allow tools.
         permissionMode: "bypassPermissions",

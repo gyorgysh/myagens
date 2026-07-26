@@ -13,6 +13,7 @@ import { setMainBotUsername } from "./core/mainSettings.js";
 import { startPanel } from "./panel/server.js";
 import { tunnelManager } from "./core/tunnelManager.js";
 import { adoptInstances } from "./claude/tmuxInstance.js";
+import { restoreCursorConfigs } from "./cursor/customization.js";
 import { workers } from "./core/workers.js";
 import { memory } from "./core/memory.js";
 import { embeddingsEnabled, autoProbeEmbeddings } from "./core/embeddings.js";
@@ -110,6 +111,12 @@ async function main(): Promise<void> {
   // tmux is missing this logs one warning and Tmux-mode agents run on the SDK.
   void adoptInstances().catch((err) => {
     log.warn("tmux instance adoption failed", { error: errText(err) });
+  });
+
+  // Undo any cursor project config a previous process was killed mid-turn with,
+  // so no project keeps MyAgens hooks wired in (src/cursor/customization.ts).
+  await restoreCursorConfigs().catch((err) => {
+    log.warn("cursor config restore failed", { error: errText(err) });
   });
 
   // Auto-detect a local embedding model (Ollama / LM Studio) if the user hasn't

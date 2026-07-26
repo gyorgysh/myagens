@@ -173,6 +173,7 @@ export function createCrewMcp(opts: CrewMcpOptions) {
               systemPromptAppend: append,
               persona: lead.persona,
               promptExclude: lead.promptExclude,
+              cursorTools: lead.cursorTools,
               permissionMode: delegatedPermissionMode(opts.callerAutonomy),
               abortController: abort,
               mcpServers: { memory: memoryMcp, tasks: createTasksMcp({ createdBy: lead.id }), skills: skillsMcp },

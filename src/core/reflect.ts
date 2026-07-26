@@ -68,6 +68,7 @@ export async function reflectOnTurn(
       model: mainRun.model,
       env: mainRun.env,
       promptExclude: mainRun.promptExclude,
+      cursorTools: mainRun.cursorTools,
       systemPromptAppend: SYSTEM,
       // The reflection prompt embeds the user's prompt + the turn's output tail —
       // content a supervised session deliberately gated, and which may carry

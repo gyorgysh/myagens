@@ -347,6 +347,9 @@ export interface Worker {
   /** Remote Control (sub-toggle of tmuxMode): mirror the persistent instance
    *  to claude.ai/the Claude app. */
   remoteControl?: boolean;
+  /** Cursor backend only: run cursor-agent as a full MyAgens agent (MCP tools
+   *  plus the approval gate). Default on; false runs the plain CLI. */
+  cursorTools?: boolean;
   systemPrompt: string;
   skillId: string;
   schedule: string;
@@ -958,6 +961,9 @@ export interface MainAgent {
   /** Remote Control (sub-toggle of tmuxMode): mirror the persistent instance
    *  to claude.ai/the Claude app. */
   remoteControl: boolean;
+  /** Cursor backend only: run cursor-agent as a full MyAgens agent (MCP tools
+   *  plus the approval gate). Default on; false runs the plain CLI. */
+  cursorTools: boolean;
   /** Provider to fail over to when the plan is rate-limited ("" = off). */
   fallbackProviderId: string;
   /** Agent backend to fail over to ("" = keep the primary backend). */
@@ -1290,7 +1296,7 @@ export const api = {
       `/api/agent-instances/${agentId}/restart`,
       remoteControl === undefined ? undefined : { remoteControl },
     ),
-  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; tmuxMode?: boolean; remoteControl?: boolean; fallbackProviderId?: string; fallbackBackendId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean; promptExclude?: PromptExcludeKey[] }) =>
+  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; tmuxMode?: boolean; remoteControl?: boolean; cursorTools?: boolean; fallbackProviderId?: string; fallbackBackendId?: string; fallbackModel?: string; fallbackThreshold?: number; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean; promptExclude?: PromptExcludeKey[] }) =>
     req<MainAgent>("PUT", "/api/agent", s),
   resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),

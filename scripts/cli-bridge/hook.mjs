@@ -1,5 +1,5 @@
-// PreToolUse / PostToolUse hook for CLI-driven agent backends (agy today,
-// codex/cursor once they adopt the shared bridge).
+// PreToolUse / PostToolUse hook for CLI-driven agent backends (agy, codex and
+// cursor).
 //
 // Registered in the per-run customization root written by the backend's own
 // customization module (e.g. src/agy/customization.ts). The CLI runs this
@@ -10,8 +10,8 @@
 // write_file, …) — none of these CLIs streams tool events of its own.
 //
 // Invoked as `node hook.mjs <flavor> <pre|post>`. `flavor` picks the payload
-// shape below ("agy" and "codex" so far); the FLAVORS map is the only thing a
-// future CLI needs to extend.
+// shape below ("agy", "codex" and "cursor" so far); the FLAVORS map is the only
+// thing a future CLI needs to extend.
 //
 // Fails closed on purpose: if the bot cannot be reached while a run is in
 // flight, the tool is denied rather than quietly run unsupervised. With no
@@ -106,6 +106,39 @@ const FLAVORS = {
           permissionDecisionReason: reason,
         },
       };
+    },
+  },
+
+  // Cursor sends its own flat payload (snake_case, `tool_use_id` tying the two
+  // events together) and reads a flat `{permission}` decision back.
+  cursor: {
+    decode(payload) {
+      return {
+        tool: payload.tool_name ?? "",
+        args: payload.tool_input ?? {},
+        stepIdx: payload.tool_use_id,
+      };
+    },
+    decodePost() {
+      // Nothing to report: the payload carries the tool's output but no
+      // success/failure signal, and cursor's own `--json` stream already tells
+      // the runner how each call ended. Reporting here too would double-count.
+      return null;
+    },
+    encodeAllow(decision, payload) {
+      if (decision?.decision === "deny") {
+        return { permission: "deny", user_message: decision.reason ?? "Denied by MyAgens." };
+      }
+      if (decision?.overwrite) {
+        return {
+          permission: "allow",
+          updated_input: { ...(payload.tool_input ?? {}), ...decision.overwrite },
+        };
+      }
+      return { permission: "allow" };
+    },
+    encodeDeny(reason) {
+      return { permission: "deny", user_message: reason };
     },
   },
 };

@@ -214,6 +214,7 @@ export class LeadBot {
         persona: lead.persona,
         language: lead.language,
         promptExclude: lead.promptExclude,
+        cursorTools: lead.cursorTools,
         tmux: leadRun.tmux,
         permissionMode: s.autonomy === "full" ? "bypassPermissions" : "default",
         abortController: s.abort,

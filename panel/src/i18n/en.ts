@@ -569,6 +569,8 @@ export const en = {
   settings_dryrun_desc: "Mutating tools (Bash, Write, Edit) are echoed but not executed. The agent narrates what it would do without touching the host.",
   settings_remote_control: "Remote Control (claude.ai)",
   settings_remote_control_desc: "Mirror the persistent instance to claude.ai/code and the Claude mobile app, so the live session can be watched and steered from anywhere. Only effective in Tmux mode; needs a Claude subscription sign-in. Applying a change requires an instance restart.",
+  settings_cursor_tools: "MyAgens tools and approvals in Cursor",
+  settings_cursor_tools_desc: "Give cursor-agent the MyAgens tools (memory, kanban, crew, connectors) and real Approve/Deny buttons for its own tool calls. Cursor only reads that configuration from the project you are working in, so a hook and an MCP entry are written into its .cursor/ folder for the duration of a turn and put back afterwards. Turn this off to run the plain Cursor CLI and leave the project untouched.",
   settings_tmux_mode: "Persistent instance (tmux)",
   settings_tmux_mode_desc: "Run this agent's conversation in one long-lived Claude Code TUI inside a named tmux session, instead of a fresh headless run per message. The conversation survives bot restarts and can be watched or taken over from any terminal, this panel, or (with Remote Control) the Claude app. Runs with bypassed permissions.",
   settings_tmux_requires_full: "Requires Full autonomy — the persistent TUI can't route tool approvals.",

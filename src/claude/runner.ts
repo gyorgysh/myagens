@@ -122,6 +122,15 @@ export interface RunOptions {
    * backendId "claude-tmux"; every other backend ignores it.
    */
   tmux?: TmuxRunSpec;
+  /**
+   * Cursor backend only: set to false to run the plain `cursor-agent` CLI with
+   * no MyAgens MCP tools and no approval gate. Unset means the full agent, so a
+   * call site that never heard of this flag gets the capable path. The opt-out
+   * exists because that path writes into `<cwd>/.cursor/`, the user's own
+   * project directory (src/cursor/customization.ts). Every other backend
+   * ignores it.
+   */
+  cursorTools?: boolean;
   /** "default" = interactive approval; "bypassPermissions" = autonomous. */
   permissionMode: "default" | "bypassPermissions";
   /**

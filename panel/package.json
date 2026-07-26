@@ -27,9 +27,8 @@
     "vite": "^6.4.3",
     "vite-plugin-pwa": "^0.21.1"
   },
+  "comment:overrides": "ejs only reaches this tree through workbox-build's service-worker builder, whose chain (rollup-plugin-off-main-thread -> ejs -> jake -> filelist -> minimatch) carries high-severity advisories with no fixed release upstream: workbox-build's latest IS the flagged version. ejs 6 dropped its jake dependency, so pinning it here removes the whole subtree. Must stay a top-level override, since npm 10 ignores a nested one whose path does not start at a root dependency.",
   "overrides": {
-    "@trickfilm400/rollup-plugin-off-main-thread": {
-      "ejs": "^6.0.1"
-    }
+    "ejs": "^6.0.1"
   }
 }

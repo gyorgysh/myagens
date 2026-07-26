@@ -7,16 +7,35 @@
 // loopback (src/core/cliBridge.ts), which is where the real handlers, the
 // approval flow, and the live tool status live.
 //
-// The turn's endpoint and token arrive as env vars on the CLI spawn. Without
-// them (someone ran this by hand) it starts cleanly and advertises no tools.
+// The turn's endpoint and token arrive as env vars on the CLI spawn, or — where
+// the CLI doesn't pass its environment on to MCP children, as codex doesn't —
+// as a 0600 file named by MYAGENS_BRIDGE_FILE, so the token never has to travel
+// through a command line where `ps` would show it. Without either (someone ran
+// this by hand) it starts cleanly and advertises no tools.
 //
 // Plain Node, no build step and no dependencies: it runs from the repo in both
 // dev and production, where the compiled bot lives in dist/ but this does not.
 
+import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
-const URL_BASE = process.env.MYAGENS_BRIDGE_URL;
-const TOKEN = process.env.MYAGENS_BRIDGE_TOKEN;
+/** Bridge coordinates from the environment, falling back to the handoff file. */
+function coordinates() {
+  if (process.env.MYAGENS_BRIDGE_URL && process.env.MYAGENS_BRIDGE_TOKEN) {
+    return { url: process.env.MYAGENS_BRIDGE_URL, token: process.env.MYAGENS_BRIDGE_TOKEN };
+  }
+  const file = process.env.MYAGENS_BRIDGE_FILE;
+  if (!file) return {};
+  try {
+    const { url, token } = JSON.parse(readFileSync(file, "utf8"));
+    return url && token ? { url, token } : {};
+  } catch (err) {
+    process.stderr.write(`myagens: could not read bridge file: ${err?.message ?? err}\n`);
+    return {};
+  }
+}
+
+const { url: URL_BASE, token: TOKEN } = coordinates();
 
 /** Latest MCP revision we know; the client's own version wins when it sends one. */
 const FALLBACK_PROTOCOL = "2025-06-18";

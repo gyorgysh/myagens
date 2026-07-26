@@ -3,6 +3,16 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.6.13] - 2026-07-26
+
+### Added
+- **The Codex backend is a full MyAgens agent now, not a bare Codex one.** Running a chat, Lead or worker on `codex` used to mean losing everything that makes an agent yours. The same three things the Antigravity backend gained are in:
+  - **Your tools.** Memory, the kanban board, skills, crew messaging, `send_file` and every enabled connector are republished to Codex under the same names Claude uses, so an "always allow" preset you granted on Claude means the same thing here.
+  - **Your agent.** Persona, `work.md`, known directories, the crew roster, worker identity and the memories recalled for the message all reach the run, so it answers as Atlas (or as the Lead you set up), in your language and to your conventions. The heavy part is sent once per conversation and refreshed when it changes, not re-sent every turn.
+  - **Your approvals.** Below Full autonomy, risky calls stop for Approve/Deny exactly like Claude's — including per-command "always allow `git`" grants — and a file-creating patch is told apart from an edit or a delete, so a delete always asks under its own name. A refusal reaches the model as a failed tool call with your reason, and if the bot can't be asked, the call is blocked rather than run unsupervised.
+
+  Live tool status and real token usage, which this backend already reported, are unchanged. It runs with a MyAgens-owned Codex configuration so nothing is written to your `~/.codex` setup and your own `codex` sessions are untouched — the one visible consequence is that your `~/.codex/config.toml` model no longer applies to MyAgens runs, so the **Model** field is now available for Codex in Settings and the Worker form (empty = the CLI's default). Conversations recorded before this release start a fresh thread on their next turn. Still missing versus Claude: the connectors that run as their own process (Unreal Engine, Unity, Browser Sketchpad).
+
 ## [0.6.12] - 2026-07-26
 
 ### Added

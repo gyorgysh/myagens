@@ -732,9 +732,9 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
           {backendModelKind(backendId) ? (
             // These backends keep the Model field but drop Provider, which
             // never applies to their own auth. Ollama's model is the name
-            // installed on the local daemon; agy's and Cursor's are labels
-            // their CLI accepts (leave empty for the default). The fetch
-            // button lists what's actually available.
+            // installed on the local daemon; agy's, Cursor's and Codex's are
+            // ids their CLI accepts (leave empty for the default). The fetch
+            // button, where the CLI can list models, shows what's available.
             <div>
               <Label>{t("model")}</Label>
               <ModelSelect

@@ -209,8 +209,12 @@ class BridgeSession {
   private routes = new Map<string, { server: string; tool: string }>();
   private tools?: BridgedTool[];
   private listing?: Promise<BridgedTool[]>;
-  /** stepIdx -> canonical tool name, so a PostToolUse result knows what failed. */
-  private steps = new Map<number, string>();
+  /**
+   * Step key -> canonical tool name, so a PostToolUse result knows what failed.
+   * The key is whatever the CLI uses to tie its two hook events together: a
+   * numeric step index for agy, a string `tool_use_id` for codex and cursor.
+   */
+  private steps = new Map<string | number, string>();
 
   constructor(readonly spec: CliRunSpec) {
     for (const [name, server] of Object.entries(spec.mcpServers ?? {})) {
@@ -306,16 +310,19 @@ class BridgeSession {
   async preToolUse(
     tool: string,
     args: Record<string, unknown>,
-    stepIdx: number | undefined,
+    stepIdx: string | number | undefined,
   ): Promise<{ decision: "allow" | "deny"; reason?: string; overwrite?: Record<string, unknown> }> {
     // MCP calls are gated at the tool call itself (above), where the real tool
-    // name and arguments are known — gating the opaque `call_mcp_tool` wrapper
-    // here too would prompt the user twice for one call.
+    // name and arguments are known — gating them here too (as the opaque
+    // `call_mcp_tool` wrapper agy sends, or the `mcp__server__tool` step codex
+    // and cursor send) would prompt the user twice for one call.
     const mapped = this.spec.mapTool(tool, args);
     if (!mapped) {
       // Most unmapped steps are internal bookkeeping, but this is also how a
       // renamed or newly added CLI tool would show up, so leave a trail.
-      if (tool !== "call_mcp_tool") log.debug(`${this.spec.backend} bridge: unmapped tool step`, { tool });
+      if (tool !== "call_mcp_tool" && !tool.startsWith("mcp__")) {
+        log.debug(`${this.spec.backend} bridge: unmapped tool step`, { tool });
+      }
       return { decision: "allow" };
     }
 
@@ -346,7 +353,7 @@ class BridgeSession {
   }
 
   /** PostToolUse: report success/failure so auto_until_error autonomy can escalate. */
-  postToolUse(stepIdx: number | undefined, error: string | undefined): void {
+  postToolUse(stepIdx: string | number | undefined, error: string | undefined): void {
     if (stepIdx !== undefined && !this.steps.has(stepIdx)) return; // a step we never announced
     if (stepIdx !== undefined) this.steps.delete(stepIdx);
     this.spec.onToolResult?.(Boolean(error));
@@ -390,6 +397,12 @@ function send(res: ServerResponse, status: number, payload: unknown): void {
   res.end(body);
 }
 
+/** A step key as sent by a hook: a numeric index (agy) or a tool_use_id string. */
+function stepKey(value: unknown): string | number | undefined {
+  if (typeof value === "number") return value;
+  return typeof value === "string" && value ? value : undefined;
+}
+
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== "POST") return send(res, 405, { error: "method not allowed" });
 
@@ -419,11 +432,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (path === "/hook/pre") {
       const tool = typeof payload.tool === "string" ? payload.tool : "";
       const args = (payload.args ?? {}) as Record<string, unknown>;
-      const stepIdx = typeof payload.stepIdx === "number" ? payload.stepIdx : undefined;
-      return send(res, 200, await session.preToolUse(tool, args, stepIdx));
+      return send(res, 200, await session.preToolUse(tool, args, stepKey(payload.stepIdx)));
     }
     if (path === "/hook/post") {
-      const stepIdx = typeof payload.stepIdx === "number" ? payload.stepIdx : undefined;
+      const stepIdx = stepKey(payload.stepIdx);
       const error = typeof payload.error === "string" && payload.error ? payload.error : undefined;
       session.postToolUse(stepIdx, error);
       return send(res, 200, {});

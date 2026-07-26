@@ -1286,9 +1286,9 @@ function WizardConfigEditor({
         </div>
         {backendModelKind(form.backendId) && (
           // These backends keep the Model field (Ollama: the installed local
-          // model name; agy/Cursor: a label their CLI accepts, empty = its
-          // default) but drop Provider, which never applies. The fetch button
-          // lists what's actually available.
+          // model name; agy/Cursor/Codex: an id their CLI accepts, empty = its
+          // default) but drop Provider, which never applies. The fetch button,
+          // where the CLI can list models, shows what's available.
           <div>
             <Label>{t("workers_model")}</Label>
             <ModelSelect
@@ -1654,9 +1654,9 @@ function WorkerForm({
         </div>
         {backendModelKind(form.backendId) && (
           // These backends keep the Model field (Ollama: the installed local
-          // model name; agy/Cursor: a label their CLI accepts, empty = its
-          // default) but drop Provider, which never applies. The fetch button
-          // lists what's actually available.
+          // model name; agy/Cursor/Codex: an id their CLI accepts, empty = its
+          // default) but drop Provider, which never applies. The fetch button,
+          // where the CLI can list models, shows what's available.
           <div>
             <Label>{t("workers_model")}</Label>
             <ModelSelect

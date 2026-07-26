@@ -10,7 +10,7 @@
 // write_file, …) — none of these CLIs streams tool events of its own.
 //
 // Invoked as `node hook.mjs <flavor> <pre|post>`. `flavor` picks the payload
-// shape below (only "agy" exists so far); the FLAVORS map is the only thing a
+// shape below ("agy" and "codex" so far); the FLAVORS map is the only thing a
 // future CLI needs to extend.
 //
 // Fails closed on purpose: if the bot cannot be reached while a run is in
@@ -39,9 +39,10 @@ function denyReason(detail) {
  * Per-CLI translation between that CLI's own hook payload and the bridge's
  * wire format. Each flavor supplies:
  * - `decode(payload)` — pull `{tool, args, stepIdx}` out of the PreToolUse body.
- * - `decodePost(payload)` — pull `{stepIdx, error}` out of the PostToolUse body.
- * - `encodeAllow(decision)` — turn the bridge's `/hook/pre` response into what
- *   this CLI expects on stdout for a successful round trip.
+ * - `decodePost(payload)` — pull `{stepIdx, error}` out of the PostToolUse body,
+ *   or null when this event should not be reported at all.
+ * - `encodeAllow(decision, payload)` — turn the bridge's `/hook/pre` response
+ *   into what this CLI expects on stdout for a successful round trip.
  * - `encodeDeny(reason)` — the fail-closed stdout shape for this CLI.
  */
 const FLAVORS = {
@@ -61,6 +62,50 @@ const FLAVORS = {
     },
     encodeDeny(reason) {
       return { decision: "deny", reason };
+    },
+  },
+
+  // Codex sends Claude Code's own hook JSON, snake_case, and keys the two
+  // events on `tool_use_id` rather than a step index.
+  codex: {
+    decode(payload) {
+      return {
+        tool: payload.tool_name ?? "",
+        args: payload.tool_input ?? {},
+        stepIdx: payload.tool_use_id,
+      };
+    },
+    decodePost(payload) {
+      // The payload says nothing about whether the tool succeeded — for a shell
+      // call `tool_response` is just its output, with no exit code. The runner
+      // reads that from codex's own `--json` stream instead, so reporting the
+      // same call here would double-count it.
+      if (payload.tool_name === "Bash") return null;
+      return { stepIdx: payload.tool_use_id };
+    },
+    encodeAllow(decision, payload) {
+      const out = { hookEventName: "PreToolUse" };
+      if (decision?.decision === "deny") {
+        // NOT `{"decision":"deny"}`: that is not a value codex recognises, and
+        // it reads as no opinion, i.e. the tool runs.
+        out.permissionDecision = "deny";
+        out.permissionDecisionReason = decision.reason ?? "Denied by MyAgens.";
+      } else if (decision?.overwrite) {
+        out.permissionDecision = "allow";
+        out.updatedInput = { ...(payload.tool_input ?? {}), ...decision.overwrite };
+      } else {
+        return {}; // plain allow: no opinion, let codex proceed
+      }
+      return { hookSpecificOutput: out };
+    },
+    encodeDeny(reason) {
+      return {
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: reason,
+        },
+      };
     },
   },
 };
@@ -99,6 +144,9 @@ if (!flavor) {
 
 const path = isPre ? "/hook/pre" : "/hook/post";
 const body = isPre ? flavor.decode(payload) : flavor.decodePost(payload);
+// A post event the flavor doesn't want reported (its result reaches the bot
+// another way) stops here rather than reaching the bridge.
+if (!body) out({});
 
 try {
   const res = await fetch(`${URL_BASE}${path}`, {
@@ -108,7 +156,7 @@ try {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const decision = await res.json();
-  out(isPre ? flavor.encodeAllow(decision) : {});
+  out(isPre ? flavor.encodeAllow(decision, payload) : {});
 } catch (err) {
   if (!isPre) out({});
   out(flavor.encodeDeny(denyReason(err?.message ?? err)));

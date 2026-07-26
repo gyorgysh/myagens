@@ -544,7 +544,9 @@ The condensed pitch is above; this is everything, including the security hardeni
 
 Lead bots support `/ping`, `/status`, `/cd`, `/pwd`, `/stop`, `/mode`, `/lang`, `/reload`, and `/help`.
 
-### Commands (Slack)
+### Slack
+
+Set it up from the first-run wizard's optional Slack step, or from **Settings → Slack** in the panel: both give you the app manifest to paste at api.slack.com, verify each token against Slack before saving, and detect your member ID from a direct message. The `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` / `SLACK_ALLOWED_USER_IDS` variables in `.env` still work and are the fallback.
 
 The Slack surface uses a `!` prefix — `!help`, `!ping`, `!status`, `!new`, `!stop`, `!pwd`, `!cd`, `!mode`, `!lang`, `!allow`, `!disallow`, `!allowed`, `!usage` — because Slack never delivers a `/command` an app has not declared. Declare them under **Slash Commands** on your Slack app and the `/` form starts working too; the handlers are already registered for both.
 

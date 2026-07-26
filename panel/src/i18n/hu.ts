@@ -529,6 +529,7 @@ export const hu: Translations = {
   settings_section_prompt: "Utasítás és kézikönyv",
   settings_section_skills: "Készségek",
   settings_section_voice: "Hang",
+  settings_section_slack: "Slack",
   settings_voice_title: "Hang",
   settings_voice_desc:
     "Hangüzenetek átirata (STT) és a felolvasott válaszok (TTS). Hagyj üresen egy mezőt, hogy a .env beállítást használja.",

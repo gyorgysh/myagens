@@ -528,6 +528,7 @@ export const en = {
   settings_section_prompt: "Prompt & Playbook",
   settings_section_skills: "Skills",
   settings_section_voice: "Voice",
+  settings_section_slack: "Slack",
   settings_voice_title: "Voice",
   settings_voice_desc:
     "Transcription (STT) and spoken replies (TTS) for voice memos. Leave a field blank to fall back to its .env setting.",

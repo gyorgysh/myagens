@@ -23,6 +23,14 @@ import { repoRootFromHere } from "./paths.js";
 import { writeEnvValues } from "./env.js";
 import { CandidatePoller, getMe, sendMessage, TelegramError, type BotInfo, type Candidate } from "./telegram.js";
 import { claudeAuthStatus, validateApiKey, SetupTokenFlow } from "./claude.js";
+import {
+  verifyBotToken,
+  verifyAppToken,
+  sendConfirmDm,
+  isSlackUserId,
+  SlackCandidatePoller,
+  SLACK_APP_MANIFEST,
+} from "../core/slackSetup.js";
 import { wizardHtml } from "./wizardHtml.js";
 
 const BASE_PORT = Number(process.env.PANEL_PORT) || 8787;
@@ -43,6 +51,15 @@ interface SetupSession {
   claudeMethod: "none" | "cli" | "apikey";
   apiKey?: string;
   finished: boolean;
+  /** Optional Slack surface — skipped by default, never blocks finishing. */
+  slack?: {
+    botToken: string;
+    appToken: string;
+    team: string;
+    botUserId: string;
+    userIds: string[];
+    poller?: SlackCandidatePoller;
+  };
 }
 
 function sha(input: string): Buffer {
@@ -134,6 +151,10 @@ export async function startSetupServer(): Promise<void> {
       ? { id: session.confirmedUser.id, firstName: session.confirmedUser.firstName, username: session.confirmedUser.username }
       : null,
     claudeMethod: session.claudeMethod,
+    slack: session.slack
+      ? { team: session.slack.team, userIds: session.slack.userIds }
+      : null,
+    slackManifest: SLACK_APP_MANIFEST,
     models: [...MODEL_CHOICES],
     defaultModel: DEFAULT_MODEL,
   }));
@@ -192,6 +213,73 @@ export async function startSetupServer(): Promise<void> {
     const known = session.poller?.candidates.get(id);
     session.confirmedUser = known ?? { id, firstName: "", at: Date.now() };
     log.info("Setup: owner confirmed", { userId: id });
+    return { ok: true };
+  });
+
+  // ---------------------------------------------------------------- slack ---
+  // Optional. Slack's own setup is the rough part (two lookalike tokens on
+  // different admin pages, plus a member id), so the wizard proves each token
+  // against Slack and detects the member id from a DM — the same treatment
+  // Telegram gets above. Nothing here can block finishing.
+  app.post("/setup/api/slack/tokens", async (req, reply) => {
+    const body = (req.body ?? {}) as { botToken?: unknown; appToken?: unknown };
+    const botToken = String(body.botToken ?? "").trim();
+    const appToken = String(body.appToken ?? "").trim();
+    try {
+      const identity = await verifyBotToken(botToken);
+      await verifyAppToken(appToken);
+      await session.slack?.poller?.stop();
+      const poller = new SlackCandidatePoller(botToken, appToken, identity.botUserId);
+      session.slack = {
+        botToken,
+        appToken,
+        team: identity.team,
+        botUserId: identity.botUserId,
+        userIds: [],
+        poller,
+      };
+      await poller.start();
+      log.info("Setup: Slack tokens verified — watching for a DM", { team: identity.team });
+      return { ok: true, team: identity.team };
+    } catch (err) {
+      return reply
+        .code(400)
+        .send({ error: err instanceof Error ? err.message : "Slack rejected these tokens." });
+    }
+  });
+
+  app.get("/setup/api/slack/candidates", async (_req, reply) => {
+    const slack = session.slack;
+    if (!slack?.poller) return reply.code(400).send({ error: "verify the Slack tokens first" });
+    return {
+      candidates: [...slack.poller.candidates.values()].sort((a, b) => b.at - a.at).slice(0, 10),
+      warning: slack.poller.warning,
+      userIds: slack.userIds,
+    };
+  });
+
+  app.post("/setup/api/slack/confirm", async (req, reply) => {
+    const userId = String((req.body as { userId?: unknown })?.userId ?? "").trim();
+    const slack = session.slack;
+    if (!slack) return reply.code(400).send({ error: "verify the Slack tokens first" });
+    if (!isSlackUserId(userId)) return reply.code(400).send({ error: "That isn't a Slack member id." });
+    try {
+      // Delivery proof, same as the Telegram step: if this lands, the id is
+      // real and the bot can actually reach it.
+      await sendConfirmDm(slack.botToken, userId, "✅ It's you! Setup is finishing in your browser.");
+    } catch (err) {
+      return reply
+        .code(400)
+        .send({ error: err instanceof Error ? err.message : "Slack wouldn't deliver the confirmation." });
+    }
+    if (!slack.userIds.includes(userId)) slack.userIds.push(userId);
+    log.info("Setup: Slack user confirmed", { userId });
+    return { ok: true, userIds: slack.userIds };
+  });
+
+  app.post("/setup/api/slack/skip", async () => {
+    await session.slack?.poller?.stop();
+    session.slack = undefined;
     return { ok: true };
   });
 
@@ -263,6 +351,13 @@ export async function startSetupServer(): Promise<void> {
       PANEL_TOKEN: panelToken,
     };
     if (session.claudeMethod === "apikey" && session.apiKey) values.ANTHROPIC_API_KEY = session.apiKey;
+    // Slack is optional: only written when the user completed that step, so a
+    // skipped one leaves the three vars commented out as .env.example has them.
+    if (session.slack?.userIds.length) {
+      values.SLACK_BOT_TOKEN = session.slack.botToken;
+      values.SLACK_APP_TOKEN = session.slack.appToken;
+      values.SLACK_ALLOWED_USER_IDS = session.slack.userIds.join(",");
+    }
     writeEnvValues(join(repoRoot, ".env"), values);
     session.finished = true;
     log.info("Setup: configuration written, handing off", { bot: `@${session.botInfo.username}`, model });
@@ -280,6 +375,7 @@ export async function startSetupServer(): Promise<void> {
     // with .env now valid, the entry point boots the real app.
     setTimeout(() => {
       session.poller?.stop();
+      void session.slack?.poller?.stop();
       loginFlow.cancel();
       void app.close().then(() => {
         if (process.env.MYAGENS_SETUP_HANDOFF !== "exit") {

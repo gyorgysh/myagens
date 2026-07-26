@@ -1026,6 +1026,34 @@ export interface Provider {
   updatedAt: number;
 }
 
+export interface SlackSettingsView {
+  hasBotToken: boolean;
+  hasAppToken: boolean;
+  /** Token comes from .env, so the panel shows it as set but cannot replace it in place. */
+  botTokenFromEnv: boolean;
+  appTokenFromEnv: boolean;
+  allowedUserIds: string[];
+  allowedFromEnv: boolean;
+  enabled: boolean;
+  configured: boolean;
+  running: boolean;
+  detecting: boolean;
+  manifest: unknown;
+}
+
+export interface SlackSettingsPatch {
+  botToken?: string;
+  appToken?: string;
+  allowedUserIds?: string[];
+  enabled?: boolean;
+}
+
+export interface SlackDetectState {
+  running: boolean;
+  warning: string | null;
+  candidates: Array<{ id: string; name: string; lastText?: string; at: number }>;
+}
+
 export interface VoiceSettingsView {
   sttEngine: "openai" | "vosk" | "xai";
   sttProviderId: string;
@@ -1529,6 +1557,20 @@ export const api = {
 
   voiceSettings: () => get<VoiceSettingsView>("/api/voice"),
   updateVoiceSettings: (patch: VoiceSettingsPatch) => req<VoiceSettingsView>("PUT", "/api/voice", patch),
+
+  slackSettings: () => get<SlackSettingsView>("/api/slack"),
+  updateSlackSettings: (patch: SlackSettingsPatch) =>
+    req<SlackSettingsView>("PUT", "/api/slack", patch),
+  verifySlackTokens: (botToken?: string, appToken?: string) =>
+    req<{ ok: boolean; identity?: { team: string; botName: string } }>("POST", "/api/slack/verify", {
+      botToken,
+      appToken,
+    }),
+  startSlackDetect: (botToken?: string, appToken?: string) =>
+    req<{ started: boolean; team?: string }>("POST", "/api/slack/detect/start", { botToken, appToken }),
+  slackDetectState: () => get<SlackDetectState>("/api/slack/detect"),
+  stopSlackDetect: () => req<{ started: boolean }>("POST", "/api/slack/detect/stop", {}),
+  confirmSlackUser: (userId: string) => req<{ ok: boolean }>("POST", "/api/slack/confirm", { userId }),
 
   terminalStatus: () =>
     get<{ available: boolean; reason: "disabled" | "unsupported" | null; shell: string }>(

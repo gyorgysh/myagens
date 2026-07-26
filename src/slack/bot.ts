@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { App } from "@slack/bolt";
-import { config, slackAllowedUserIds, slackConfigured } from "../config.js";
+import { config } from "../config.js";
+import { resolveSlackConfig } from "../core/slackSettings.js";
 import { slackSessions, type SlackSession } from "./session.js";
 import { SlackStreamer } from "./streamer.js";
 import { SlackPermissionManager } from "./permissions.js";
@@ -44,14 +45,19 @@ export interface SlackBotInstance {
 }
 
 export function buildSlackBot(): SlackBotInstance | undefined {
-  if (!slackConfigured || !config.SLACK_BOT_TOKEN || !config.SLACK_APP_TOKEN) {
+  // Resolved per build, not read off module-level config: the panel can set the
+  // tokens and allow-list at runtime, and the manager rebuilds the surface when
+  // they change. Values from .env are still the fallback.
+  const slack = resolveSlackConfig();
+  if (!slack.configured) {
     log.info("Slack surface disabled — tokens or allowed users not configured");
     return undefined;
   }
+  const slackAllowedUserIds = slack.allowedUserIds;
 
   const app = new App({
-    token: config.SLACK_BOT_TOKEN,
-    appToken: config.SLACK_APP_TOKEN,
+    token: slack.botToken,
+    appToken: slack.appToken,
     socketMode: true,
   });
 
@@ -126,7 +132,7 @@ export function buildSlackBot(): SlackBotInstance | undefined {
     }
 
     // Process attached files / images
-    if (msgObj.files && msgObj.files.length > 0 && config.SLACK_BOT_TOKEN) {
+    if (msgObj.files && msgObj.files.length > 0) {
       const session = slackSessions.get(userId);
       const uploadsDir = join(session.cwd, "uploads");
       await mkdir(uploadsDir, { recursive: true });
@@ -137,7 +143,7 @@ export function buildSlackBot(): SlackBotInstance | undefined {
 
         try {
           const res = await fetch(downloadUrl, {
-            headers: { Authorization: `Bearer ${config.SLACK_BOT_TOKEN}` },
+            headers: { Authorization: `Bearer ${slack.botToken}` },
           });
           if (!res.ok) continue;
 

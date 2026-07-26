@@ -520,6 +520,37 @@ ffmpeg before sending, so replies arrive as a real Telegram voice note (`sendVoi
 instead of a file attachment (`sendAudio`); it silently falls back to the file
 attachment if ffmpeg is unavailable.
 
+### Slack chat surface
+
+Tokens and the allow-list for the optional Slack DM surface. Everything falls back
+to `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` / `SLACK_ALLOWED_USER_IDS` in `.env` when
+unset, so a deployment configured the old way is untouched. Tokens saved here go
+into the vault (never returned), and a save restarts the surface in place.
+
+```bash
+# Status, plus the app manifest to paste at api.slack.com
+curl -H "$AUTH" $BASE/api/slack
+
+# Check tokens without saving (reports the workspace name)
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/slack/verify \
+  -d '{ "botToken": "xoxb-…", "appToken": "xapp-…" }'
+
+# Save. Both tokens are proved against Slack first; a bad one is a 400, not a
+# broken surface discovered at the next boot.
+curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/slack \
+  -d '{ "botToken": "xoxb-…", "appToken": "xapp-…", "allowedUserIds": ["U0123456789"] }'
+
+# Member-id detection: start it, DM the bot from Slack, then read the candidates.
+# Self-expires after 5 minutes (it holds a second Socket Mode connection).
+curl -X POST -H "$AUTH" $BASE/api/slack/detect/start -d '{}'
+curl -H "$AUTH" $BASE/api/slack/detect
+curl -X POST -H "$AUTH" $BASE/api/slack/detect/stop -d '{}'
+
+# Prove a detected id is really that person by DMing them
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/slack/confirm \
+  -d '{ "userId": "U0123456789" }'
+```
+
 ### Heartbeat (proactive monitoring)
 
 ```bash

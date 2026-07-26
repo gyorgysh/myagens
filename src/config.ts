@@ -385,12 +385,7 @@ export function normalizeModelId(model: string): string {
 
 export const allowedUserIds = new Set<number>(config.ALLOWED_USER_IDS);
 
-/** Slack member IDs allowed to interact with the Slack surface. Empty when
- *  the Slack surface is not configured. */
-export const slackAllowedUserIds = new Set<string>(config.SLACK_ALLOWED_USER_IDS ?? []);
-
-/** True when all three Slack env vars are present and the surface can boot. */
-export const slackConfigured =
-  Boolean(config.SLACK_BOT_TOKEN) &&
-  Boolean(config.SLACK_APP_TOKEN) &&
-  slackAllowedUserIds.size > 0;
+// The Slack surface reads its tokens and allow-list through
+// `resolveSlackConfig()` (src/core/slackSettings.ts) instead of a snapshot
+// taken here, because the panel can change all three at runtime. The
+// SLACK_* vars above are that resolver's fallback.

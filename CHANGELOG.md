@@ -10,6 +10,8 @@ Commit links point to `github.com/gyorgysh/myagens`.
 
   Chat commands come along too: `!help`, `!ping`, `!status`, `!new`, `!stop`, `!pwd`, `!cd`, `!mode`, `!lang`, `!allow`, `!disallow`, `!allowed`, `!usage`. They use `!` because Slack refuses to deliver a `/command` the app has not declared, so `!stop` works with no Slack setup at all — declare the slash commands on your Slack app and `/stop` starts working too.
 
+  **Setting Slack up no longer means editing `.env` by hand.** The first-run wizard has an optional Slack step, and the panel has **Settings → Slack**. Both hand you the app manifest to paste, check each token against Slack before saving anything (so a swapped bot/app token is caught immediately instead of at the next boot), and find your member ID by watching for a direct message rather than making you dig it out of your Slack profile. Tokens saved from the panel go into the vault, and saving takes effect straight away — no restart. Existing `SLACK_*` variables in `.env` keep working and are used whenever nothing is set in the panel.
+
   Anything Atlas asks for can also be answered by typing: a question by its option number, its option text, or free text, and an approval by replying `yes`, `no`, or `always` (add ` all` to settle a whole batch). That matters because the buttons only reach the bot when the Slack app has **Interactivity** enabled — before, a question nobody could click left the turn blocked and every further message bouncing off a bare "I'm busy". Now the busy notice says what Atlas is waiting on, and `!stop` cancels the pending question or approval as well as aborting the turn.
 
 ## [0.6.13] - 2026-07-26

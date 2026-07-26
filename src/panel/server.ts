@@ -105,6 +105,20 @@ import {
 import { fetchProviderModels } from "../core/providerModels.js";
 import { BlockedUrlError } from "../core/safeUrl.js";
 import { voiceSettingsView, setVoiceSettings } from "../core/voiceSettings.js";
+import {
+  slackSettingsView,
+  setSlackSettings,
+  resolveSlackConfig,
+  isSlackUserId,
+} from "../core/slackSettings.js";
+import {
+  verifyBotToken,
+  verifyAppToken,
+  sendConfirmDm,
+  SlackCandidatePoller,
+  SLACK_APP_MANIFEST,
+} from "../core/slackSetup.js";
+import { slackSurface } from "../slack/manager.js";
 import { mainSettingsView, setMainSettings, resolveMainRun } from "../core/mainSettings.js";
 import { embeddingConfig, setEmbeddingsEnabled, preferredBackend, setPreferredBackend, activeBackend, envEmbeddingMode, embeddingsAuto, enterAutoMode, type PreferredBackend } from "../core/embeddings.js";
 import { ollamaStatus, connectOllama } from "../core/ollama.js";
@@ -138,6 +152,25 @@ const VERSION = (() => {
     return "?";
   }
 })();
+
+/**
+ * Slack member-id detection, running only while the user is on that step of the
+ * Slack settings card. It holds a second Socket Mode connection, so it is
+ * single-instance and self-expiring rather than left to the UI to clean up.
+ */
+let slackDetector: SlackCandidatePoller | undefined;
+let slackDetectorTimer: NodeJS.Timeout | undefined;
+const SLACK_DETECT_TIMEOUT_MS = 5 * 60_000;
+
+async function stopSlackDetector(): Promise<void> {
+  if (slackDetectorTimer) {
+    clearTimeout(slackDetectorTimer);
+    slackDetectorTimer = undefined;
+  }
+  const poller = slackDetector;
+  slackDetector = undefined;
+  await poller?.stop();
+}
 
 /**
  * Start the embedded management panel. In-process so its handlers read the live
@@ -385,6 +418,7 @@ export async function startPanel(): Promise<(() => Promise<void>) | undefined> {
 
   return async () => {
     unsubLog();
+    await stopSlackDetector();
     clearInterval(updateTimer);
     workers.stop();
     taskDelegator.stopAll();
@@ -2225,6 +2259,113 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
   app.put("/api/voice", async (req) => {
     setVoiceSettings(req.body as never);
     return voiceSettingsView();
+  });
+
+  // --- Slack chat surface ---
+  // Configuring Slack by hand is the roughest onboarding path in the product
+  // (two lookalike tokens on different admin pages, plus a member id most
+  // people have never had to find), so the panel validates each token against
+  // Slack and detects the member id from a DM the same way the Telegram wizard
+  // detects the owner.
+  app.get("/api/slack", async () => ({
+    ...slackSettingsView(),
+    running: slackSurface.running(),
+    manifest: SLACK_APP_MANIFEST,
+    detecting: slackDetector !== undefined,
+  }));
+
+  app.put("/api/slack", async (req, reply) => {
+    const body = (req.body ?? {}) as {
+      botToken?: string;
+      appToken?: string;
+      allowedUserIds?: string[];
+      enabled?: boolean;
+    };
+    // Prove the tokens before storing them: a token saved and only found to be
+    // wrong at the next boot is exactly the silent failure this page exists to
+    // remove.
+    try {
+      if (body.botToken) await verifyBotToken(body.botToken);
+      if (body.appToken) await verifyAppToken(body.appToken);
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    if (body.allowedUserIds) {
+      const bad = body.allowedUserIds.map((v) => v.trim()).filter((v) => v && !isSlackUserId(v));
+      if (bad.length) {
+        return reply
+          .code(400)
+          .send({ error: `Not a Slack member id: ${bad.join(", ")}. They look like U0123456789.` });
+      }
+    }
+    const view = setSlackSettings(body);
+    await slackSurface.sync();
+    return { ...view, running: slackSurface.running() };
+  });
+
+  /** Check a token without saving it, so the UI can say "workspace X" as you type. */
+  app.post("/api/slack/verify", async (req, reply) => {
+    const { botToken, appToken } = (req.body ?? {}) as { botToken?: string; appToken?: string };
+    try {
+      const identity = botToken ? await verifyBotToken(botToken) : undefined;
+      if (appToken) await verifyAppToken(appToken);
+      return { ok: true, identity };
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Member-id detection: connect with the given (or saved) tokens, then report
+  // whoever DMs the bot. Stopped on its own after DETECT_TIMEOUT_MS so a
+  // forgotten detector can't sit on a second Socket Mode connection forever.
+  app.post("/api/slack/detect/start", async (req, reply) => {
+    const body = (req.body ?? {}) as { botToken?: string; appToken?: string };
+    const saved = resolveSlackConfig();
+    const botToken = body.botToken?.trim() || saved.botToken;
+    const appToken = body.appToken?.trim() || saved.appToken;
+    if (!botToken || !appToken) {
+      return reply.code(400).send({ error: "Both tokens are needed before detection can run." });
+    }
+    await stopSlackDetector();
+    try {
+      const identity = await verifyBotToken(botToken);
+      const poller = new SlackCandidatePoller(botToken, appToken, identity.botUserId);
+      slackDetector = poller;
+      slackDetectorTimer = setTimeout(() => void stopSlackDetector(), SLACK_DETECT_TIMEOUT_MS);
+      slackDetectorTimer.unref?.();
+      await poller.start();
+      return { started: true, team: identity.team };
+    } catch (err) {
+      await stopSlackDetector();
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get("/api/slack/detect", async () => ({
+    running: slackDetector !== undefined,
+    warning: slackDetector?.warning ?? null,
+    candidates: slackDetector ? [...slackDetector.candidates.values()].sort((a, b) => a.at - b.at) : [],
+  }));
+
+  app.post("/api/slack/detect/stop", async () => {
+    await stopSlackDetector();
+    return { started: false };
+  });
+
+  /** Prove the detected id really is the person at the keyboard. */
+  app.post("/api/slack/confirm", async (req, reply) => {
+    const { userId } = (req.body ?? {}) as { userId?: string };
+    if (!userId || !isSlackUserId(userId)) {
+      return reply.code(400).send({ error: "Not a Slack member id." });
+    }
+    const botToken = resolveSlackConfig().botToken;
+    if (!botToken) return reply.code(400).send({ error: "Save the bot token first." });
+    try {
+      await sendConfirmDm(botToken, userId, `✅ You're connected. Send \`!help\` to see what I can do.`);
+    } catch (err) {
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+    return { ok: true };
   });
 
   // --- Integrations (local Ollama / LM Studio) ---

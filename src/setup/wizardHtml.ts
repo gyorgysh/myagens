@@ -185,7 +185,7 @@ const PAGE = `<!doctype html>
   </header>
 
   <h1 id="title">Let’s bring your agent online.</h1>
-  <p class="sub" id="subtitle">Four short steps. Everything is checked as you go, so nothing can be saved with a typo in it.</p>
+  <p class="sub" id="subtitle">A few short steps. Everything is checked as you go, so nothing can be saved with a typo in it.</p>
 
   <div class="voice" id="voice" aria-live="polite"><span class="dot"></span><span id="voiceText">Hi, I’m your agent. First I need a Telegram body to live in.</span></div>
 
@@ -270,7 +270,7 @@ const PAGE = `<!doctype html>
   function stage(html){ el('stage').innerHTML = '<div class="card">' + html + '</div>'; }
   function err(id, msg){ var n = el(id); if (n){ n.textContent = msg || ''; n.style.display = msg ? 'block' : 'none'; } }
 
-  var STEP_NAMES = ['bot','you','claude','launch'];
+  var STEP_NAMES = ['bot','you','claude','slack','launch'];
   var stepIdx = 0;
   function markStep(i){
     stepIdx = i;
@@ -280,7 +280,7 @@ const PAGE = `<!doctype html>
     }).join(' · ');
   }
 
-  var state = { bot: null, user: null, claudeMethod: 'none', models: [], defaultModel: '' };
+  var state = { bot: null, user: null, claudeMethod: 'none', models: [], defaultModel: '', slack: null, slackManifest: null };
   var pollTimer = null;
   function stopPolling(){ if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
@@ -424,7 +424,7 @@ const PAGE = `<!doctype html>
           '</span></div><button id="claudeNext">Continue</button>';
         el('claudeNext').addEventListener('click', function(){
           receipt('Claude connected: <b>' + esc(s.email || 'existing sign-in') + '</b>');
-          showLaunchStep();
+          showSlackStep();
         });
       } else {
         claudeChoices(s.cliInstalled);
@@ -515,7 +515,7 @@ const PAGE = `<!doctype html>
         if (s.loggedIn) {
           state.claudeMethod = 'cli';
           receipt('Claude connected: <b>' + esc(s.email || 'subscription sign-in') + '</b>');
-          showLaunchStep();
+          showSlackStep();
         } else {
           b.disabled = false; b.textContent = 'Recheck for sign-in';
           err('claudeErr', 'Not signed in yet. Finish the /login step above, then press Recheck.');
@@ -536,7 +536,7 @@ const PAGE = `<!doctype html>
             stopPolling();
             state.claudeMethod = 'cli';
             receipt('Claude connected: <b>subscription sign-in</b>');
-            showLaunchStep();
+            showSlackStep();
             return;
           }
           if (st.url && !shownUrl) {
@@ -576,7 +576,7 @@ const PAGE = `<!doctype html>
       api('claude/apikey', { key: el('apiKey').value }).then(function(){
         state.claudeMethod = 'apikey';
         receipt('Claude connected: <b>API key verified</b>');
-        showLaunchStep();
+        showSlackStep();
       }).catch(function(e){
         btn.disabled = false; btn.textContent = 'Verify';
         err('claudeErr', e.message);
@@ -584,7 +584,112 @@ const PAGE = `<!doctype html>
     });
   }
 
-  // ---- step 4: launch -----------------------------------------------------
+  // ---- step 4: slack (optional) -------------------------------------------
+  // Optional and skippable. Slack's own admin is the awkward part — two tokens
+  // that look alike, on different pages — so both are proved against Slack
+  // before they're kept, and the member id is detected from a DM rather than
+  // asked for. Same treatment the Telegram step gets.
+  function showSlackStep(){
+    markStep(3);
+    stopPolling();
+    voice('Want me in Slack too? Optional — skip it and add it later from the panel.');
+    var manifest = state.slackManifest ? JSON.stringify(state.slackManifest, null, 2) : '';
+    stage(
+      '<h2>Add Slack <small style="color:var(--dim);font-weight:400">· optional</small></h2>' +
+      '<p class="why">A second place to talk to me, alongside Telegram. You can skip this and turn it on later in Settings → Slack.</p>' +
+      '<ol class="how">' +
+        '<li>At <a href="https://api.slack.com/apps" target="_blank" rel="noopener">api.slack.com/apps</a> pick <b>Create New App → From an app manifest</b>, choose your workspace and JSON, then paste this:' +
+          '<div class="keybox" style="margin-top:6px;max-height:120px;overflow:auto">' + esc(manifest) +
+          '<button class="copy" id="copyManifest" type="button">copy</button></div></li>' +
+        '<li>Under <b>Basic Information → App-Level Tokens</b>, generate a token with the <span class="kbd">connections:write</span> scope (starts <span class="kbd">xapp-</span>)</li>' +
+        '<li>Under <b>OAuth &amp; Permissions</b>, click <b>Install to Workspace</b> and copy the bot token (starts <span class="kbd">xoxb-</span>)</li>' +
+      '</ol>' +
+      '<label for="slackBot">Bot token</label>' +
+      '<input id="slackBot" type="password" autocomplete="off" spellcheck="false" placeholder="xoxb-…">' +
+      '<label for="slackApp" style="margin-top:8px;display:block">App-level token</label>' +
+      '<div class="row">' +
+        '<input id="slackApp" type="password" autocomplete="off" spellcheck="false" placeholder="xapp-…">' +
+        '<button id="slackVerify">Verify</button>' +
+      '</div>' +
+      '<p class="err" id="slackErr"></p>' +
+      '<div id="slackDetect"></div>' +
+      '<button id="slackSkip" class="ghost btn-wide" style="margin-top:12px">Skip Slack for now</button>'
+    );
+    var mf = el('copyManifest');
+    if (mf) mf.addEventListener('click', function(){
+      navigator.clipboard && navigator.clipboard.writeText(manifest);
+      mf.textContent = 'copied';
+    });
+    el('slackSkip').addEventListener('click', function(){
+      stopPolling();
+      api('slack/skip', {}).catch(function(){});
+      showLaunchStep();
+    });
+    el('slackVerify').addEventListener('click', function(){
+      var btn = el('slackVerify');
+      err('slackErr', '');
+      btn.disabled = true; btn.textContent = 'Checking…';
+      api('slack/tokens', { botToken: el('slackBot').value, appToken: el('slackApp').value })
+        .then(function(r){
+          btn.textContent = 'Verified';
+          receipt('Slack workspace: <b>' + esc(r.team || 'connected') + '</b>');
+          watchForSlackDm();
+        })
+        .catch(function(e){
+          btn.disabled = false; btn.textContent = 'Verify';
+          err('slackErr', e.message);
+        });
+    });
+  }
+
+  function watchForSlackDm(){
+    voice('Now send my Slack app any direct message, so I know which member is you.', true);
+    el('slackDetect').innerHTML =
+      '<div class="waiting" id="slackWaiting"><span class="dot"></span> Send the app a direct message in Slack…</div>' +
+      '<div class="people" id="slackPeople"></div>' +
+      '<p class="warn hidden" id="slackWarn"></p>' +
+      '<div class="row" style="margin-top:8px"><input id="slackManual" type="text" placeholder="…or paste your member id (U0123456789)"><button id="slackManualGo" class="ghost">Confirm</button></div>';
+    function confirmUser(id, label){
+      err('slackErr', '');
+      api('slack/confirm', { userId: id }).then(function(){
+        stopPolling();
+        receipt('Slack: <b>' + esc(label) + '</b> <code>' + esc(id) + '</code> (check Slack for a ✅)');
+        showLaunchStep();
+      }).catch(function(e){ err('slackErr', e.message); });
+    }
+    el('slackManualGo').addEventListener('click', function(){
+      var v = (el('slackManual').value || '').trim();
+      if (!v) { err('slackErr', 'Paste a member id, or send the app a DM instead.'); return; }
+      confirmUser(v, 'you');
+    });
+    stopPolling();
+    pollTimer = setInterval(function(){
+      api('slack/candidates').then(function(r){
+        var list = r.candidates || [];
+        var box = el('slackPeople');
+        if (!box) return;
+        box.innerHTML = list.map(function(c){
+          return '<div class="person">' +
+            '<div class="av">' + esc((c.name || '?').charAt(0).toUpperCase()) + '</div>' +
+            '<div class="who"><b>' + esc(c.name || 'Unknown') + '</b>' +
+            '<span>' + esc(c.id) + (c.lastText ? ': “' + esc(c.lastText) + '”' : '') + '</span></div>' +
+            '<button data-id="' + esc(c.id) + '" data-name="' + esc(c.name || c.id) + '">That’s me</button>' +
+          '</div>';
+        }).join('');
+        Array.prototype.forEach.call(box.querySelectorAll('button'), function(b){
+          b.addEventListener('click', function(){
+            confirmUser(b.getAttribute('data-id'), b.getAttribute('data-name'));
+          });
+        });
+        var w = el('slackWarn');
+        if (w){ w.textContent = r.warning || ''; w.classList.toggle('hidden', !r.warning); }
+        var waiting = el('slackWaiting');
+        if (waiting) waiting.classList.toggle('hidden', list.length > 0);
+      }).catch(function(){});
+    }, 2000);
+  }
+
+  // ---- step 5: launch -----------------------------------------------------
   var MODEL_META = {
     'claude-sonnet-5': ['Claude Sonnet 5', 'fast and capable, recommended'],
     'claude-opus-5': ['Claude Opus 5', 'smartest, higher cost'],
@@ -592,7 +697,7 @@ const PAGE = `<!doctype html>
     'claude-haiku-4-5-20251001': ['Claude Haiku 4.5', 'light and cheap']
   };
   function showLaunchStep(){
-    markStep(3);
+    markStep(4);
     stopPolling();
     voice('Everything checks out. Pick my brain size and launch me.');
     var models = state.models.length ? state.models : Object.keys(MODEL_META);
@@ -668,9 +773,12 @@ const PAGE = `<!doctype html>
         receipt('That’s you: <b>' + esc(s.confirmedUser.firstName || 'you') + '</b> <code>' + esc(String(s.confirmedUser.id)) + '</code>');
       }
       state.claudeMethod = s.claudeMethod || 'none';
+      state.slack = s.slack || null;
+      state.slackManifest = s.slackManifest || null;
       if (!s.bot) showBotStep();
       else if (!s.confirmedUser) showYouStep();
       else if (state.claudeMethod === 'none') showClaudeStep();
+      else if (!s.slack || !(s.slack.userIds || []).length) showSlackStep();
       else showLaunchStep();
     }).catch(function(e){
       if (e.status === 410) {

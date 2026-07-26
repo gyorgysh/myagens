@@ -2623,15 +2623,18 @@ async function registerStatic(app: FastifyInstance): Promise<void> {
   }
   await app.register(fastifyStatic, {
     root: STATIC_DIR,
-    setHeaders: (res, path) => {
+    // @fastify/static v10 hands this callback the Fastify reply, where v9 handed
+    // it the raw ServerResponse — so it is `reply.header()` here, not
+    // `res.setHeader()`, which would throw on every static file.
+    setHeaders: (reply, path) => {
       // The entry point and the service worker must always revalidate, otherwise
       // a rebuilt panel keeps serving stale (the old SW/HTML references old asset
       // hashes). Hashed assets under /assets are content-addressed, so cache them
       // hard. Path separators differ per-OS, so match both.
       if (/\.(html)$/.test(path) || /(^|[\\/])(sw\.js|manifest\.webmanifest)$/.test(path)) {
-        res.setHeader("cache-control", "no-cache");
+        reply.header("cache-control", "no-cache");
       } else if (/[\\/]assets[\\/]/.test(path)) {
-        res.setHeader("cache-control", "public, max-age=31536000, immutable");
+        reply.header("cache-control", "public, max-age=31536000, immutable");
       }
     },
   });

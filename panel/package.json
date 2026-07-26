@@ -26,5 +26,10 @@
     "typescript": "^7.0.2",
     "vite": "^6.4.3",
     "vite-plugin-pwa": "^0.21.1"
+  },
+  "overrides": {
+    "@trickfilm400/rollup-plugin-off-main-thread": {
+      "ejs": "^6.0.1"
+    }
   }
 }

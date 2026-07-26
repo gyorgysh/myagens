@@ -544,6 +544,12 @@ The condensed pitch is above; this is everything, including the security hardeni
 
 Lead bots support `/ping`, `/status`, `/cd`, `/pwd`, `/stop`, `/mode`, `/lang`, `/reload`, and `/help`.
 
+### Commands (Slack)
+
+The Slack surface uses a `!` prefix — `!help`, `!ping`, `!status`, `!new`, `!stop`, `!pwd`, `!cd`, `!mode`, `!lang`, `!allow`, `!disallow`, `!allowed`, `!usage` — because Slack never delivers a `/command` an app has not declared. Declare them under **Slash Commands** on your Slack app and the `/` form starts working too; the handlers are already registered for both.
+
+Anything Atlas asks for can also be answered by typing instead of clicking: a question by its option number, its option text, or your own words, and an approval by replying `yes`, `no`, or `always` (add ` all` to settle a whole batch at once). That matters if your Slack app has **Interactivity** turned off, since the buttons never reach the bot in that case. `!stop` aborts the turn and cancels whatever it was waiting on.
+
 ## Architecture
 
 Built on [`telegraf`](https://github.com/telegraf/telegraf) and [`@anthropic-ai/claude-agent-sdk`](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk); the panel uses [`fastify`](https://fastify.dev) + [`systeminformation`](https://systeminformation.io) on the server and React + Vite + Tailwind on the client.

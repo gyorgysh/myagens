@@ -6,7 +6,11 @@ Commit links point to `github.com/gyorgysh/myagens`.
 ## [0.6.14] - 2026-07-26
 
 ### Added
-- **Slack surface for Atlas.** A second direct-message chat surface alongside Telegram. When `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, and `SLACK_ALLOWED_USER_IDS` are configured, Atlas connects to Slack in Socket Mode. Allowed users can chat with Atlas via direct messages, receiving live streamed replies, Block Kit tool-approval buttons tied to the shared approval queue, and Block Kit question prompts when Atlas asks a clarifying question.
+- **Slack surface for Atlas.** A second direct-message chat surface alongside Telegram. When `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, and `SLACK_ALLOWED_USER_IDS` are configured, Atlas connects to Slack in Socket Mode. Allowed users can chat with Atlas via direct messages, receiving live streamed replies, Block Kit tool-approval buttons tied to the shared approval queue, and Block Kit question prompts when Atlas asks a clarifying question. A prompt starts its own message rather than editing the one Atlas is streaming into, so the conversation reads top to bottom.
+
+  Chat commands come along too: `!help`, `!ping`, `!status`, `!new`, `!stop`, `!pwd`, `!cd`, `!mode`, `!lang`, `!allow`, `!disallow`, `!allowed`, `!usage`. They use `!` because Slack refuses to deliver a `/command` the app has not declared, so `!stop` works with no Slack setup at all — declare the slash commands on your Slack app and `/stop` starts working too.
+
+  Anything Atlas asks for can also be answered by typing: a question by its option number, its option text, or free text, and an approval by replying `yes`, `no`, or `always` (add ` all` to settle a whole batch). That matters because the buttons only reach the bot when the Slack app has **Interactivity** enabled — before, a question nobody could click left the turn blocked and every further message bouncing off a bare "I'm busy". Now the busy notice says what Atlas is waiting on, and `!stop` cancels the pending question or approval as well as aborting the turn.
 
 ## [0.6.13] - 2026-07-26
 

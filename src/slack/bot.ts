@@ -2,10 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { App } from "@slack/bolt";
 import { config, slackAllowedUserIds, slackConfigured } from "../config.js";
-import { slackSessions } from "./session.js";
+import { slackSessions, type SlackSession } from "./session.js";
 import { SlackStreamer } from "./streamer.js";
 import { SlackPermissionManager } from "./permissions.js";
 import { SlackAskQuestionManager } from "./askQuestion.js";
+import { parseSlackCommand, runSlackCommand, slackCommandList, type SlackCommandCtx } from "./commands.js";
 import { runTurnWithFallback } from "../core/fallback.js";
 import { guardCwd } from "../core/cwdGuard.js";
 import { isDryRun, dryRunDescription, DRY_RUN_TOOLS, resolveMainRunFor, mainFallbackSpec } from "../core/mainSettings.js";
@@ -62,6 +63,7 @@ export function buildSlackBot(): SlackBotInstance | undefined {
     await ack();
     const actionId = (action as { action_id?: string }).action_id;
     const userId = body.user.id;
+    log.debug("Slack block action received", { kind: "approval", actionId, userId });
     if (actionId && userId) {
       permissions.handleAction(actionId, userId);
     }
@@ -72,9 +74,13 @@ export function buildSlackBot(): SlackBotInstance | undefined {
     await ack();
     const actionId = (action as { action_id?: string }).action_id;
     const userId = body.user.id;
-    if (actionId && userId && slackAllowedUserIds.has(userId)) {
-      await asks.handleAction(actionId);
+    log.debug("Slack block action received", { kind: "askq", actionId, userId });
+    if (!actionId || !userId) return;
+    if (!slackAllowedUserIds.has(userId)) {
+      log.warn("Ask button ignored — user not allowed (Slack)", { userId, actionId });
+      return;
     }
+    await asks.handleAction(actionId);
   });
 
   // Handle incoming messages (DM only)
@@ -96,11 +102,26 @@ export function buildSlackBot(): SlackBotInstance | undefined {
     let text = msgObj.text?.trim() ?? "";
     const images: ImageInput[] = [];
 
-    // If an AskUserQuestion is armed for a free-text ("Other…") answer, consume
-    // this message as the answer instead of starting a new turn (the asking turn
-    // still holds busy=true, so this must short-circuit before the run path).
-    if (text && asks.hasPendingText(msgObj.channel) && asks.resolveText(msgObj.channel, text)) {
-      log.info("AskUserQuestion answered by typed reply (Slack)", { userId, channel: msgObj.channel });
+    const cmdCtx: SlackCommandCtx = {
+      userId,
+      channel: msgObj.channel,
+      say: (t) => say(t),
+      asks,
+      permissions,
+    };
+
+    // Commands run before everything else, including the busy guard: `!stop`
+    // is the escape hatch from a wedged turn, so it must work while busy.
+    const cmd = text ? parseSlackCommand(text) : undefined;
+    if (cmd && (await runSlackCommand(cmd.name, cmd.args, cmdCtx))) return;
+
+    // A turn parked on a question or an approval is blocked on a promise no
+    // message can reach, so consume the reply as the answer rather than
+    // starting a new turn (the asking turn still holds busy=true). Buttons
+    // only reach us when the Slack app has Interactivity enabled — typing is
+    // the path that always works.
+    if (text && asks.hasPending(msgObj.channel) && asks.answerTyped(msgObj.channel, text)) return;
+    if (text && permissions.hasPending(msgObj.channel) && permissions.answerTyped(msgObj.channel, text) !== undefined) {
       return;
     }
 
@@ -143,6 +164,28 @@ export function buildSlackBot(): SlackBotInstance | undefined {
     void handleSlackPrompt(permissions, asks, userId, msgObj.channel, text || "What's in this image?", say, images);
   });
 
+  // Slash commands only arrive when the workspace admin declared them on the
+  // Slack app under "Slash Commands"; the `!name` form above needs no setup.
+  for (const { name } of slackCommandList()) {
+    app.command(`/${name}`, async ({ command, ack, respond }) => {
+      await ack();
+      const userId = command.user_id;
+      if (!slackAllowedUserIds.has(userId)) {
+        log.warn("Slack command rejected — user not allowed", { userId, command: name });
+        return;
+      }
+      await runSlackCommand(name, (command.text ?? "").trim(), {
+        userId,
+        channel: command.channel_id,
+        // Slash-command output goes back through respond() so it lands in the
+        // channel the command was typed in, even outside a DM.
+        say: (text) => respond({ text, response_type: "in_channel" }),
+        asks,
+        permissions,
+      });
+    });
+  }
+
   return {
     app,
     permissions,
@@ -171,7 +214,14 @@ async function handleSlackPrompt(
 
   if (session.busy) {
     log.info("Slack prompt rejected — user session busy", { userId });
-    await say("_I'm currently busy working on another task. Please wait a moment..._").catch(() => {});
+    // Say what the turn is stuck on: a turn parked on a question or approval
+    // looks identical to a slow one from the outside, and the way out differs.
+    const blockedOn = asks.hasPending(channel)
+      ? "I'm waiting on your answer to the question above — reply to it, or `!stop` to abort."
+      : permissions.hasPending(channel)
+        ? "I'm waiting on your approval above — reply `yes` / `no`, or `!stop` to abort."
+        : "I'm currently busy working on another task. `!stop` aborts it.";
+    await say(`_${blockedOn}_`).catch(() => {});
     return;
   }
 
@@ -191,6 +241,7 @@ async function handleSlackPrompt(
   });
 
   const startedAt = Date.now();
+  const turnSeq = (session.turnSeq = (session.turnSeq ?? 0) + 1);
   session.busy = true;
   session.busySince = startedAt;
   session.busyPrompt = prompt;
@@ -382,15 +433,28 @@ async function handleSlackPrompt(
       session.sessionId = undefined;
       slackSessions.save();
       await say("_Session expired. Retrying on a fresh conversation..._").catch(() => {});
-      void handleSlackPrompt(permissions, asks, userId, channel, prompt, say);
+      // Release the turn before re-dispatching — the retry goes through the
+      // same busy guard, and this turn's `finally` is skipped by the turnSeq
+      // check once the retry claims the session.
+      releaseTurn(session, turnSeq);
+      void handleSlackPrompt(permissions, asks, userId, channel, prompt, say, images);
       return;
     }
     log.error("Slack turn errored", { userId, error: errText(err) });
     await say(`:warning: ${friendlyError(err)}`).catch(() => {});
   } finally {
-    session.busy = false;
-    session.busySince = undefined;
-    session.busyPrompt = undefined;
-    session.abort = undefined;
+    releaseTurn(session, turnSeq);
   }
+}
+
+/**
+ * Clear the busy flags, unless a newer turn (or the stop command) already claimed the
+ * session — a stale turn finishing late must not unlock its replacement.
+ */
+function releaseTurn(session: SlackSession, turnSeq: number): void {
+  if (session.turnSeq !== turnSeq) return;
+  session.busy = false;
+  session.busySince = undefined;
+  session.busyPrompt = undefined;
+  session.abort = undefined;
 }

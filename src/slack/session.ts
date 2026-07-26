@@ -15,6 +15,13 @@ export interface SlackSession {
   busySince?: number;
   busyPrompt?: string;
   abort?: AbortController;
+  /**
+   * Incremented for every turn, and by /stop. A turn only clears the busy
+   * flags in its `finally` when this still matches the value it captured, so a
+   * turn that was stopped (or that handed off to a retry) can't clear the
+   * state of the turn that replaced it.
+   */
+  turnSeq?: number;
   sessionAllowedTools: Set<string>;
   allowedBashCmds: Set<string>;
   autonomy: Autonomy;

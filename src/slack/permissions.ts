@@ -4,6 +4,7 @@ import { approvalQueue, type ApprovalChoice } from "../core/approvals.js";
 import { bashLeadCmd } from "../telegram/permissions.js";
 import { summarizeInput } from "../telegram/formatting.js";
 import { config } from "../config.js";
+import { log } from "../logger.js";
 
 interface PendingApproval {
   id: string;
@@ -115,12 +116,74 @@ export class SlackPermissionManager {
 
   handleAction(actionId: string, userId: string): void {
     if (!this.allowedUserIds.has(userId)) {
+      log.warn("Approval button ignored — user not allowed (Slack)", { userId, actionId });
       return;
     }
     const match = actionId.match(/^approval_([^_]+)_(.+)$/);
-    if (!match) return;
+    if (!match) {
+      log.warn("Approval button ignored — unrecognised action id (Slack)", { actionId });
+      return;
+    }
     const [, id, choiceStr] = match;
-    this.resolveById(id, choiceStr as ApprovalChoice);
+    if (!this.resolveById(id, choiceStr as ApprovalChoice)) {
+      log.warn("Approval button ignored — request no longer pending (Slack)", { actionId, id });
+    }
+  }
+
+  /** Whether any approval in this channel is still waiting on the user. */
+  hasPending(channel: string): boolean {
+    return this.livePending(channel).length > 0;
+  }
+
+  /** Tool name of the oldest approval awaiting the user in this channel. */
+  pendingTool(channel: string): string | undefined {
+    return this.livePending(channel)[0]?.toolName;
+  }
+
+  /**
+   * Consume a typed reply as an approval decision. Buttons only reach us when
+   * the Slack app has Interactivity enabled, so a typed `yes`/`no` is the
+   * fallback that keeps an approval from wedging the turn. `allow all` /
+   * `deny all` settle every open request at once; a bare decision settles the
+   * oldest one. Returns the number settled, or undefined when the text is not
+   * a decision at all (so the caller can treat it as a normal message).
+   */
+  answerTyped(channel: string, text: string): number | undefined {
+    const raw = text.trim().toLowerCase().replace(/[.!]+$/, "");
+    const all = /\s+all$/.test(raw);
+    const word = raw.replace(/\s+all$/, "").trim();
+
+    let choice: ApprovalChoice | undefined;
+    if (["y", "yes", "ok", "okay", "allow", "approve", "approved"].includes(word)) choice = "allow";
+    else if (["n", "no", "deny", "reject", "cancel"].includes(word)) choice = "deny";
+    else if (["always", "always allow"].includes(word)) choice = "always";
+    if (!choice) return undefined;
+
+    const live = this.livePending(channel);
+    if (live.length === 0) return undefined;
+
+    const targets = all ? live : [live[0]];
+    for (const e of targets) this.resolveById(e.id, choice);
+    log.info("Approval answered by typed reply (Slack)", { channel, choice, count: targets.length });
+    return targets.length;
+  }
+
+  /**
+   * Deny every approval pending in a channel, unblocking the turn waiting on
+   * them. Used by the stop command: aborting the SDK run does not settle a canUseTool
+   * promise, so without this the session can stay busy forever. Returns how
+   * many were cancelled.
+   */
+  cancelAll(channel: string): number {
+    const live = this.livePending(channel);
+    for (const e of live) this.resolveById(e.id, "deny");
+    if (live.length > 0) log.info("Pending approvals cancelled (Slack)", { channel, count: live.length });
+    return live.length;
+  }
+
+  /** Unsettled approvals for a channel, oldest first. */
+  private livePending(channel: string): PendingApproval[] {
+    return [...this.pending.values()].filter((e) => e.channel === channel && !e.settled);
   }
 
   destroy(): void {
@@ -148,7 +211,17 @@ export class SlackPermissionManager {
       batch.ts = resp.ts as string;
     } catch (err) {
       batch.sending = false;
-      throw err;
+      // Nobody can answer a request that was never posted, and this runs from a
+      // timer, so throwing would only surface as an unhandled rejection while
+      // the turn stayed parked on the promise. Deny instead: the model gets a
+      // refusal it can report, and the session comes unstuck.
+      log.error("Approval message send failed (Slack) — denying the batch", {
+        channel,
+        count: live.length,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      for (const id of live) this.resolveById(id, "deny");
+      return;
     }
     batch.sending = false;
   }
@@ -251,6 +324,21 @@ export class SlackPermissionManager {
           elements
         });
       }
+    }
+
+    // Typed fallback, spelled out on the message itself: the buttons only fire
+    // when the Slack app has Interactivity enabled, and an approval nobody can
+    // settle blocks the turn and leaves the session busy.
+    if (entries.some((e) => !e.settled)) {
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "Or reply `yes` / `no` / `always` (add ` all` for every request above) · `!stop` to abort.",
+          },
+        ],
+      });
     }
 
     return blocks;

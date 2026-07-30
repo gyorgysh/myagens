@@ -263,7 +263,7 @@ export async function runPanelTurn(
 
   const onFallback = (name: string) => {
     if (mirror) {
-      chatBridge.mirrorDelta(mirrorMsgId, `\n_Usage limit on the primary model, retrying via ${name}…_\n`);
+      chatBridge.mirrorDelta(mirrorMsgId, `\n_Primary model unavailable, retrying via ${name}…_\n`);
     }
   };
 

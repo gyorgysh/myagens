@@ -235,7 +235,7 @@ export class AgentChatManager {
         type: "agentchat",
         event: "notice",
         agentId,
-        text: `Usage limit on the primary model — retrying via ${name}…`,
+        text: `Primary model unavailable — retrying via ${name}…`,
       });
     // Interactive panel chat: a Tmux-mode agent routes onto its persistent
     // tmux instance (claude-tmux backend); everyone else keeps their backendId.

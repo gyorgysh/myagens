@@ -6,18 +6,19 @@
  * probe shows the plan is near its limit, and only for autonomous turns. This
  * module is the reactive counterpart: it wraps a single turn and, if that turn
  * fails with a usage/rate-limit error (which an interactive turn can hit
- * mid-flight without any probe warning), retries once on a configured fallback
+ * mid-flight without any probe warning) or a silent Claude CLI crash after
+ * runner.ts has already respawned it, retries once on a configured fallback
  * target (a different provider endpoint and/or a different agent backend).
  *
- * One retry only. A second failure propagates so the caller's normal error
- * handling reports it.
+ * Silent CLI crashes only fail over to a *different* backend — a provider swap
+ * keeps the same crashing CLI. One retry only; a second failure propagates.
  */
 import { getBackend } from "./backends.js";
 import { fallbackTargetExhausted } from "./limitHeadroom.js";
 import { getProvider } from "./providers.js";
 import { resolveSecret } from "./vault.js";
 import { log } from "../logger.js";
-import type { RunOptions, RunResult } from "../claude/runner.js";
+import { isSilentCliCrashError, type RunOptions, type RunResult } from "../claude/runner.js";
 
 /**
  * True when `err` looks like a usage/rate-limit / capacity error that a
@@ -60,7 +61,7 @@ export interface FallbackSpec {
 }
 
 /**
- * Run one turn on `primaryBackendId`, and if it fails with a usage-limit error
+ * Run one turn on `primaryBackendId`, and if it fails with a recoverable error
  * and a usable `spec` is configured, retry once on the fallback target.
  *
  * On failover:
@@ -83,11 +84,19 @@ export async function runTurnWithFallback(
   try {
     return await getBackend(primaryBackendId).runTurn(opts);
   } catch (err) {
-    // No fallback target, or it's not a usage-limit error → let it propagate.
-    if (!spec || (!spec.backendId && !spec.providerId) || !isUsageLimitError(err)) throw err;
+    if (!spec || (!spec.backendId && !spec.providerId)) throw err;
 
     const fallbackBackendId = spec.backendId || primaryBackendId;
     const backendChanged = (fallbackBackendId ?? undefined) !== (primaryBackendId ?? undefined);
+
+    // Usage limits fail over to anything configured; a silent CLI crash only
+    // to a different backend (a provider swap would re-run the same CLI).
+    const reason = isUsageLimitError(err)
+      ? "usage limit"
+      : isSilentCliCrashError(err) && backendChanged
+        ? "silent CLI crash"
+        : undefined;
+    if (!reason) throw err;
 
     // If the target publishes its own utilisation and is fresh out of allowance,
     // the retry would only produce a second limit error a minute later. Fail now
@@ -138,7 +147,7 @@ export async function runTurnWithFallback(
       label = spec.model || getBackend(fallbackBackendId).displayName;
     }
 
-    log.warn("Usage limit on primary model — failing over once", {
+    log.warn(`Primary backend unusable (${reason}) — failing over once`, {
       primaryBackendId,
       fallbackBackendId,
       provider: provider?.name,

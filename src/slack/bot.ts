@@ -426,7 +426,9 @@ async function handleSlackPrompt(
           slackSessions.noteToolError(userId);
         }
       },
-    }, mainFallbackSpec());
+    }, mainFallbackSpec(), (name) => {
+      streamer.setStatus(`:warning: _Primary model unavailable, retrying via ${name}…_`);
+    });
 
     await streamer.finalize();
 

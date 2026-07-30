@@ -189,12 +189,12 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
     : await memory.recallForPromptAsync(opts.prompt);
   const memoryBlock = recalled.length ? formatMemoriesForPrompt(recalled) : undefined;
 
-  // The headless `claude` CLI intermittently crashes on startup/teardown with a
-  // non-zero exit and NO output (a known CLI bug). It happens before any text
-  // streams, so we retry the whole turn a few times — but only while nothing has
-  // been emitted to the user yet, to avoid duplicating a partially-streamed reply.
+  // The headless `claude` CLI intermittently exits 1 with no stderr and no
+  // streamed output (a known CLI bug). It happens before any text reaches the
+  // user, so we retry with a short backoff — but only while nothing has been
+  // emitted, to avoid duplicating a partially-streamed reply.
   let streamedAny = false;
-  const MAX_ATTEMPTS = 3;
+  const MAX_ATTEMPTS = 4;
   let lastErr: unknown;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -326,37 +326,84 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
         return result;
       }
       const base = err instanceof Error ? err.message : String(err);
-      // Retry the silent early crash (no stderr, nothing streamed, no result yet).
-      const transient = stderr.length === 0 && !streamedAny && /exited with code|process exited/i.test(base);
+      // Retry only the silent early crash (exit code, no stderr, nothing streamed).
+      // ENOENT/spawn are configuration problems — don't burn retries on them.
+      const transient =
+        stderr.length === 0 && !streamedAny && /exited with code|process exited/i.test(base);
       if (transient && attempt < MAX_ATTEMPTS) {
         lastErr = err;
-        log.warn(`claude crashed early with no output (attempt ${attempt}/${MAX_ATTEMPTS}) — retrying`, {
-          error: base,
-        });
+        // Back off before respawning: rapid-fire retries often hit the same
+        // transient condition before it has cleared.
+        const delayMs = 400 * attempt;
+        log.warn(
+          `claude crashed early with no output (attempt ${attempt}/${MAX_ATTEMPTS}) — retrying in ${delayMs}ms`,
+          { error: base },
+        );
+        await sleepUnlessAborted(delayMs, opts.abortController.signal);
         continue;
       }
       const tail = stderr.slice(-8).join("\n");
       if (tail) log.error("claude process failed", { stderr: tail });
       if (tail) throw new Error(`${base} — ${tail}`);
-      // No stderr from the CLI almost always means it couldn't authenticate or
-      // wasn't found — a silent exit. Point at the doctor so the failure is fixable
-      // instead of an opaque "exited with code 1". Keep this wording free of
-      // auth/usage keywords so bot.ts's friendlyError() doesn't reclassify it.
-      const silent = /exited with code|ENOENT|spawn/i.test(base);
-      throw new Error(
-        silent
-          ? `${base}. The Claude CLI produced no output (retried ${attempt}×) — commonly a transient CLI crash, missing credentials, or not on PATH. Run \`npm run doctor\` on the host to see the real error.`
-          : base,
-      );
+      // Typed silent-crash error so fallback/friendlyError can recognise it
+      // without sniffing English substrings (and without treating ENOENT the same).
+      if (transient) {
+        throw new SilentCliCrashError(base, attempt);
+      }
+      // Missing binary / spawn failure: still opaque, but not a crash to fail over.
+      if (/ENOENT|spawn/i.test(base) && stderr.length === 0) {
+        throw new Error(
+          `${base}. The Claude CLI produced no output — commonly missing credentials or not on PATH. Run \`npm run doctor\` on the host to see the real error.`,
+        );
+      }
+      throw new Error(base);
     } finally {
       activityEnd();
     }
   }
 
-  // Exhausted all attempts on the transient early-crash path.
-  throw new Error(
-    `${lastErr instanceof Error ? lastErr.message : String(lastErr)}. The Claude CLI repeatedly crashed on startup with no output (a known headless-mode bug). Run \`npm run doctor\`.`,
+  // Safety net if the loop ever exits without throwing (unreachable today:
+  // the last attempt throws inside catch). Keep it typed so failover still works.
+  throw new SilentCliCrashError(
+    lastErr instanceof Error ? lastErr.message : String(lastErr ?? "unknown"),
+    MAX_ATTEMPTS,
   );
+}
+
+/**
+ * The Claude CLI exited non-zero before producing any stdout stream or stderr.
+ * Distinct from ENOENT/spawn (misconfiguration) so failover can target this
+ * case without treating "not on PATH" as a crash worth a backend switch.
+ */
+export class SilentCliCrashError extends Error {
+  readonly attempts: number;
+  constructor(baseMessage: string, attempts: number) {
+    super(
+      `${baseMessage}. The Claude CLI produced no output (retried ${attempts}×) — commonly a transient CLI crash. Run \`npm run doctor\` on the host to see the real error.`,
+    );
+    this.name = "SilentCliCrashError";
+    this.attempts = attempts;
+  }
+}
+
+export function isSilentCliCrashError(err: unknown): boolean {
+  return err instanceof SilentCliCrashError;
+}
+
+/** Sleep, but abort promptly if the turn's AbortSignal fires mid-backoff. */
+function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason instanceof Error ? signal.reason : new Error("Aborted"));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /**

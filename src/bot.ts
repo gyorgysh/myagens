@@ -786,8 +786,8 @@ async function handleUserPrompt(
   // Set once an autonomous loop has triggered an abort, so we only notify once.
   let loopAborted = false;
 
-  // Notify the chat when a usage-limit error mid-turn triggers the error-driven
-  // failover to the configured fallback model/backend (core/fallback.ts).
+  // Notify the chat when an error-driven failover kicks in (usage limit or
+  // silent CLI crash → configured fallback; core/fallback.ts).
   const onFallback = (name: string) =>
     void tg
       .sendMessage(chatId, t("bot_fallback_engaged", langForChat(chatId), { name }), { parse_mode: "HTML" })

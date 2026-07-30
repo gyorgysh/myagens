@@ -45,7 +45,7 @@ export const hu: Record<keyof typeof en, string> = {
   bot_stopping: "⏹ Leállítás…",
   bot_nothing_running: "Semmi nem fut.",
   bot_session_expired_retrying: "⚠️ Az előző munkamenet már nem létezik — friss beszélgetést indítok.",
-  bot_fallback_engaged: "⚠️ Használati limit az elsődleges modellen, újrapróbálom ezen keresztül: {name}…",
+  bot_fallback_engaged: "⚠️ Az elsődleges modell nem elérhető, újrapróbálom ezen keresztül: {name}…",
   bot_fallback_proactive: "ℹ️ Az elsődleges modell használata átlépte a küszöböt, erre váltok ehhez a körhöz: {name}…",
 
   // --- ping / crew status ---

@@ -3,6 +3,12 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.7.1] - 2026-07-30
+
+### Fixed
+- **Silent Claude CLI crashes recover more reliably.** The headless `claude` CLI sometimes exits with code 1 and writes nothing at all — no assistant text, no stderr — which made the turn evaporate from the host's point of view. Retries now back off before respawning (rapid-fire almost never helped), the empty-stderr exit path is a typed error so it is not mislabelled as a usage limit, and after retries are exhausted MyAgens can fail the turn over once to a *different* agent backend when one is configured. A provider-only swap is deliberately skipped here, since that would re-run the same crashing CLI. ([1642c59](https://github.com/gyorgysh/myagens/commit/1642c59))
+- **Panel `npm ci` works again under npm 10.** The ejs override that removed a vulnerable service-worker build chain was nested under a package name npm 10 ignores as an override path; CI (Node 20's npm 10) then recomputed the old tree and failed. The pin is top-level now, which both npm 10 and npm 11 honour. ([02a74a2](https://github.com/gyorgysh/myagens/commit/02a74a2))
+
 ## [0.7.0] - 2026-07-27
 
 ### Added

@@ -3,7 +3,7 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
-## [Unreleased]
+## [0.7.2] - 2026-08-09
 
 ### Added
 - **Codex API key for usage-based billing**: the Codex backend can use an OpenAI Platform API key instead of a ChatGPT subscription login. Set it in Settings when the AI backend is Codex (stored in the vault), or via `CODEX_API_KEY` in `.env` / `PUT /api/agent` with `codexApiKey`. Every agent on `codex-cli` shares that key. Leave it empty to keep using `codex login` on the host. A host `OPENAI_API_KEY` (e.g. for voice) is no longer passed into codex runs, so it cannot silently switch billing.

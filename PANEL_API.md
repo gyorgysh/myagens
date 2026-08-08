@@ -51,8 +51,8 @@ curl -X POST -H "$AUTH" -H "Content-Type: application/json" $BASE/api/workers \
 #   model         model id override (e.g. "claude-sonnet-5")
 #   providerId    id of a saved provider preset (for local models)
 #   backendId     agent backend id — "" / omit = Claude (default); "grok-cli", "codex-cli",
-#                 "agy-cli", "cursor-cli" or "ollama" to run this one agent on a
-#                 different backend (see GET
+#                 "agy-cli", "cursor-cli", "opencode-cli" or "ollama" to run this one
+#                 agent on a different backend (see GET
 #                 /api/agent's `backends` list for what's registered). Advanced/hidden
 #                 option: not surfaced as a panel dropdown, set it directly via this API.
 #   fallbackBackendId   error-driven failover for THIS worker's turns: an agent backend
@@ -383,9 +383,14 @@ curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent \
 #   models. [] / omit = nothing excluded.
 # backendId: agent backend id — "" / omit = Claude (default). GET /api/agent's
 #   response includes `backends` (every registered id + display name, e.g.
-#   "grok-cli"/"codex-cli"/"cursor-cli"). Advanced/hidden option: not a panel dropdown: set
-#   via this API, or in Telegram via `/model <backendId>` or
-#   `/model <backendId>:<model>` (e.g. `/model codex-cli:gpt-5.1-codex`).
+#   "grok-cli"/"codex-cli"/"cursor-cli"/"opencode-cli"). Advanced/hidden option: not a panel
+#   dropdown: set via this API, or in Telegram via `/model <backendId>` or
+#   `/model <backendId>:<model>` (e.g. `/model codex-cli:gpt-5.1-codex`,
+#   `/model opencode-cli:anthropic/claude-sonnet-4-5`).
+# codexApiKey: OpenAI API key for the codex-cli backend (usage-based Platform
+#   billing). Non-empty stores/updates a vault secret; "" clears it; omit leaves
+#   the stored key unchanged. GET /api/agent returns `codexApiKeySet` +
+#   `codexApiKeyHint` only (never the plaintext). Env fallback: CODEX_API_KEY.
 
 # Toggle semantic memory embeddings
 curl -X PUT -H "$AUTH" -H "Content-Type: application/json" $BASE/api/agent/embeddings \
@@ -716,6 +721,10 @@ curl -H "$AUTH" $BASE/api/integrations/agy/models
 # Model ids the signed-in Cursor account can run (for the cursor-cli backend's
 # model picker; empty list when the `cursor-agent` binary is missing)
 curl -H "$AUTH" $BASE/api/integrations/cursor/models
+
+# Model ids the installed OpenCode CLI can run (for the opencode-cli backend's
+# model picker; empty list when the `opencode` binary is missing)
+curl -H "$AUTH" $BASE/api/integrations/opencode/models
 
 # One-click connect: register the backend as a provider and turn embeddings on
 curl -X POST -H "$AUTH" $BASE/api/integrations/ollama/connect

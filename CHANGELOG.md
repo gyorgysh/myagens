@@ -3,6 +3,12 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [Unreleased]
+
+### Added
+- **Codex API key for usage-based billing**: the Codex backend can use an OpenAI Platform API key instead of a ChatGPT subscription login. Set it in Settings when the AI backend is Codex (stored in the vault), or via `CODEX_API_KEY` in `.env` / `PUT /api/agent` with `codexApiKey`. Every agent on `codex-cli` shares that key. Leave it empty to keep using `codex login` on the host. A host `OPENAI_API_KEY` (e.g. for voice) is no longer passed into codex runs, so it cannot silently switch billing.
+- **OpenCode as an agent backend**: an individual Lead/worker (or Atlas himself) can run on **OpenCode's CLI** (`opencode`) alongside Grok, Codex, Antigravity and Cursor. It brings every model your OpenCode install can run (`provider/model` ids, listed by Fetch) through OpenCode's own agentic CLI, with its tool belt, rather than a reimplemented tool loop. Switch a chat with `/model opencode-cli` (or `opencode-cli:anthropic/claude-sonnet-4-5`), or pick **OpenCode (CLI)** from the "AI backend" selector in Settings/Workers. Like Codex and Cursor it reports **live text, tool calls and real token usage**, and is a full MyAgens agent: memory, kanban, crew, skills, `send_file` and connectors via the shared CLI bridge, persona/`work.md` in the prompt, and Approve/Deny for OpenCode's own tools via an in-process plugin (OpenCode has no shell-command PreToolUse hook). Config is injected per turn through `OPENCODE_CONFIG_CONTENT` and `OPENCODE_CONFIG_DIR`, so your `~/.config/opencode` and project `opencode.json` are never written. Conversations resume across turns via OpenCode's session id. Still missing versus Claude: external process MCP connectors (Unreal, Unity, Browser Sketchpad).
+
 ## [0.7.1] - 2026-07-30
 
 ### Fixed

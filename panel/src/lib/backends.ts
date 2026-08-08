@@ -12,11 +12,14 @@ const MODEL_FIELD_BACKENDS = {
   "agy-cli": "agy",
   "cursor-cli": "cursor",
   "codex-cli": "codex",
+  "opencode-cli": "opencode",
 } as const;
 
 /** Which model-field hint applies, or undefined when this backend has no
  *  model input (Claude uses the provider/model pair instead). */
-export function backendModelKind(backendId: string): "ollama" | "agy" | "cursor" | "codex" | undefined {
+export function backendModelKind(
+  backendId: string,
+): "ollama" | "agy" | "cursor" | "codex" | "opencode" | undefined {
   return MODEL_FIELD_BACKENDS[backendId as keyof typeof MODEL_FIELD_BACKENDS];
 }
 
@@ -30,6 +33,8 @@ export function fetchModelsFor(backendId: string): (() => Promise<string[]>) | u
       return () => api.agyModels().then((r) => r.models).catch(() => []);
     case "cursor-cli":
       return () => api.cursorModels().then((r) => r.models).catch(() => []);
+    case "opencode-cli":
+      return () => api.opencodeModels().then((r) => r.models).catch(() => []);
     default:
       return undefined;
   }

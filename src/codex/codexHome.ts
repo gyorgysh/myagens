@@ -16,10 +16,13 @@ import { log } from "../logger.js";
  * hooks.PreToolUse=[…]` parses fine and is then silently ignored). Writing into
  * the user's own `~/.codex/hooks.json` is not an option — our hook would then
  * fire during their own codex sessions — so we point `CODEX_HOME` at a
- * directory of our own that holds exactly two things:
- * - `auth.json`, a symlink to the real one, so the user's login still works and
- *   a token refresh writes through to the file they already have;
- * - `hooks.json`, ours, wiring PreToolUse/PostToolUse to the shared bridge hook.
+ * directory of our own that holds:
+ * - `auth.json` — either a symlink to the user's ChatGPT login, or a private
+ *   file holding an OpenAI API key for usage-based Platform billing (see
+ *   `apiKey` on `codexLaunch`);
+ * - `hooks.json`, ours, wiring PreToolUse/PostToolUse to the shared bridge hook;
+ * - `config.toml` (API-key mode only) forcing `preferred_auth_method = "apikey"`
+ *   so a ChatGPT login sitting on the host cannot steal the billing path.
  *
  * MCP registration needs no file: `-c mcp_servers.…` works per invocation
  * (see src/codex/runner.ts).
@@ -120,6 +123,12 @@ export interface CodexLaunch {
   home: string;
   /** Flags that MUST accompany that home (the hook-trust bypass, see above). */
   args: string[];
+  /**
+   * Extra env for the child. When an API key is in play this carries
+   * OPENAI_API_KEY / CODEX_API_KEY; when using ChatGPT login the runner clears
+   * those vars so a host-level key cannot switch billing under us.
+   */
+  env?: Record<string, string | undefined>;
 }
 
 let warned = false;
@@ -132,32 +141,76 @@ function warnOnce(message: string, meta: Record<string, unknown>): null {
   return null;
 }
 
+/** Private auth.json shape Codex accepts for usage-based API-key login. */
+async function writeApiKeyAuth(file: string, apiKey: string): Promise<void> {
+  const body = `${JSON.stringify({ OPENAI_API_KEY: apiKey }, null, 2)}\n`;
+  await mkdir(dirname(file), { recursive: true });
+  // Drop a leftover symlink to the user's ChatGPT auth first: writing through a
+  // symlink would overwrite their real login file.
+  try {
+    const st = await lstat(file);
+    if (st.isSymbolicLink()) await rm(file, { force: true });
+  } catch {
+    // Not there yet.
+  }
+  await writeFile(file, body, { encoding: "utf8", mode: 0o600 });
+  await chmod(file, 0o600);
+}
+
+/** Force API-key auth for this private home (and nothing else). */
+function apiKeyConfigToml(): string {
+  return [
+    "# Written by MyAgens for the codex-cli backend. Do not edit by hand.",
+    'preferred_auth_method = "apikey"',
+    'forced_login_method = "api"',
+    "",
+  ].join("\n");
+}
+
 /**
  * Ensure the private home exists and return it together with the flags it must
  * be paired with, or null when it can't be built — in which case the caller
  * must fall back to a plain codex run (no MyAgens tools, no approval gate),
  * since the gate is only real while these files are.
+ *
+ * Pass `apiKey` to bill OpenAI Platform usage instead of a ChatGPT
+ * subscription. That path does not need `codex login` / `auth.json` on the
+ * host. Without a key, the host's ChatGPT login is required (symlinked in).
  */
-export async function codexLaunch(): Promise<CodexLaunch | null> {
+export async function codexLaunch(opts?: { apiKey?: string }): Promise<CodexLaunch | null> {
   if (!existsSync(HOOK_SCRIPT) || !existsSync(MCP_BRIDGE_SCRIPT)) {
     return warnOnce("codex backend: helper scripts missing — running without MyAgens tools or approvals", {
       expected: HOOK_SCRIPT,
     });
   }
 
-  const auth = join(realCodexHome(), "auth.json");
-  if (!existsSync(auth)) {
-    // Nothing to link to. Running with our home anyway would strip the user's
-    // login, so hand the turn back to their own codex home unchanged.
-    return warnOnce("codex backend: no codex login found — running without MyAgens tools or approvals", {
-      expected: auth,
-    });
+  const apiKey = opts?.apiKey?.trim() || undefined;
+  const userAuth = join(realCodexHome(), "auth.json");
+  if (!apiKey && !existsSync(userAuth)) {
+    // Nothing to authenticate with. Running with our home would leave codex
+    // with no credentials, so hand the turn back to their own setup.
+    return warnOnce(
+      "codex backend: no API key and no codex login found — running without MyAgens tools or approvals",
+      { expected: userAuth },
+    );
   }
 
   try {
     await mkdir(CODEX_HOME_DIR, { recursive: true, mode: 0o700 });
-    await linkAuth(join(CODEX_HOME_DIR, "auth.json"), auth);
     await writeIfChanged(join(CODEX_HOME_DIR, "hooks.json"), hooksFile());
+
+    const privateAuth = join(CODEX_HOME_DIR, "auth.json");
+    const privateConfig = join(CODEX_HOME_DIR, "config.toml");
+    if (apiKey) {
+      await writeApiKeyAuth(privateAuth, apiKey);
+      await writeIfChanged(privateConfig, apiKeyConfigToml());
+    } else {
+      // ChatGPT subscription path: use the user's login, and drop any leftover
+      // apikey config from a previous MyAgens-managed key so it cannot pin
+      // preferred_auth_method and leave the linked tokens unused.
+      await linkAuth(privateAuth, userAuth);
+      await rm(privateConfig, { force: true }).catch(() => {});
+    }
   } catch (err) {
     return warnOnce("codex backend: could not build the private CODEX_HOME", {
       dir: CODEX_HOME_DIR,
@@ -171,6 +224,12 @@ export async function codexLaunch(): Promise<CodexLaunch | null> {
     // runs ungated. It is safe here precisely because the home it applies to is
     // entirely ours: the only hook in it is the one we just wrote.
     args: [HOOK_TRUST_FLAG],
+    // Explicit set or clear: a host OPENAI_API_KEY (e.g. for voice) must not
+    // silently switch a ChatGPT-login run onto Platform billing, and our key
+    // must win over whatever is already in the process env.
+    env: apiKey
+      ? { OPENAI_API_KEY: apiKey, CODEX_API_KEY: apiKey }
+      : { OPENAI_API_KEY: undefined, CODEX_API_KEY: undefined },
   };
 }
 

@@ -48,13 +48,15 @@ Keep `PANEL_API.md` and the README in sync when adding or renaming routes. **Do 
 
 ### CLI-wrapping backends
 
-All four wrap the vendor's own agentic CLI rather than reimplementing a tool loop, and share `core/cliBridge.ts` (loopback control plane) plus `scripts/cli-bridge/*.mjs` (plain `.mjs`, not compiled, so one path works in dev and prod).
+All CLI-wrapping backends wrap the vendor's own agentic CLI rather than reimplementing a tool loop, and share `core/cliBridge.ts` (loopback control plane) plus `scripts/cli-bridge/*` (plain JS, not compiled, so one path works in dev and prod).
 
-**Codex** reads hooks from exactly one place, the *file* `$CODEX_HOME/hooks.json` (`-c hooks.PreToolUse=[…]` parses and is then silently a no-op). `--dangerously-bypass-hook-trust` is **mandatory**: codex gates hooks on a sha256 trust record and silently skips an untrusted one, so the tool runs ungated — a fail-open default. The flag and the private `CODEX_HOME` are produced together by `codexLaunch()`; if the home cannot be built, fall back to plain codex rather than an ungated one. Codex and Cursor **do not pass their environment to stdio MCP children** (hooks do inherit it), hence the 0600 `MYAGENS_BRIDGE_FILE` handoff instead of a token on the command line where `ps` shows it.
+**Codex** reads hooks from exactly one place, the *file* `$CODEX_HOME/hooks.json` (`-c hooks.PreToolUse=[…]` parses and is then silently a no-op). `--dangerously-bypass-hook-trust` is **mandatory**: codex gates hooks on a sha256 trust record and silently skips an untrusted one, so the tool runs ungated — a fail-open default. The flag and the private `CODEX_HOME` are produced together by `codexLaunch()`; if the home cannot be built, fall back to plain codex rather than an ungated one. Codex and Cursor **do not pass their environment to stdio MCP children** (hooks do inherit it), hence the 0600 `MYAGENS_BRIDGE_FILE` handoff instead of a token on the command line where `ps` shows it. Optional **usage-based billing**: `resolveCodexApiKey()` (vault setting, then `CODEX_API_KEY` env — not `OPENAI_API_KEY`) writes a private `auth.json` + `preferred_auth_method = "apikey"`; without a key the host ChatGPT login is symlinked and any host `OPENAI_API_KEY` is stripped from the child env so voice keys cannot steal billing.
 
 **Cursor** reads `hooks.json`/`mcp.json` only from `<cwd>/.cursor/`, the primary workspace — a MyAgens-owned `--add-dir` is ignored, and making our dir primary breaks every relative path the model uses. So config is installed into the user's project, refcounted, and restored byte-for-byte in a `finally` plus at boot after a `kill -9`. `--force --approve-mcps` is passed at every autonomy level: below `--force` cursor's own decision provider silently auto-rejects every MCP call whatever our hook returns.
 
 **Antigravity (`agy`)** has no flag for MCP servers, hooks or a system prompt; it discovers customizations from every workspace dir it is given. Our root goes **first** and the session cwd **last**, because agy writes new files into the last workspace dir. Its conversation id appears only in the CLI log, so each turn passes a temp `--log-file` and greps it afterwards.
+
+**OpenCode** has no shell-command PreToolUse hook. Approvals go through an in-process plugin under `OPENCODE_CONFIG_DIR` (`scripts/cli-bridge/opencode-config/`, throw = deny). MCP is injected per turn via `OPENCODE_CONFIG_CONTENT` (never the user's `~/.config/opencode` or project `opencode.json`). Headless `run` auto-rejects `"ask"` permissions, so our inline config sets `"*": "allow"` and the plugin is the real gate. MCP tools show up as `myagens_mcp__<area>__<tool>`.
 
 **Ollama** is the odd one out: plain chat against a local server, not a CLI wrapper. It hand-builds a small system prompt instead of importing the `claude_code` preset, and ignores `opts.env` so a configured cloud provider cannot silently redirect it off-host.
 
@@ -75,7 +77,7 @@ src/
   config.ts    env parse (zod); exits at module load on invalid config
   core/        surface-free layer: backends, notify, wiring, memory, tasks,
                workers, vault, connectors, schedules, chat bridge, …
-  claude/ grok/ codex/ agy/ cursor/ ollama/   agent backends
+  claude/ grok/ codex/ agy/ cursor/ opencode/ ollama/   agent backends
   telegram/ slack/ panel/                     front ends
   mcp/         in-process MCP servers (memory, tasks, skills, crew, …)
   setup/       first-run browser wizard (must not import config.ts)

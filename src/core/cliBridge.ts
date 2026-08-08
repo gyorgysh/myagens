@@ -5,9 +5,10 @@ import type { PermissionResult, RunOptions } from "../claude/runner.js";
 import { log } from "../logger.js";
 
 /**
- * Loopback control plane that gives a CLI subprocess (agy, and any future CLI
- * backend that borrows this) the two things such a CLI has no flag for: our
- * in-process MCP tools, and a say in whether a tool may run.
+ * Loopback control plane that gives a CLI subprocess (agy, codex, cursor,
+ * opencode, and any future CLI backend that borrows this) the two things such a
+ * CLI has no flag for: our in-process MCP tools, and a say in whether a tool
+ * may run.
  *
  * Two helper processes call in here (see scripts/cli-bridge/):
  * - `mcp-bridge.mjs` is registered as a stdio MCP server in the per-run

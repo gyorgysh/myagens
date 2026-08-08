@@ -556,6 +556,13 @@ export function vaultUsages(): Record<string, VaultUsage[]> {
     if (id) add(id, { kind: "Provider", name: p.name });
   }
 
+  // Codex CLI API key (usage-based billing for the codex-cli backend)
+  try {
+    const main = loadJson<{ settings?: { codexApiKey?: string } }>("mainAgent.json", { settings: {} });
+    const id = extractId(main.settings?.codexApiKey);
+    if (id) add(id, { kind: "Codex API key", name: "codex-cli" });
+  } catch { /* non-fatal */ }
+
   // Workers (Lead bot tokens + provider tokens via providerId)
   try {
     const workerData = loadJson<{ workers?: Array<{ name?: string; telegramToken?: string; role?: string }> }>(

@@ -205,6 +205,10 @@ const schema = z.object({
   //   xai    = xAI's /v1/stt endpoint (needs XAI_API_KEY)
   TRANSCRIBE_PROVIDER: z.enum(["openai", "vosk", "xai"]).default("openai"),
   OPENAI_API_KEY: z.string().optional(),
+  // OpenAI API key for the codex-cli backend only (usage-based Platform billing).
+  // Separate from OPENAI_API_KEY so voice STT/TTS and Codex do not share a key
+  // by accident. Panel Settings can also store one in the vault; that wins.
+  CODEX_API_KEY: z.string().optional(),
   TRANSCRIBE_MODEL: z.string().min(1).default("whisper-1"),
   TRANSCRIBE_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   // Local Vosk: path to an unpacked model dir (e.g. vosk-model-small-en-us-0.15).

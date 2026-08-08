@@ -128,6 +128,7 @@ import { embeddingConfig, setEmbeddingsEnabled, preferredBackend, setPreferredBa
 import { ollamaStatus, connectOllama } from "../core/ollama.js";
 import { listAgyModels } from "../agy/runner.js";
 import { listCursorModels } from "../cursor/runner.js";
+import { listOpencodeModels } from "../opencode/runner.js";
 import { lmStudioStatus, connectLmStudio } from "../core/lmstudio.js";
 import { serviceInstalled, restartService } from "../core/agentControl.js";
 import { isActive } from "../core/activity.js";
@@ -782,6 +783,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       tmuxMode,
       remoteControl,
       cursorTools,
+      codexApiKey,
       fallbackProviderId,
       fallbackBackendId,
       fallbackModel,
@@ -801,6 +803,8 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       tmuxMode?: boolean;
       remoteControl?: boolean;
       cursorTools?: boolean;
+      /** Non-empty = store/update vault key; "" = clear; omit = leave unchanged. */
+      codexApiKey?: string;
       fallbackProviderId?: string;
       fallbackBackendId?: string;
       fallbackModel?: string;
@@ -822,6 +826,7 @@ function registerApi(app: FastifyInstance, hub: PanelHub): void {
       tmuxMode,
       remoteControl,
       cursorTools,
+      codexApiKey,
       fallbackProviderId,
       fallbackBackendId,
       fallbackModel,
@@ -2399,6 +2404,9 @@ Respond with ONLY a JSON array, no markdown fences, no explanation. Example form
   // Model ids the signed-in Cursor account can run (empty when `cursor-agent`
   // is missing). Feeds the model picker for the cursor-cli backend.
   app.get("/api/integrations/cursor/models", async () => ({ models: await listCursorModels() }));
+  // Model ids the installed OpenCode CLI can run (empty when `opencode` is
+  // missing). Feeds the model picker for the opencode-cli backend.
+  app.get("/api/integrations/opencode/models", async () => ({ models: await listOpencodeModels() }));
   app.get("/api/integrations/ollama", async () => ollamaStatus());
   app.post("/api/integrations/ollama/connect", async (_req, reply) => {
     try {

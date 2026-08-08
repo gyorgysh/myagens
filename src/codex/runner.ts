@@ -89,8 +89,13 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
 
   // The private home and the hook-trust bypass flag are produced together and
   // used together: our hooks.json is silently ignored without that flag, which
-  // would leave every tool running ungated.
-  let launch = await codexLaunch();
+  // would leave every tool running ungated. An optional OpenAI API key (panel
+  // vault / CODEX_API_KEY) switches the home onto usage-based Platform billing
+  // instead of the host's ChatGPT subscription login.
+  // Dynamic import: mainSettings → backends → this file, so a static import
+  // would be a cycle.
+  const { resolveCodexApiKey } = await import("../core/mainSettings.js");
+  let launch = await codexLaunch({ apiKey: resolveCodexApiKey() || undefined });
   if (launch && !launch.args.includes(HOOK_TRUST_FLAG)) {
     // Belt and braces for the one mistake that fails OPEN rather than closed:
     // the private home's hooks.json is silently ignored without that flag, and
@@ -166,12 +171,13 @@ export async function runTurn(opts: RunOptions): Promise<RunResult> {
         // when it's available at all, and blocks waiting for EOF if left open.
         stdio: ["ignore", "pipe", "pipe"],
         // opts.env is deliberately ignored (codex manages its own auth, like
-        // the other CLI backends). CODEX_HOME points at our private home, and
-        // the bridge coordinates are picked up from here by the hook — which,
+        // the other CLI backends). CODEX_HOME points at our private home,
+        // launch.env carries or clears the OpenAI/Codex API key, and the
+        // bridge coordinates are picked up from here by the hook — which,
         // unlike an MCP child, does inherit this environment.
         env: {
           ...process.env,
-          ...(launch ? { CODEX_HOME: launch.home } : {}),
+          ...(launch ? { CODEX_HOME: launch.home, ...launch.env } : {}),
           ...(bridge ? { MYAGENS_BRIDGE_URL: bridge.url, MYAGENS_BRIDGE_TOKEN: bridge.token } : {}),
         },
       });

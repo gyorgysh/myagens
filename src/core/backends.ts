@@ -5,15 +5,16 @@ import { runTurn as codexRunTurn } from "../codex/runner.js";
 import { runTurn as ollamaRunTurn } from "../ollama/runner.js";
 import { runTurn as agyRunTurn } from "../agy/runner.js";
 import { runTurn as cursorRunTurn } from "../cursor/runner.js";
+import { runTurn as opencodeRunTurn } from "../opencode/runner.js";
 import { runWithStallGuard } from "./stallGuard.js";
 
 /**
  * One agent runtime this bot can drive a turn through — the Claude Agent SDK
  * (spawns the `claude` CLI), the Grok CLI (spawns `grok`), the Codex CLI
- * (spawns `codex`), Google's Antigravity CLI (spawns `agy`), or Cursor's CLI
- * (spawns `cursor-agent`), each wrapping a provider's own agentic CLI product
- * (tool belt, sandboxing, permission modes included) rather than
- * reimplementing one.
+ * (spawns `codex`), Google's Antigravity CLI (spawns `agy`), Cursor's CLI
+ * (spawns `cursor-agent`), or OpenCode's CLI (spawns `opencode`), each wrapping
+ * a provider's own agentic CLI product (tool belt, sandboxing, permission modes
+ * included) rather than reimplementing one.
  * Every caller below already goes through this registry rather than importing
  * a runner's `runTurn` directly.
  */
@@ -63,7 +64,13 @@ const CURSOR_CLI: AgentBackend = guarded({
   runTurn: cursorRunTurn,
 });
 
-// Plain chat against a local Ollama server, NOT an agentic CLI like the four
+const OPENCODE_CLI: AgentBackend = guarded({
+  id: "opencode-cli",
+  displayName: "OpenCode (CLI)",
+  runTurn: opencodeRunTurn,
+});
+
+// Plain chat against a local Ollama server, NOT an agentic CLI like the ones
 // above. It exists so an agent can run fast and fully Anthropic-independent on a
 // small local model that could never prefill the Claude CLI's ~30k-token system
 // prompt; see src/ollama/runner.ts.
@@ -93,6 +100,7 @@ const backends = new Map<string, AgentBackend>([
   [CODEX_CLI.id, CODEX_CLI],
   [AGY_CLI.id, AGY_CLI],
   [CURSOR_CLI.id, CURSOR_CLI],
+  [OPENCODE_CLI.id, OPENCODE_CLI],
   [OLLAMA.id, OLLAMA],
 ]);
 

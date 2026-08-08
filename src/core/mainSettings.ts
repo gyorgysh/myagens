@@ -1,7 +1,7 @@
 import { config } from "../config.js";
 import { loadJson, saveJson } from "./jsonStore.js";
 import { getProvider, listProviders } from "./providers.js";
-import { resolveSecret } from "./vault.js";
+import { isSecretRef, resolveSecret, secretRef, vault } from "./vault.js";
 import { audit } from "./audit.js";
 import { backendLimitReading, fallbackTargetExhausted } from "./limitHeadroom.js";
 import { listBackends, getBackend } from "./backends.js";
@@ -63,6 +63,14 @@ interface MainSettings {
    * plain CLI and touches nothing.
    */
   cursorTools?: boolean;
+  /**
+   * OpenAI API key for the Codex CLI backend (`codex-cli`), stored as a
+   * `vault:<id>` reference. When set, every codex turn (Atlas and workers)
+   * uses usage-based OpenAI Platform billing instead of a ChatGPT subscription
+   * login. Empty/unset = fall back to `CODEX_API_KEY` in the environment, then
+   * to the host's `codex login` auth.
+   */
+  codexApiKey?: string;
   /**
    * Character and tone override for Atlas. If set, injected into the system
    * prompt after the base personality block. Separate from systemPrompt (domain
@@ -201,7 +209,74 @@ export function mainSettingsView() {
     knownPaths: s.knownPaths ?? [],
     updateNotifyOptOut: s.updateNotifyOptOut === true,
     promptExclude: s.promptExclude ?? [],
+    // Never send the key itself: only whether one is configured, where it came
+    // from, and a short hint so the panel can show "saved ••••abcd".
+    ...codexApiKeyStatus(),
   };
+}
+
+/** Panel-facing Codex API key status (no plaintext). */
+function codexApiKeyStatus(): {
+  codexApiKeySet: boolean;
+  codexApiKeyHint: string;
+  /** "vault" | "env" | "" — Clear only applies to a vault-stored key. */
+  codexApiKeySource: "vault" | "env" | "";
+} {
+  const fromVault = resolveSecret(load().codexApiKey);
+  if (fromVault) {
+    return {
+      codexApiKeySet: true,
+      codexApiKeySource: "vault",
+      codexApiKeyHint: fromVault.length <= 4 ? "••••" : `••••${fromVault.slice(-4)}`,
+    };
+  }
+  const fromEnv = config.CODEX_API_KEY?.trim() || "";
+  if (fromEnv) {
+    return {
+      codexApiKeySet: true,
+      codexApiKeySource: "env",
+      codexApiKeyHint: fromEnv.length <= 4 ? "••••" : `••••${fromEnv.slice(-4)}`,
+    };
+  }
+  return { codexApiKeySet: false, codexApiKeySource: "", codexApiKeyHint: "" };
+}
+
+/**
+ * Plaintext OpenAI API key for the codex-cli backend, or "" when none is
+ * configured. Order: vault-backed panel setting, then `CODEX_API_KEY` env.
+ * Deliberately does NOT fall back to `OPENAI_API_KEY` (voice / other tools use
+ * that, and auto-sharing would silently bill Platform usage).
+ */
+export function resolveCodexApiKey(): string {
+  const fromSettings = resolveSecret(load().codexApiKey);
+  if (fromSettings) return fromSettings;
+  return config.CODEX_API_KEY?.trim() || "";
+}
+
+/** Store, update, or clear the vault-backed Codex API key on main settings. */
+function applyCodexApiKey(s: MainSettings, value: string | undefined): void {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) {
+    // Clear: drop the vault entry we own (by ref) so a leftover secret does not
+    // linger after the user removes the key from Settings.
+    if (s.codexApiKey && isSecretRef(s.codexApiKey)) {
+      const id = s.codexApiKey.slice("vault:".length);
+      vault.remove(id);
+    }
+    s.codexApiKey = undefined;
+    return;
+  }
+  if (s.codexApiKey && isSecretRef(s.codexApiKey)) {
+    const id = s.codexApiKey.slice("vault:".length);
+    if (vault.update(id, { value: trimmed })) return;
+    // Ref pointed at a deleted entry: fall through and create a fresh one.
+  }
+  const sec = vault.create({
+    name: "Codex OpenAI API key",
+    value: trimmed,
+    description: "Usage-based OpenAI Platform billing for the codex-cli backend",
+  });
+  s.codexApiKey = secretRef(sec.id);
 }
 
 export function setMainSettings(patch: {
@@ -215,6 +290,12 @@ export function setMainSettings(patch: {
   tmuxMode?: boolean;
   remoteControl?: boolean;
   cursorTools?: boolean;
+  /**
+   * Codex OpenAI API key. Non-empty string stores/updates the vault secret;
+   * empty string clears it. Omit the field to leave the stored key unchanged
+   * (the panel only sends it when the user typed something).
+   */
+  codexApiKey?: string;
   fallbackProviderId?: string;
   fallbackBackendId?: string;
   fallbackModel?: string;
@@ -238,6 +319,7 @@ export function setMainSettings(patch: {
   // Inverted on purpose: this one defaults to ON, so only a false is worth
   // storing and a true means "back to the default", i.e. no field at all.
   if (patch.cursorTools !== undefined) s.cursorTools = patch.cursorTools === false ? false : undefined;
+  if (patch.codexApiKey !== undefined) applyCodexApiKey(s, patch.codexApiKey);
   if (patch.fallbackProviderId !== undefined)
     s.fallbackProviderId = patch.fallbackProviderId || undefined;
   if (patch.fallbackBackendId !== undefined)
@@ -266,6 +348,7 @@ export function setMainSettings(patch: {
     dryRun: s.dryRun,
     fallbackProviderId: s.fallbackProviderId,
     fallbackBackendId: s.fallbackBackendId,
+    codexApiKeySet: Boolean(s.codexApiKey),
   });
   // A backend switch invalidates every persisted sessionId: they're resume tokens
   // for the OLD backend's CLI, so codex/grok would fail to resume a Claude UUID on

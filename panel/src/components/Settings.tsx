@@ -533,6 +533,10 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
   const [tmuxMode, setTmuxMode] = useState(false);
   const [remoteControl, setRemoteControl] = useState(false);
   const [cursorTools, setCursorTools] = useState(true);
+  // Codex API key field: empty means "leave stored key as-is" on save, unless
+  // the user hits Clear (then we send "" and wipe the vault entry).
+  const [codexApiKey, setCodexApiKey] = useState("");
+  const [codexApiKeyClear, setCodexApiKeyClear] = useState(false);
   const [instances, setInstances] = useState<AgentInstance[]>([]);
   const [showAgentTerm, setShowAgentTerm] = useState(false);
   const [updateNotifyOptOut, setUpdateNotifyOptOut] = useState(false);
@@ -558,6 +562,8 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         setTmuxMode(a.tmuxMode === true);
         setRemoteControl(a.remoteControl === true);
         setCursorTools(a.cursorTools !== false);
+        setCodexApiKey("");
+        setCodexApiKeyClear(false);
         setUpdateNotifyOptOut(a.updateNotifyOptOut === true);
         setPromptExclude(a.promptExclude ?? []);
         setFallbackProviderId(a.fallbackProviderId ?? "");
@@ -591,6 +597,8 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
       tmuxMode !== (agent.tmuxMode === true) ||
       remoteControl !== (agent.remoteControl === true) ||
       cursorTools !== (agent.cursorTools !== false) ||
+      codexApiKey !== "" ||
+      codexApiKeyClear ||
       updateNotifyOptOut !== (agent.updateNotifyOptOut === true) ||
       !sameExclude(promptExclude, agent.promptExclude ?? []) ||
       fallbackProviderId !== (agent.fallbackProviderId ?? "") ||
@@ -660,6 +668,12 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         tmuxMode,
         remoteControl,
         cursorTools,
+        // Only touch the vault when the user typed a new key or hit Clear.
+        ...(codexApiKeyClear
+          ? { codexApiKey: "" }
+          : codexApiKey.trim()
+            ? { codexApiKey: codexApiKey.trim() }
+            : {}),
         updateNotifyOptOut,
         promptExclude,
         fallbackProviderId,
@@ -669,6 +683,8 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
         fallbackAllowOverage,
       });
       setAgent(next);
+      setCodexApiKey("");
+      setCodexApiKeyClear(false);
       toast.success(t("saved"));
     } catch (e) {
       if (e instanceof AuthError) return onAuthError();
@@ -747,19 +763,60 @@ function MainAgentSettings({ onAuthError }: { onAuthError: () => void }) {
             // installed on the local daemon; agy's, Cursor's and Codex's are
             // ids their CLI accepts (leave empty for the default). The fetch
             // button, where the CLI can list models, shows what's available.
-            <div>
-              <Label>{t("model")}</Label>
-              <ModelSelect
-                value={model}
-                onChange={setModel}
-                suggestions={[]}
-                onFetch={fetchModelsFor(backendId)}
-                fetchLabel={t("fetch")}
-                placeholder={t("settings_model_local")}
-              />
-              <p className="mt-1 text-xs text-fg-dim">
-                {t(`settings_ai_backend_${backendModelKind(backendId)!}_hint`)}
-              </p>
+            <div className="space-y-3">
+              <div>
+                <Label>{t("model")}</Label>
+                <ModelSelect
+                  value={model}
+                  onChange={setModel}
+                  suggestions={[]}
+                  onFetch={fetchModelsFor(backendId)}
+                  fetchLabel={t("fetch")}
+                  placeholder={t("settings_model_local")}
+                />
+                <p className="mt-1 text-xs text-fg-dim">
+                  {t(`settings_ai_backend_${backendModelKind(backendId)!}_hint`)}
+                </p>
+              </div>
+              {backendId === "codex-cli" && (
+                <div>
+                  <Label>{t("settings_codex_api_key")}</Label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      type="password"
+                      autoComplete="off"
+                      className="min-w-0 flex-1"
+                      value={codexApiKey}
+                      onChange={(e) => {
+                        setCodexApiKey(e.target.value);
+                        setCodexApiKeyClear(false);
+                      }}
+                      placeholder={
+                        codexApiKeyClear
+                          ? t("settings_codex_api_key_will_clear")
+                          : agent.codexApiKeySource === "env"
+                            ? t("settings_codex_api_key_from_env").replace("{hint}", agent.codexApiKeyHint || "••••")
+                            : agent.codexApiKeySet
+                              ? t("settings_codex_api_key_set").replace("{hint}", agent.codexApiKeyHint || "••••")
+                              : t("settings_codex_api_key_placeholder")
+                      }
+                    />
+                    {(agent.codexApiKeySource === "vault" || codexApiKeyClear) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setCodexApiKey("");
+                          setCodexApiKeyClear(!codexApiKeyClear);
+                        }}
+                      >
+                        {codexApiKeyClear ? t("settings_codex_api_key_undo_clear") : t("settings_codex_api_key_clear")}
+                      </Button>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-fg-dim">{t("settings_codex_api_key_desc")}</p>
+                </div>
+              )}
             </div>
           ) : backendId ? (
             <p className="text-xs text-fg-dim">{t("settings_ai_backend_no_model")}</p>

@@ -999,6 +999,12 @@ export interface MainAgent {
   /** Cursor backend only: run cursor-agent as a full MyAgens agent (MCP tools
    *  plus the approval gate). Default on; false runs the plain CLI. */
   cursorTools: boolean;
+  /** Codex backend: an OpenAI API key is configured (vault or CODEX_API_KEY). */
+  codexApiKeySet: boolean;
+  /** Masked hint for the saved Codex API key (e.g. "••••abcd"), empty if none. */
+  codexApiKeyHint: string;
+  /** Where the active key comes from. Clear only removes a vault-stored key. */
+  codexApiKeySource: "vault" | "env" | "";
   /** Provider to fail over to when the plan is rate-limited ("" = off). */
   fallbackProviderId: string;
   /** Agent backend to fail over to ("" = keep the primary backend). */
@@ -1365,8 +1371,28 @@ export const api = {
       `/api/agent-instances/${agentId}/restart`,
       remoteControl === undefined ? undefined : { remoteControl },
     ),
-  saveAgent: (s: { model?: string; providerId?: string; backendId?: string; persona?: string; autonomy?: Autonomy; defaultLanguage?: string; dryRun?: boolean; tmuxMode?: boolean; remoteControl?: boolean; cursorTools?: boolean; fallbackProviderId?: string; fallbackBackendId?: string; fallbackModel?: string; fallbackThreshold?: number; fallbackAllowOverage?: boolean; knownPaths?: Array<{ label: string; path: string }>; updateNotifyOptOut?: boolean; promptExclude?: PromptExcludeKey[] }) =>
-    req<MainAgent>("PUT", "/api/agent", s),
+  saveAgent: (s: {
+    model?: string;
+    providerId?: string;
+    backendId?: string;
+    persona?: string;
+    autonomy?: Autonomy;
+    defaultLanguage?: string;
+    dryRun?: boolean;
+    tmuxMode?: boolean;
+    remoteControl?: boolean;
+    cursorTools?: boolean;
+    /** Non-empty = store/update; "" = clear; omit = leave the stored key as-is. */
+    codexApiKey?: string;
+    fallbackProviderId?: string;
+    fallbackBackendId?: string;
+    fallbackModel?: string;
+    fallbackThreshold?: number;
+    fallbackAllowOverage?: boolean;
+    knownPaths?: Array<{ label: string; path: string }>;
+    updateNotifyOptOut?: boolean;
+    promptExclude?: PromptExcludeKey[];
+  }) => req<MainAgent>("PUT", "/api/agent", s),
   resetAgent: () => req<{ sessions: number; aborted: number }>("POST", "/api/agent/reset"),
   restartAgent: () => req<{ ok: boolean; restarting: boolean }>("POST", "/api/agent/restart"),
   saveEmbeddings: (s: { enabled: boolean; provider?: "ollama" | "openai"; baseUrl?: string; model?: string }) =>
@@ -1377,6 +1403,7 @@ export const api = {
     req<{ preferredBackend: PreferredBackend | null }>("PUT", "/api/agent/embeddings/preferred", { preferredBackend }),
   agyModels: () => get<{ models: string[] }>("/api/integrations/agy/models"),
   cursorModels: () => get<{ models: string[] }>("/api/integrations/cursor/models"),
+  opencodeModels: () => get<{ models: string[] }>("/api/integrations/opencode/models"),
   ollamaStatus: () => get<OllamaStatus>("/api/integrations/ollama"),
   ollamaConnect: () => req<OllamaConnectResult>("POST", "/api/integrations/ollama/connect"),
   lmStudioStatus: () => get<LmStudioStatus>("/api/integrations/lmstudio"),

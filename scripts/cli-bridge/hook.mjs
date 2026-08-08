@@ -1,5 +1,7 @@
 // PreToolUse / PostToolUse hook for CLI-driven agent backends (agy, codex and
-// cursor).
+// cursor). OpenCode uses a separate in-process plugin instead
+// (scripts/cli-bridge/opencode-config/plugins/myagens.js) because it has no
+// shell-command hook surface.
 //
 // Registered in the per-run customization root written by the backend's own
 // customization module (e.g. src/agy/customization.ts). The CLI runs this
@@ -11,7 +13,7 @@
 //
 // Invoked as `node hook.mjs <flavor> <pre|post>`. `flavor` picks the payload
 // shape below ("agy", "codex" and "cursor" so far); the FLAVORS map is the only
-// thing a future CLI needs to extend.
+// thing a future shell-hook CLI needs to extend.
 //
 // Fails closed on purpose: if the bot cannot be reached while a run is in
 // flight, the tool is denied rather than quietly run unsupervised. With no

@@ -31,8 +31,7 @@ interface MainSettings {
   /** Provider for a local/proxy endpoint; "" = Anthropic via process env. */
   providerId?: string;
   /** Agent backend id (see core/backends.ts); "" / unset = the default Claude
-   *  Agent SDK backend. A hidden/advanced option — set via /model <backendId>
-   *  or the panel API, not surfaced as a headline UI choice. */
+   *  Agent SDK backend. Set via /model <backendId> or the panel API. */
   backendId?: string;
   /**
    * Persistent-instance ("Tmux") mode: when true, Atlas's *interactive* turns

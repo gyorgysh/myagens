@@ -3,7 +3,7 @@ import { isAbsolute, resolve } from "node:path";
 import type { Telegraf, Telegram } from "telegraf";
 import { mainSettingsView, setMainSettings } from "./core/mainSettings.js";
 import { listInstances, resetInstanceConversation, restartInstance } from "./claude/tmuxInstance.js";
-import { listBackends } from "./core/backends.js";
+import { backendChoicesHtml, parseModelSelection } from "./core/modelSelection.js";
 import { config } from "./config.js";
 import { AGENT_LANGUAGES, isValidLanguage, languageName } from "./core/languages.js";
 import { runCouncil, formatCouncilTelegram } from "./core/council.js";
@@ -52,28 +52,6 @@ const MODEL_SHORTCUTS: { label: string; model: string }[] = [
 ];
 
 const MODEL_CB_PREFIX = "mdl:";
-
-/**
- * Parse a `/model` argument for the hidden agent-backend switch: a bare
- * registered backend id (e.g. "grok-cli") switches backend and resets the
- * model to that backend's own default; "<backendId>:<model>" sets both. Any
- * other value is a plain model id for whichever backend is already active —
- * existing behavior, unchanged. Not surfaced in the shortcut-button grid
- * (Claude only); reachable only by typing it, matching how provider/local
- * models are already a type-only option here.
- */
-function parseModelArg(arg: string): { model?: string; backendId?: string } {
-  const backendIds = new Set(listBackends().map((b) => b.id));
-  const colonIdx = arg.indexOf(":");
-  if (colonIdx > -1) {
-    const maybeBackend = arg.slice(0, colonIdx).trim();
-    if (backendIds.has(maybeBackend)) {
-      return { backendId: maybeBackend, model: arg.slice(colonIdx + 1).trim() };
-    }
-  }
-  if (backendIds.has(arg)) return { backendId: arg, model: "" };
-  return { model: arg };
-}
 
 export function isModelCallback(data: string): boolean {
   return data.startsWith(MODEL_CB_PREFIX);
@@ -168,14 +146,17 @@ export async function sendModelMenu(
   editMessageId?: number,
 ): Promise<void> {
   const view = mainSettingsView();
-  const effectiveLabel = view.effectiveModel + (view.providerName ? ` (${view.providerName})` : "");
+  const backendName = view.backends.find((backend) => backend.id === view.backendId)?.displayName;
+  const effectiveLabel = backendName
+    ? `${backendName} · ${view.model || "default model"}`
+    : view.effectiveModel + (view.providerName ? ` (${view.providerName})` : "");
 
   // Two shortcut buttons per row.
   type Btn = { text: string; callback_data: string };
   const rows: Btn[][] = [];
   for (let i = 0; i < MODEL_SHORTCUTS.length; i += 2) {
     const pair = MODEL_SHORTCUTS.slice(i, i + 2).map((s) => ({
-      text: view.model === s.model && !view.providerId ? `✓ ${s.label}` : s.label,
+      text: view.model === s.model && !view.providerId && !view.backendId ? `✓ ${s.label}` : s.label,
       callback_data: `${MODEL_CB_PREFIX}${s.model}`,
     }));
     rows.push(pair);
@@ -205,7 +186,10 @@ export async function sendModelMenu(
     ? t("cmd_model_local_header", lang) + providerLines.join("\n")
     : "";
 
-  const text = t("cmd_model_menu", lang, { model: escapeHtml(effectiveLabel) }) + localSection;
+  const text =
+    t("cmd_model_menu", lang, { model: escapeHtml(effectiveLabel) }) +
+    backendChoicesHtml(view.backendId) +
+    localSection;
 
   if (editMessageId) {
     await tg
@@ -825,8 +809,8 @@ export function registerCommands(bot: Telegraf): void {
     const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
     if (arg) {
       // /model <name> — set directly without opening the menu. Also accepts
-      // a bare backend id or "<backendId>:<model>" (see parseModelArg).
-      const parsed = parseModelArg(arg);
+      // a bare backend id or "<backendId>:<model>".
+      const parsed = parseModelSelection(arg);
       setMainSettings({ providerId: "", ...parsed });
       log.info("Command /model set", { chatId: ctx.chat.id, ...parsed });
       const label = parsed.backendId ? `${parsed.backendId}${parsed.model ? `:${parsed.model}` : ""}` : arg;

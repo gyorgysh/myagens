@@ -72,6 +72,7 @@ import { agentUsage } from "./core/agentUsage.js";
 import { errText, friendlyError } from "./telegram/errors.js";
 import { sendBusyNotice, promptPreview } from "./telegram/busy.js";
 import { guardCwd, cwdFallbackNotice } from "./core/cwdGuard.js";
+import { handleClaudeLoginCommand } from "./telegram/claudeLogin.js";
 
 export function buildBot(): Telegraf {
   const bot = new Telegraf(telegramBotToken());
@@ -86,6 +87,14 @@ export function buildBot(): Telegraf {
 
   bot.use(authMiddleware);
   registerCommands(bot);
+  bot.command("claude_login", async (ctx) =>
+    handleClaudeLoginCommand(ctx.telegram, ctx.chat.id, ctx.message.text),
+  );
+  // Telegram's official command names use underscores, but accept the more
+  // natural spelling too when it arrives as ordinary text.
+  bot.hears(/^\/claude-login(?:@\w+)?(?:\s|$)/i, async (ctx) =>
+    handleClaudeLoginCommand(ctx.telegram, ctx.chat.id, ctx.message.text),
+  );
 
   // --- Context-window parity with the Claude app: /context + /compact ---
   // Registered here (not in registerCommands) because /compact routes through
@@ -1130,4 +1139,3 @@ function loopSummary(toolName: string, input: unknown): string {
     return toolName;
   }
 }
-

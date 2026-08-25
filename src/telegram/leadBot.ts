@@ -40,6 +40,9 @@ import { config } from "../config.js";
 import { agentUsage } from "../core/agentUsage.js";
 import { notifyAsAtlas } from "../core/atlasNotify.js";
 import { sendReloadPrompt, isReloadCallback, resolveReloadCallback } from "./reloadFlow.js";
+import { backendChoicesHtml, parseModelSelection } from "../core/modelSelection.js";
+import { getBackend } from "../core/backends.js";
+import { handleClaudeLoginCommand } from "./claudeLogin.js";
 
 /**
  * A standalone Telegram bot for a single Lead worker. It reuses the same
@@ -460,6 +463,36 @@ export class LeadBot {
       }
     });
 
+    // A Lead changes its own persisted backend/model, independently of Atlas.
+    bot.command("model", async (ctx) => {
+      const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
+      if (arg) {
+        const previousBackend = lead.backendId;
+        const parsed = parseModelSelection(arg);
+        workers.update(lead.id, { providerId: "", ...parsed });
+        if ((previousBackend || "claude-agent-sdk") !== (lead.backendId || "claude-agent-sdk")) {
+          sessions.reset(ctx.chat.id);
+        }
+        const label = parsed.backendId ? `${parsed.backendId}${parsed.model ? `:${parsed.model}` : ""}` : arg;
+        await ctx.replyWithHTML(`🧠 Model/backend set to <code>${escapeHtml(label)}</code>. Takes effect on the next message.`);
+        return;
+      }
+      const backend = getBackend(lead.backendId);
+      const model = lead.model || (lead.backendId ? "default model" : config.CLAUDE_MODEL);
+      await ctx.replyWithHTML(
+        `🧠 <b>Model</b>\nCurrent: <code>${escapeHtml(model)}</code> on <b>${escapeHtml(backend.displayName)}</b>` +
+          backendChoicesHtml(lead.backendId) +
+          "\n\nSet any model id with <code>/model &lt;name&gt;</code>.",
+      );
+    });
+
+    bot.command("claude_login", async (ctx) =>
+      handleClaudeLoginCommand(ctx.telegram, ctx.chat.id, ctx.message.text),
+    );
+    bot.hears(/^\/claude-login(?:@\w+)?(?:\s|$)/i, async (ctx) =>
+      handleClaudeLoginCommand(ctx.telegram, ctx.chat.id, ctx.message.text),
+    );
+
     // /pwd
     bot.command("pwd", async (ctx) => {
       const s = sessions.get(ctx.chat.id);
@@ -504,6 +537,8 @@ export class LeadBot {
           `/pwd: show current directory\n` +
           `/stop: abort the running request\n` +
           `/mode supervised|standard|full: approval level\n` +
+          `/model: switch this Lead's model or agent backend\n` +
+          `/claude_login: sign Claude in locally via your browser (no LLM)\n` +
           `/reload: rescue path — confirm to discard local changes, pull latest, rebuild, and restart\n` +
           `/lang [code]: show or set response language\n` +
           `/help: this message`,
@@ -600,6 +635,8 @@ export class LeadBot {
       { command: "pwd", description: "Show current directory" },
       { command: "stop", description: "Abort running request" },
       { command: "mode", description: "safe or auto" },
+      { command: "model", description: "Switch this Lead's model or agent backend" },
+      { command: "claude_login", description: "Sign Claude in locally via your browser" },
       { command: "reload", description: "Rescue: discard local changes, pull, rebuild, restart" },
       { command: "help", description: "Help" },
     ]);

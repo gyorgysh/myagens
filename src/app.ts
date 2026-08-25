@@ -221,6 +221,7 @@ async function main(): Promise<void> {
     { command: "mode", description: "supervised | standard | full" },
     { command: "model", description: "Switch model or agent backend (Claude, Codex, agy, local)" },
     { command: "claude_login", description: "Sign Claude in locally via your browser" },
+    { command: "doctor", description: "Diagnose a silent Claude CLI crash on this machine" },
     { command: "lang", description: "Set response language" },
     { command: "voice", description: "Toggle spoken voice replies" },
     { command: "rc", description: "Remote Control: mirror the persistent session to the Claude app" },

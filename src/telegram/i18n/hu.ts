@@ -37,6 +37,8 @@ export const hu: Record<keyof typeof en, string> = {
   bot_usage_exhausted_label: "📊 Használati limit kimerült. {label} visszaáll: {countdown}.",
   bot_usage_exhausted: "📊 Használati limit kimerült. Várd meg a visszaállást, majd próbáld újra.",
   bot_err_rate_limited: "⏳ Az API korlátozott. Várj egy pillanatot, és próbáld újra.",
+  bot_err_silent_cli:
+    "⚠️ A Claude CLI kimenet nélkül lépett ki ({n}× újrapróbálva). Ez általában egy befejezetlen bejelentkezés.\n\nKüldd a /doctor parancsot a valódi hibáért ezen a gépen, vagy a /claude_login parancsot az újrabejelentkezéshez. Ha a bejelentkezési oldal kódot mutat, azt küldd el következő üzenetként.",
   bot_err_overloaded: "🌀 Az API jelenleg túlterhelt. Próbáld újra hamarosan.",
   bot_err_stalled:
     "⏱ A kör elnémult, ezért a beragadás-figyelő leállította (az agent folyamat valószínűleg lefagyott). A chat újra szabad; küldd el újra az üzenetet.",
@@ -202,7 +204,7 @@ export const hu: Record<keyof typeof en, string> = {
   cmd_start:
     "👋 <b>{greeting}! {agent} vagyok, a te {brand} koordinátorod.</b>\n\nValódi Claude Code ügynökként futok ezen a gépen. Tudok fájlokat olvasni, kódot írni, parancsokat futtatni, szolgáltatásokat ellenőrizni és dolgokat kiszállítani. A válaszok élőben streamelnek, ahogy dolgozom. Minden írási vagy végrehajtási művelet jóváhagyást kér először.\n\n<b>Szólj hozzám természetesen:</b>\n<i>\"Mi emészti fel a lemezterületet?\"</i>\n<i>\"Deployold az oldalt és jelezz, ha kész.\"</i>\n<i>\"Foglald össze az utóbbi óra hibáit a naplókból.\"</i>\n\nSzakosodott Vezető ügynökök csapatát koordinálom (DevOps, Pénzügy, Kutatás, amit beállítasz). Használd a /council parancsot egy döntés teljes csapatvokszra bocsátásához, vagy írj egy Vezető saját botjának közvetlenül.\n\nKüldhetsz fájlokat és fotókat (képeket inline látok) és hangüzeneteket (átiratozva és promptként futtatva).\n\n/help a teljes parancslistáért.",
   cmd_help:
-    "🤖 <b>{agent}: Parancsok</b>\n\n<b>Párbeszéd</b>\n/new: új kontextus (munkamenet törlése)\n/stop: futó kérés megszakítása\n\n<b>Fájlok &amp; Git</b>\n/cd &lt;elérési út&gt;: munkakönyvtár váltása\n/pwd: jelenlegi könyvtár\n/projects: mentett munkakönyvtárak között váltás\n/diff: munkamásolat diff áttekintése Commit / Elvet gombokkal\n/commit &lt;üzenet&gt;: összes változás commitolása\n\n<b>Autonómia</b>\n/mode supervised|standard|full|auto_until_error: jóváhagyási szint ehhez a chathez\n/model: AI modell váltása (Claude, helyi, providerek)\n/allow &lt;Eszköz&gt; · /allowed · /disallow &lt;Eszköz|all&gt;: tartós eszköz-engedélyezési szabályok\n\n<b>Csapat</b>\n/inbox: ügynökök által beküldött javaslatok áttekintése (elfogad → feladat, vagy elvet)\n/council &lt;ötlet&gt;: javaslat teljes Vezető tanácsi szavazásra bocsátása\n\n<b>Ütemezés</b>\n/schedule add &lt;mikor&gt; | &lt;prompt&gt;: időzített autonóm futás (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)\n/schedule list · /schedule rm &lt;id&gt;\n\n<b>Infó</b>\n/status: munkamenet info (könyvtár, modell, autonómia, munkamenet id)\n/usage: terv, előfizetési limitek és API kiadások\n/digest: reggeli összefoglaló. Elmúlt 24 óra feladatai, emlékei, készségei, költsége és riasztásai\n/update [now]: új verzió keresése, vagy alkalmazása a <code>/update now</code> paranccsal\n/restore [confirm]: kód visszaállítása a legújabb GitHub commitból, az adataid &amp; konfig megőrzésével\n/reload: mentőút — jóváhagyás után eldobja a helyi módosításokat, lehúzza a legújabb kódot, újraépít és újraindít\n/lang [kód]: válasznyelv megjelenítése vagy beállítása (pl. <code>/lang hu</code>)\n/voice [on|off]: hangválaszok be/kikapcsolása (TTS)\n/help: ez az üzenet\n\nKüldhetsz fájlokat vagy fotókat (vision inputként látom), illetve hangüzeneteket (átiratozva és promptként futtatva).",
+    "🤖 <b>{agent}: Parancsok</b>\n\n<b>Párbeszéd</b>\n/new: új kontextus (munkamenet törlése)\n/stop: futó kérés megszakítása\n\n<b>Fájlok &amp; Git</b>\n/cd &lt;elérési út&gt;: munkakönyvtár váltása\n/pwd: jelenlegi könyvtár\n/projects: mentett munkakönyvtárak között váltás\n/diff: munkamásolat diff áttekintése Commit / Elvet gombokkal\n/commit &lt;üzenet&gt;: összes változás commitolása\n\n<b>Autonómia</b>\n/mode supervised|standard|full|auto_until_error: jóváhagyási szint ehhez a chathez\n/model: AI modell váltása (Claude, helyi, providerek)\n/allow &lt;Eszköz&gt; · /allowed · /disallow &lt;Eszköz|all&gt;: tartós eszköz-engedélyezési szabályok\n\n<b>Csapat</b>\n/inbox: ügynökök által beküldött javaslatok áttekintése (elfogad → feladat, vagy elvet)\n/council &lt;ötlet&gt;: javaslat teljes Vezető tanácsi szavazásra bocsátása\n\n<b>Ütemezés</b>\n/schedule add &lt;mikor&gt; | &lt;prompt&gt;: időzített autonóm futás (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)\n/schedule list · /schedule rm &lt;id&gt;\n\n<b>Infó</b>\n/status: munkamenet info (könyvtár, modell, autonómia, munkamenet id)\n/usage: terv, előfizetési limitek és API kiadások\n/digest: reggeli összefoglaló. Elmúlt 24 óra feladatai, emlékei, készségei, költsége és riasztásai\n/update [now]: új verzió keresése, vagy alkalmazása a <code>/update now</code> paranccsal\n/restore [confirm]: kód visszaállítása a legújabb GitHub commitból, az adataid &amp; konfig megőrzésével\n/reload: mentőút — jóváhagyás után eldobja a helyi módosításokat, lehúzza a legújabb kódot, újraépít és újraindít\n/claude_login: Claude bejelentkeztetése ezen a gépen. Ha az oldal kódot mutat, illeszd be következő üzenetként, vagy <code>/claude_login KÓDOD</code>. <code>/claude_login retry</code> az újrabejelentkezéshez, <code>/claude_login cancel</code> a megszakításhoz.\n/doctor: néma Claude CLI összeomlás diagnosztizálása (ugyanazok a vizsgálatok, mint az <code>npm run doctor</code>, LLM nélkül)\n/lang [kód]: válasznyelv megjelenítése vagy beállítása (pl. <code>/lang hu</code>)\n/voice [on|off]: hangválaszok be/kikapcsolása (TTS)\n/help: ez az üzenet\n\nKüldhetsz fájlokat vagy fotókat (vision inputként látom), illetve hangüzeneteket (átiratozva és promptként futtatva).",
   cmd_new_done: "🆕 Új beszélgetés indítva.",
   cmd_context_report:
     "🧠 <b>Kontextusablak</b>\n<code>{bar}</code> <b>{pct}%</b> a(z) {cliff} normál árazású sávból\n{tokens} token használatban{windowNote}\n\n{status}",
@@ -385,4 +387,46 @@ export const hu: Record<keyof typeof en, string> = {
   cmd_digest_cost: "💸 <b>${cost}</b> elköltve · {turns} kör",
   cmd_digest_alerts: "⚠️ <b>{n}</b> riasztás: {first}",
   cmd_digest_alerts_more: " (+{n} további)",
+
+  // --- claudeLogin.ts / claudeDoctor.ts ---
+  claude_login_no_cli: "⚠️ A Claude Code CLI nincs telepítve, vagy nincs a PATH-on.",
+  claude_login_as: " mint {email}",
+  claude_login_already:
+    "✅ Claude már be van jelentkezve{who}. Küldd a <code>/claude_login retry</code> parancsot az újrabejelentkezéshez, vagy a /doctor parancsot, ha a körök továbbra is hibásak.",
+  claude_login_in_progress:
+    "⏳ Már fut egy Claude bejelentkezés ezen a gépen. Fejezd be a böngészőben, illeszd be ide a kódot, vagy küldd a <code>/claude_login cancel</code> parancsot.",
+  claude_login_starting: "🔐 Helyi Claude bejelentkezés indítása (LLM nem vesz részt benne)…",
+  claude_login_timeout: "⚠️ A Claude bejelentkezés 10 perc után időtúllépték. Próbáld újra a /claude_login paranccsal.",
+  claude_login_open_url:
+    "Nyisd meg ezt az oldalt, és fejezd be a Claude bejelentkezést. Ha az oldal kódot mutat (telefonon ez a szokásos), küldd el azt következő üzenetként, akár <code>/claude_login KÓDOD</code> formában is. Maradj ebben a chatben, míg megerősítem.",
+  claude_login_btn: "Folytatás Claude-fiókkal",
+  claude_login_need_code:
+    "A bejelentkezési oldal kódra vár. Illeszd be ide következő üzenetként, vagy küldd el így: <code>/claude_login KÓDOD</code>.",
+  claude_login_code_sent: "↪️ A kódot továbbítottam a helyi Claude bejelentkezésnek. Egy pillanat…",
+  claude_login_no_flow: "Jelenleg nem fut Claude bejelentkezés. Indíts egyet a /claude_login paranccsal.",
+  claude_login_cancelled: "A helyi Claude bejelentkezés megszakítva.",
+  claude_login_complete:
+    "✅ Claude bejelentkezés kész{who}. Ellenőrzöm, hogy egy háttérbeli (headless) kör ténylegesen működik-e…",
+  claude_login_verified: "✅ A tesztprompt sikeres. Az új Claude körök már futhatnak.",
+  claude_login_verify_failed:
+    "⚠️ A bejelentkezés tárolódott, de a tesztprompt továbbra is hibázott ({detail}). A teljes jelentésért küldd a /doctor parancsot.",
+  claude_login_failed: "⚠️ A Claude bejelentkezés {detail}, mielőtt a bejelentkezés befejeződött volna. Próbáld újra a /claude_login paranccsal.",
+  claude_login_failed_started: "nem indult el",
+  claude_login_failed_exited: "{code} kóddal lépett ki",
+  cmd_doctor_running:
+    "🩺 Claude diagnosztika futtatása ezen a gépen (a bottal azonos környezetben). Ez akár egy percig is eltarthat…",
+  cmd_doctor_busy: "🩺 Már fut egy doctor vizsgálat. Várd meg a jelentést.",
+  cmd_doctor_login_block:
+    "🩺 Előbb fejezd be a Claude bejelentkezést (illeszd be a kódot, vagy /claude_login cancel), majd futtasd a /doctor parancsot.",
+  cmd_doctor_header: "🩺 <b>Claude doctor</b>",
+  cmd_doctor_platform: "<code>{platform}</code> · Node {node}",
+  cmd_doctor_ok: "+ {text}",
+  cmd_doctor_fail: "x {text}",
+  cmd_doctor_warn: "! {text}",
+  cmd_doctor_info: "· {text}",
+  cmd_doctor_output: "<pre>{text}</pre>",
+  cmd_doctor_next_login: "Következő lépés: /claude_login a bejelentkezéshez, majd /doctor újra.",
+  cmd_doctor_next_ok: "A CLI-út rendben néz ki. Ha egy kör továbbra is hibázik, küldd el ezt a /doctor jelentést.",
+  cmd_doctor_next_fail:
+    "A CLI nem adott használható kimenetet. Ez ugyanaz a hiba, mint a néma összeomlás. Jelentkezz be ezen a gépen a /claude_login paranccsal (illeszd be a kódot, ha az oldal mutat egyet), majd futtasd a /doctor-t újra.",
 };

@@ -72,7 +72,8 @@ import { agentUsage } from "./core/agentUsage.js";
 import { errText, friendlyError } from "./telegram/errors.js";
 import { sendBusyNotice, promptPreview } from "./telegram/busy.js";
 import { guardCwd, cwdFallbackNotice } from "./core/cwdGuard.js";
-import { handleClaudeLoginCommand } from "./telegram/claudeLogin.js";
+import { consumeClaudeLoginText, handleClaudeLoginCommand } from "./telegram/claudeLogin.js";
+import { handleDoctorCommand } from "./telegram/claudeDoctor.js";
 
 export function buildBot(): Telegraf {
   const bot = new Telegraf(telegramBotToken());
@@ -95,6 +96,7 @@ export function buildBot(): Telegraf {
   bot.hears(/^\/claude-login(?:@\w+)?(?:\s|$)/i, async (ctx) =>
     handleClaudeLoginCommand(ctx.telegram, ctx.chat.id, ctx.message.text),
   );
+  bot.command("doctor", async (ctx) => handleDoctorCommand(ctx.telegram, ctx.chat.id));
 
   // --- Context-window parity with the Claude app: /context + /compact ---
   // Registered here (not in registerCommands) because /compact routes through
@@ -365,6 +367,7 @@ export function buildBot(): Telegraf {
   bot.on(message("text"), async (ctx) => {
     const text = ctx.message.text;
     if (text.startsWith("/")) return; // handled by command handlers
+    if (await consumeClaudeLoginText(ctx.telegram, ctx.chat.id, text)) return;
     // If a crew agent is waiting for the president's reply, resolve it.
     if (hasPendingAsk(ctx.chat.id, "atlas")) {
       if (resolveAsk(ctx.chat.id, "atlas", text)) {

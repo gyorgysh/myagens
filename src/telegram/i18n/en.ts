@@ -48,6 +48,8 @@ export const en = {
   bot_usage_exhausted_label: "📊 Usage limit exhausted. {label} resets in {countdown}.",
   bot_usage_exhausted: "📊 Usage limit exhausted. Wait for the limit to reset, then retry.",
   bot_err_rate_limited: "⏳ Rate limited by the API. Give it a moment and try again.",
+  bot_err_silent_cli:
+    "⚠️ The Claude CLI exited with no output (retried {n}×). This is usually a login that didn't stick.\n\nSend /doctor to see the real error on this machine, or /claude_login to sign in again. If the sign-in page shows a code, paste it as your next message.",
   bot_err_overloaded: "🌀 The API is overloaded right now. Try again shortly.",
   bot_err_stalled:
     "⏱ The turn went silent and was aborted by the stall watchdog (the agent process likely hung). The chat is free again; resend your message to retry.",
@@ -214,7 +216,7 @@ export const en = {
   cmd_start:
     "👋 <b>{greeting}! I'm {agent}, your {brand} coordinator.</b>\n\nI run as a real Claude Code agent on this machine. I can read files, write code, run commands, check services, and ship things. Replies stream live as I work. Anything that writes or executes pauses for your approval first.\n\n<b>Talk to me like a person:</b>\n<i>\"What's eating all the disk space?\"</i>\n<i>\"Deploy the site and let me know when it's done.\"</i>\n<i>\"Summarize any errors from the last hour of logs.\"</i>\n\nI coordinate a crew of specialist Leads (DevOps, Finance, Research, whatever you configure). Use /council to put a decision to a full team vote, or message a Lead directly if they have their own bot.\n\nYou can send me files and photos (I see images inline) and voice notes (transcribed and run as prompts).\n\n/help for the full command list.",
   cmd_help:
-    "🤖 <b>{agent}: Commands</b>\n\n<b>Conversation</b>\n/new: fresh context (clear session)\n/context: how full the context window is\n/compact: summarise history to shrink the context\n/stop: abort the running request\n\n<b>Files &amp; Git</b>\n/cd &lt;path&gt;: change working directory\n/pwd: current directory\n/projects: switch between saved working dirs\n/diff: review the working-tree diff with Commit / Discard buttons\n/commit &lt;message&gt;: stage all changes and commit\n\n<b>Autonomy</b>\n/mode supervised|standard|full|auto_until_error: approval level for this chat\n/model: switch the AI model (Claude, local, providers)\n/allow &lt;Tool&gt; · /allowed · /disallow &lt;Tool|all&gt;: persistent tool allow-rules\n\n<b>Crew</b>\n/inbox: review suggestions agents filed for you (accept → a task, or dismiss)\n/council &lt;idea&gt;: put a proposal to a full Lead council vote\n\n<b>Scheduling</b>\n/schedule add &lt;when&gt; | &lt;prompt&gt;: timed autonomous run (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)\n/schedule list · /schedule rm &lt;id&gt;\n\n<b>Info</b>\n/status: session info (cwd, model, autonomy, session id)\n/usage: plan, subscription limits, and API spend\n/digest: morning briefing. Last 24h of tasks, memories, skills, cost &amp; alerts\n/update [now]: check for a new version, or apply it with <code>/update now</code>\n/restore [confirm]: reset code to the latest GitHub commit, keeping your data &amp; config\n/reload: rescue path — confirm to discard local changes, pull latest, rebuild, and restart\n/lang [code]: show or set response language (e.g. <code>/lang hu</code>)\n/voice [on|off]: toggle spoken voice replies (TTS)\n/help: this message\n\nSend files or photos (seen inline as vision input), or voice notes (transcribed and run as prompts).",
+    "🤖 <b>{agent}: Commands</b>\n\n<b>Conversation</b>\n/new: fresh context (clear session)\n/context: how full the context window is\n/compact: summarise history to shrink the context\n/stop: abort the running request\n\n<b>Files &amp; Git</b>\n/cd &lt;path&gt;: change working directory\n/pwd: current directory\n/projects: switch between saved working dirs\n/diff: review the working-tree diff with Commit / Discard buttons\n/commit &lt;message&gt;: stage all changes and commit\n\n<b>Autonomy</b>\n/mode supervised|standard|full|auto_until_error: approval level for this chat\n/model: switch the AI model (Claude, local, providers)\n/allow &lt;Tool&gt; · /allowed · /disallow &lt;Tool|all&gt;: persistent tool allow-rules\n\n<b>Crew</b>\n/inbox: review suggestions agents filed for you (accept → a task, or dismiss)\n/council &lt;idea&gt;: put a proposal to a full Lead council vote\n\n<b>Scheduling</b>\n/schedule add &lt;when&gt; | &lt;prompt&gt;: timed autonomous run (<code>30m</code>, <code>2h</code>, <code>HH:MM</code>)\n/schedule list · /schedule rm &lt;id&gt;\n\n<b>Info</b>\n/status: session info (cwd, model, autonomy, session id)\n/usage: plan, subscription limits, and API spend\n/digest: morning briefing. Last 24h of tasks, memories, skills, cost &amp; alerts\n/update [now]: check for a new version, or apply it with <code>/update now</code>\n/restore [confirm]: reset code to the latest GitHub commit, keeping your data &amp; config\n/reload: rescue path — confirm to discard local changes, pull latest, rebuild, and restart\n/claude_login: sign Claude in on this machine. If the page shows a code, paste it as your next message or <code>/claude_login YOUR_CODE</code>. <code>/claude_login retry</code> to sign in again, <code>/claude_login cancel</code> to abort.\n/doctor: diagnose a silent Claude CLI crash (same checks as <code>npm run doctor</code>, no LLM)\n/lang [code]: show or set response language (e.g. <code>/lang hu</code>)\n/voice [on|off]: toggle spoken voice replies (TTS)\n/help: this message\n\nSend files or photos (seen inline as vision input), or voice notes (transcribed and run as prompts).",
   cmd_new_done: "🆕 Started a fresh conversation.",
   // Context-window parity (/context, /compact) + the cost-cliff nudge.
   cmd_context_report:
@@ -397,6 +399,48 @@ export const en = {
   cmd_digest_cost: "💸 <b>${cost}</b> spent · {turns} turn{s}",
   cmd_digest_alerts: "⚠️ <b>{n}</b> alert{s}: {first}",
   cmd_digest_alerts_more: " (+{n} more)",
+
+  // --- claudeLogin.ts / claudeDoctor.ts ---
+  claude_login_no_cli: "⚠️ Claude Code CLI is not installed or is not on PATH.",
+  claude_login_as: " as {email}",
+  claude_login_already:
+    "✅ Claude is already signed in{who}. Send <code>/claude_login retry</code> to sign in again, or /doctor if turns still fail.",
+  claude_login_in_progress:
+    "⏳ A Claude login is already in progress on this machine. Finish it in the browser, paste the code here, or send <code>/claude_login cancel</code>.",
+  claude_login_starting: "🔐 Starting Claude login locally (no LLM involved)…",
+  claude_login_timeout: "⚠️ Claude login timed out after 10 minutes. Run /claude_login to try again.",
+  claude_login_open_url:
+    "Open this page and complete the Claude sign-in. If the page shows a code (usual on a phone), send that code as your next message, or as <code>/claude_login YOUR_CODE</code>. Stay in this chat until I confirm.",
+  claude_login_btn: "Continue with Claude",
+  claude_login_need_code:
+    "The sign-in page is waiting for a code. Paste it here as your next message, or send <code>/claude_login YOUR_CODE</code>.",
+  claude_login_code_sent: "↪️ Sent the code to the local Claude login. Hang on…",
+  claude_login_no_flow: "No Claude login is currently running. Send /claude_login to start one.",
+  claude_login_cancelled: "Cancelled the local Claude login.",
+  claude_login_complete:
+    "✅ Claude login complete{who}. Checking that a headless turn actually works…",
+  claude_login_verified: "✅ Test prompt succeeded. New Claude turns can run now.",
+  claude_login_verify_failed:
+    "⚠️ Login was stored, but a test prompt still failed ({detail}). Send /doctor for the full report.",
+  claude_login_failed: "⚠️ Claude login {detail} before sign-in completed. Run /claude_login to retry.",
+  claude_login_failed_started: "could not be started",
+  claude_login_failed_exited: "exited with code {code}",
+  cmd_doctor_running:
+    "🩺 Running Claude diagnostics on this machine (same environment as the bot). This takes up to a minute…",
+  cmd_doctor_busy: "🩺 A doctor run is already in progress. Hang on for the report.",
+  cmd_doctor_login_block:
+    "🩺 Finish the Claude login first (paste the code, or /claude_login cancel), then run /doctor.",
+  cmd_doctor_header: "🩺 <b>Claude doctor</b>",
+  cmd_doctor_platform: "<code>{platform}</code> · Node {node}",
+  cmd_doctor_ok: "+ {text}",
+  cmd_doctor_fail: "x {text}",
+  cmd_doctor_warn: "! {text}",
+  cmd_doctor_info: "· {text}",
+  cmd_doctor_output: "<pre>{text}</pre>",
+  cmd_doctor_next_login: "Next: /claude_login to sign in, then /doctor again.",
+  cmd_doctor_next_ok: "The CLI path looks fine. If a turn still fails, send this /doctor report.",
+  cmd_doctor_next_fail:
+    "The CLI produced no usable output. That is the same failure as the silent crash. /claude_login to sign in on this machine (paste the code if the page shows one), then /doctor again.",
 } as const;
 
 export type TranslationKey = keyof typeof en;

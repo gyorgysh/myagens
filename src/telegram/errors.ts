@@ -6,7 +6,7 @@
  * other.
  */
 import { loadProbeResult } from "../core/usageProbe.js";
-import { isSilentCliCrashError } from "../claude/runner.js";
+import { isSilentCliCrashError, SilentCliCrashError } from "../claude/runner.js";
 import { t } from "./i18n/index.js";
 
 export function errText(err: unknown): string {
@@ -78,8 +78,8 @@ export function friendlyError(err: unknown, lang?: string): string {
   // A typed silent CLI crash is not a usage limit — even if a probe happens to
   // sit at 100% at the same moment, don't mislabel the failure.
   if (isSilentCliCrashError(err)) {
-    const detail = raw.length > 600 ? raw.slice(0, 600) + "…" : raw;
-    return t("bot_action_failed", lang, { detail });
+    const n = err instanceof SilentCliCrashError ? String(err.attempts) : "4";
+    return t("bot_err_silent_cli", lang, { n });
   }
   // A non-zero CLI exit ("process exited with code 1") is often an opaque proxy
   // for a usage limit the SDK didn't spell out. If the live probe shows a limit

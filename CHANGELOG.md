@@ -3,6 +3,12 @@
 All notable changes to MyAgens are documented here, grouped by release.
 Commit links point to `github.com/gyorgysh/myagens`.
 
+## [0.7.3] - 2026-08-26
+
+### Added
+- **Agent backends are discoverable from Telegram's `/model` command.** Atlas and every Lead bot now show all available runtimes—including Claude, Codex, Grok, Antigravity (`agy-cli`), Cursor, OpenCode and local Ollama—alongside the existing Claude and provider-model choices. Leads can switch their own persisted backend/model independently, and a backend change clears incompatible conversation resume state before the next message.
+- **Claude subscription login can be repaired from Telegram without invoking an LLM.** `/claude_login` (with `/claude-login` as a typed alias) launches `claude auth login --claudeai` directly on the host, extracts the browser authorization URL, and keeps that local terminal session alive until sign-in completes. It reports success back to Telegram, prevents concurrent login attempts, supports `/claude_login cancel`, and times out safely after ten minutes.
+
 ## [0.7.2] - 2026-08-09
 
 ### Added
